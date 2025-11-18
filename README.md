@@ -6,16 +6,6 @@
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-## 📋 목차
-
-- [주요 기능](#주요-기능)
-- [시스템 요구사항](#시스템-요구사항)
-- [설치 방법](#설치-방법)
-- [사용 방법](#사용-방법)
-- [문제 해결](#문제-해결)
-- [개발 히스토리](#개발-히스토리)
-- [라이선스](#라이선스)
-
 ## ✨ 주요 기능
 
 ### 🎯 핵심 기능
@@ -287,15 +277,6 @@ hwp-converter/
 - 이 프로그램은 로컬에서만 작동하며 인터넷 연결이 필요하지 않습니다
 - 파일 경로 등의 설정만 로컬에 저장됩니다 (`~/.hwp_converter_config.json`)
 - 어떠한 데이터도 외부로 전송되지 않습니다
-
-## 📧 문의 및 지원
-
-- **이슈 트래커**: [GitHub Issues](https://github.com/yourusername/hwp-converter/issues)
-
-
-## 📜 라이선스
-
-이 프로젝트는 MIT 라이선스 하에 배포됩니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
 
 
 ---
