@@ -1,6 +1,8 @@
-# HWP/HWPX 변환기 v7.1
+# HWP/HWPX 변환기 v8.3
 
 한글(HWP/HWPX) 파일을 PDF 또는 HWPX로 일괄 변환하는 Windows용 GUI 프로그램
+
+Claude Sonnet 4.5 및 Gemini 2.5 Pro 및 3.0 Pro를 이용하여 작성하였고, 지속 수정중입니다.
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)
