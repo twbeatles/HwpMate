@@ -1,10 +1,9 @@
-# HWP/HWPX 변환기 v8.3
+# HWP/HWPX 변환기 v7.0 (PyQt6)
 
-한글(HWP/HWPX) 파일을 PDF 또는 HWPX로 일괄 변환하는 Windows용 GUI 프로그램
+한글(HWP/HWPX) 파일을 PDF 또는 HWPX로 일괄 변환하는 Windows용 현대적 GUI 프로그램
 
-Claude Sonnet 4.5 및 Gemini 2.5 Pro 및 3.0 Pro를 이용하여 작성하였고, 지속 수정중입니다.
-
-![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
+![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
+![PyQt6](https://img.shields.io/badge/PyQt6-6.0+-green.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
@@ -17,6 +16,12 @@ Claude Sonnet 4.5 및 Gemini 2.5 Pro 및 3.0 Pro를 이용하여 작성하였고
 - **하위 폴더 포함**: 하위 폴더의 파일도 자동으로 변환
 - **덮어쓰기 방지**: 기존 파일 보호 옵션 (자동 번호 추가)
 
+### 🎨 UI/UX (v7.0 신규)
+- **다크/라이트 테마**: 🌙/☀️ 버튼으로 즉시 전환
+- **드래그 앤 드롭**: 파일을 끌어다 놓기만 하면 추가
+- **현대적 디자인**: 그라데이션, 애니메이션, 아이콘 적용
+- **직관적 인터페이스**: 깔끔한 그룹박스 레이아웃
+
 ### 💡 편의 기능
 - **설정 자동 저장**: 마지막 선택 폴더 및 옵션 기억
 - **변환 취소**: 진행 중인 변환 작업 중단 가능
@@ -24,15 +29,16 @@ Claude Sonnet 4.5 및 Gemini 2.5 Pro 및 3.0 Pro를 이용하여 작성하였고
 - **결과 보고서**: 성공/실패 파일 상세 정보 제공
 
 ### 🔧 기술적 특징
+- **PyQt6 기반**: 현대적이고 안정적인 GUI 프레임워크
+- **QThread 멀티스레딩**: UI 응답성 유지
+- **로깅 시스템**: 디버깅 및 오류 추적 용이
 - **한글 2022 최적화**: 최신 한글 버전 완벽 지원
-- **안정적인 COM 연결**: 다중 ProgID 자동 시도
-- **다양한 SaveAs 방식**: 3가지 저장 방식 자동 시도로 호환성 극대화
 
 ## 💻 시스템 요구사항
 
 ### 필수 요구사항
-- **OS**: Windows 7 이상 (Windows 10/11 권장)
-- **Python**: 3.8 이상
+- **OS**: Windows 10/11 (권장)
+- **Python**: 3.9 이상
 - **한글 프로그램**: 한컴오피스 한글 (한/글 2018 이상 권장)
 - **관리자 권한**: COM 객체 사용을 위해 필요
 
@@ -46,12 +52,12 @@ Claude Sonnet 4.5 및 Gemini 2.5 Pro 및 3.0 Pro를 이용하여 작성하였고
 
 ### 1. Python 설치
 
-[Python 공식 웹사이트](https://www.python.org/downloads/)에서 Python 3.8 이상 다운로드 및 설치
+[Python 공식 웹사이트](https://www.python.org/downloads/)에서 Python 3.9 이상 다운로드 및 설치
 
 ### 2. 필수 라이브러리 설치
 
 ```bash
-pip install pywin32
+pip install pywin32 PyQt6
 ```
 
 ### 3. 프로그램 다운로드
@@ -60,17 +66,13 @@ pip install pywin32
 # GitHub에서 클론
 git clone https://github.com/yourusername/hwp-converter.git
 cd hwp-converter
-
-# 또는 ZIP 파일 다운로드 후 압축 해제
 ```
 
 ### 4. 실행
 
 ```bash
 # 관리자 권한으로 실행 (필수!)
-# 파일 우클릭 → "관리자 권한으로 실행"
-
-python hwp_converter_v7_1_final.py
+python hwptopdf-hwpx_v4.py
 ```
 
 ## 🚀 사용 방법
@@ -78,51 +80,47 @@ python hwp_converter_v7_1_final.py
 ### 기본 사용법
 
 #### 1단계: 변환 방식 선택
-- **폴더 일괄 변환**: 폴더 내 모든 파일 변환
-- **파일 개별 선택**: 특정 파일만 선택하여 변환
+- **📁 폴더 일괄 변환**: 폴더 내 모든 파일 변환
+- **📄 파일 개별 선택**: 특정 파일만 선택하여 변환
 
 #### 2단계: 입력 선택
-```
-[폴더 모드]
-폴더 선택 → "하위 폴더 포함" 옵션 선택
 
-[파일 모드]
-파일 추가 → 여러 파일 선택 가능
+**폴더 모드**
+```
+폴더 선택 → "하위 폴더 포함" 옵션 선택
+```
+
+**파일 모드**
+```
+드래그 앤 드롭 또는 "파일 추가" 버튼 클릭
 ```
 
 #### 3단계: 저장 위치 설정
-- **입력 폴더와 동일한 위치에 저장**: 원본 파일 옆에 저장
-- **다른 폴더에 저장**: 출력 폴더 직접 지정
+- ✅ 입력 폴더와 동일한 위치에 저장
+- 📂 다른 폴더에 저장
 
 #### 4단계: 변환 옵션 설정
-- **변환 형식**: PDF 또는 HWPX 선택
-- **기존 파일 덮어쓰기**: 체크 해제 시 자동으로 (1), (2) 번호 추가
+- **📕 PDF** 또는 **📘 HWPX** 선택
+- 기존 파일 덮어쓰기 옵션
 
 #### 5단계: 변환 시작
-"변환 시작" 버튼 클릭 → 진행 상황 확인 → 결과 보고서 확인
+"🚀 변환 시작" 버튼 클릭!
 
-### 활용 예시
+### 테마 변경
 
-#### 예시 1: 프로젝트 폴더 전체 PDF 변환
-```
-1. "폴더 일괄 변환" 선택
-2. 프로젝트 폴더 선택
-3. "하위 폴더 모두 포함" 체크
-4. "PDF" 선택
-5. "입력 폴더와 동일한 위치에 저장" 체크
-6. "변환 시작" 클릭
-```
-→ 모든 HWP 파일이 같은 위치에 PDF로 저장됨
+헤더 우측의 테마 버튼 클릭:
+- 🌙 **다크**: 딥 네이비 + 핑크 악센트
+- ☀️ **라이트**: 라이트 그레이 + 퍼플 악센트
 
-#### 예시 2: 선택한 보고서만 변환
+## 📂 파일 구조
+
 ```
-1. "파일 개별 선택" 선택
-2. "파일 추가"로 보고서 파일들 선택
-3. 출력 폴더 지정
-4. "PDF" 선택
-5. "변환 시작" 클릭
+hwp-converter/
+├── hwptopdf-hwpx_v4.py      # 메인 프로그램 (PyQt6) ⭐
+├── hwptopdf-hwpx v3.py      # 레거시 버전 (tkinter)
+├── README.md                 # 이 문서
+└── update_history.md         # 개발 히스토리
 ```
-→ 선택한 파일만 지정 폴더에 PDF로 저장됨
 
 ## 🔧 문제 해결
 
@@ -130,125 +128,60 @@ python hwp_converter_v7_1_final.py
 
 #### 1. "관리자 권한이 필요합니다" 오류
 
-**원인**: COM 객체 접근 권한 부족
+**해결**: 파일 우클릭 → "관리자 권한으로 실행"
 
-**해결**:
-```
-파일 우클릭 → "관리자 권한으로 실행"
-```
-
-#### 2. "한글 COM 객체 생성 실패" 오류
-
-**원인**: 한글 프로그램이 설치되지 않았거나 ProgID 문제
+#### 2. "PyQt6 라이브러리가 필요합니다" 오류
 
 **해결**:
 ```bash
-# 1단계: 올바른 ProgID 찾기
-python find_hwp_progid.py
-
-# 2단계: 한글 프로그램 재시작
-# 3단계: 컴퓨터 재부팅
+pip install PyQt6
 ```
 
-#### 3. "매개 변수의 개수가 잘못되었습니다" 오류
-
-**원인**: 한글 버전에 따른 SaveAs 메서드 차이
-
-**해결**: v7.1 버전 사용 (3가지 저장 방식 자동 시도)
-
-#### 4. 변환은 되는데 파일이 열리지 않음
-
-**원인**: PDF 리더 프로그램 문제
+#### 3. "한글 COM 객체 생성 실패" 오류
 
 **해결**:
-- Adobe Acrobat Reader 설치
-- 다른 PDF 리더 프로그램으로 열기
-
-### 디버깅 도구
-
-#### ProgID 자동 찾기 도구
-```bash
-python find_hwp_progid.py
-```
-→ 시스템에 등록된 한글 COM 객체 자동 탐색 및 테스트
-
-#### COM 캐시 삭제 도구
-```bash
-# Windows 배치 파일
-delete_com_cache.bat
-
-# 또는 Python 스크립트
-python com_cache_cleaner.py
-```
-
-## 📂 파일 구조
-
-```
-hwp-converter/
-├── hwp_converter_v7_1_final.py    # 메인 프로그램 ⭐
-├── find_hwp_progid.py             # ProgID 탐색 도구
-├── com_cache_cleaner.py           # COM 캐시 삭제 도구
-├── delete_com_cache.bat           # 캐시 삭제 배치파일
-├── README.md                       # 이 문서
-├── LICENSE                         # 라이선스
-└── docs/                           # 추가 문서
-    ├── 완벽한_최종_해결_가이드.md
-    ├── ProgID_문제_해결.md
-    └── COM_오류_해결가이드.md
-```
+1. 한글 프로그램이 설치되어 있는지 확인
+2. 한글 프로그램 재시작
+3. 컴퓨터 재부팅
 
 ## 🛠️ 개발 히스토리
 
-### v8.3 (최종 완성) 
-- ✅ SaveAs 매개변수 오류 완벽 해결
-- ✅ 3가지 저장 방식 자동 시도 (HAction, SaveAs, FileSaveAs)
-- ✅ 한글 2022 (v12.0) 완벽 지원
+### v7.0 (현재) - PyQt6 현대화
+- ✅ tkinter → PyQt6 완전 마이그레이션
+- ✅ 다크/라이트 테마 시스템
+- ✅ 드래그 앤 드롭 지원
+- ✅ QThread 기반 비동기 처리
+- ✅ 로깅 시스템 도입
+- ✅ 에러 핸들링 강화
 
-### v7.0 - 2024
-- ✅ 시스템별 ProgID 자동 탐색 및 적용
-- ✅ 한글 2022 버전 확인 및 최적화
+### v6.0 - 재설계
+- 클래스 구조 재설계
+- 설정 저장 기능
+- 취소 기능 추가
 
-### v6.3 
-- ✅ dynamic.Dispatch 사용으로 COM 캐시 문제 완전 해결
-- ✅ 캐시 강제 비활성화
-
-### v6.0~6.2
-- ✅ 클래스 구조 재설계
-- ✅ pathlib 사용
-- ✅ 설정 저장 기능 추가
-- ✅ 취소 기능 추가
-
-### v5.0~5.1 (원본) - 2024
-- 폴더/파일 모드 지원
-- 기본 변환 기능 구현
+### v5.0 - 파일 선택 모드
+- 개별 파일 선택 변환 지원
 
 ## 🎯 주요 기술 스택
 
-- **GUI**: tkinter
-- **COM 자동화**: pywin32 (win32com.client)
-- **비동기 처리**: threading
-- **경로 처리**: pathlib
-- **설정 저장**: json
+| 구성요소 | 기술 |
+|---------|------|
+| GUI | PyQt6 |
+| COM 자동화 | pywin32 |
+| 비동기 처리 | QThread + Signal/Slot |
+| 테마 | QSS (Qt Style Sheets) |
+| 설정 저장 | JSON |
+| 로깅 | logging 모듈 |
 
 ## 📊 성능
 
 | 파일 수 | 평균 처리 시간 | 메모리 사용량 |
 |---------|--------------|--------------|
-| 10개 | 약 30초 | ~50MB |
-| 100개 | 약 5분 | ~80MB |
-| 1000개 | 약 50분 | ~120MB |
+| 10개 | 약 30초 | ~60MB |
+| 100개 | 약 5분 | ~100MB |
+| 1000개 | 약 50분 | ~150MB |
 
-*한글 2022, SSD 기준
-
-## 🤝 기여하기
-
-버그 리포트, 기능 제안, Pull Request 환영합니다!
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+*한글 2022, SSD 기준*
 
 ## 📝 알려진 제한사항
 
@@ -257,30 +190,11 @@ hwp-converter/
 - 암호화된 HWP 파일은 지원하지 않음
 - 한글 프로그램이 설치되어 있어야 함
 
-## ❓ FAQ
-
-### Q1. 한글 프로그램 없이 사용할 수 있나요?
-**A**: 아니요. 이 프로그램은 한글 프로그램의 COM 자동화를 사용하므로 한글 프로그램이 필수입니다.
-
-### Q2. macOS나 Linux에서 사용할 수 있나요?
-**A**: 아니요. 한글 프로그램이 Windows 전용이므로 Windows에서만 사용 가능합니다.
-
-### Q3. 무료로 사용할 수 있나요?
-**A**: 네, 이 프로그램은 무료이지만 한글 프로그램은 별도로 구매해야 합니다.
-
-### Q4. 변환 품질이 어떤가요?
-**A**: 한글 프로그램의 공식 변환 기능을 사용하므로 직접 변환한 것과 동일한 품질입니다.
-
-### Q5. 대량 파일 변환 시 컴퓨터가 느려지나요?
-**A**: 변환 중에는 CPU 사용량이 증가하지만, 백그라운드로 작동하며 다른 작업도 가능합니다.
-
 ## 🔐 보안 및 개인정보
 
-- 이 프로그램은 로컬에서만 작동하며 인터넷 연결이 필요하지 않습니다
-- 파일 경로 등의 설정만 로컬에 저장됩니다 (`~/.hwp_converter_config.json`)
-- 어떠한 데이터도 외부로 전송되지 않습니다
-
+- 로컬에서만 작동하며 인터넷 연결 불필요
+- 설정만 로컬에 저장 (`~/.hwp_converter_config.json`)
+- 어떠한 데이터도 외부로 전송되지 않음
 
 ---
 
-**⭐ 이 프로젝트가 도움이 되었다면 Star를 눌러주세요!**
