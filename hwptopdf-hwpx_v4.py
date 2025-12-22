@@ -1,15 +1,30 @@
 """
-HWP/HWPX 변환기 v7.0 - PyQt6 현대화 버전
+HWP/HWPX 변환기 v8.0 - PyQt6 현대화 버전
 안정성과 사용성에 초점을 맞춘 현대적 GUI 버전
+DOCX 변환 지원 추가
 """
 
 import sys
+import os
 import json
 import ctypes
 import logging
 import time
 from pathlib import Path
 from typing import Optional, List, Tuple
+
+# HiDPI 지원 설정 (Qt 초기화 전에 설정 필요)
+os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
+os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+
+# 버전 및 상수
+VERSION = "8.0"
+SUPPORTED_EXTENSIONS = ('.hwp', '.hwpx')
+FORMAT_TYPES = {
+    'PDF': {'ext': '.pdf', 'save_format': 'PDF'},
+    'HWPX': {'ext': '.hwpx', 'save_format': 'HWPX'},
+    'DOCX': {'ext': '.docx', 'save_format': 'DOCX'},
+}
 
 # PyQt6 imports
 try:
@@ -489,6 +504,78 @@ class ThemeManager:
 
 
 # ============================================================================
+# Toast 알림 위젯
+# ============================================================================
+
+class ToastWidget(QFrame):
+    """토스트 알림 위젯"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        
+        self._setup_ui()
+        self._animation = None
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._fade_out)
+        
+    def _setup_ui(self) -> None:
+        self.setFixedSize(300, 60)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(15, 10, 15, 10)
+        
+        self.icon_label = QLabel("ℹ️")
+        self.icon_label.setFixedWidth(30)
+        layout.addWidget(self.icon_label)
+        
+        self.message_label = QLabel()
+        self.message_label.setWordWrap(True)
+        layout.addWidget(self.message_label)
+        
+        self.setStyleSheet("""
+            ToastWidget {
+                background-color: rgba(22, 33, 62, 0.95);
+                border: 1px solid #0f3460;
+                border-radius: 10px;
+            }
+            QLabel {
+                color: #eaeaea;
+                font-size: 10pt;
+            }
+        """)
+    
+    def show_message(self, message: str, icon: str = "ℹ️", duration: int = 3000) -> None:
+        """토스트 메시지 표시"""
+        self.icon_label.setText(icon)
+        self.message_label.setText(message)
+        
+        # 부모 윈도우 기준 위치 계산
+        if self.parent():
+            parent = self.parent()
+            x = parent.x() + parent.width() - self.width() - 20
+            y = parent.y() + parent.height() - self.height() - 20
+            self.move(x, y)
+        
+        self.setWindowOpacity(1.0)
+        self.show()
+        self.raise_()
+        self._timer.start(duration)
+    
+    def _fade_out(self) -> None:
+        """페이드 아웃 애니메이션"""
+        self._timer.stop()
+        self._animation = QPropertyAnimation(self, b"windowOpacity")
+        self._animation.setDuration(300)
+        self._animation.setStartValue(1.0)
+        self._animation.setEndValue(0.0)
+        self._animation.setEasingCurve(QEasingCurve.Type.OutQuad)
+        self._animation.finished.connect(self.hide)
+        self._animation.start()
+
+
+# ============================================================================
 # 유틸리티 함수들
 # ============================================================================
 
@@ -584,8 +671,9 @@ class HWPConverter:
             
             self.hwp.Open(input_str, "HWP", "forceopen:true")
             
-            # 저장 형식 결정
-            save_format = "PDF" if format_type == "PDF" else "HWPX"
+            # 저장 형식 결정 (FORMAT_TYPES에서 가져오기)
+            format_info = FORMAT_TYPES.get(format_type, FORMAT_TYPES['PDF'])
+            save_format = format_info['save_format']
             
             # 저장 시도 (3가지 방식으로 폴백)
             save_success = False
@@ -936,6 +1024,7 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.is_converting = False
         self.file_list = []
+        self.conversion_start_time = None
         
         # UI 초기화
         self._init_ui()
@@ -943,11 +1032,14 @@ class MainWindow(QMainWindow):
         self._update_mode_ui()
         self._update_output_ui()
         
-        logger.info("HWP 변환기 v7.0 시작")
+        # Toast 위젯 초기화
+        self.toast = ToastWidget(self)
+        
+        logger.info(f"HWP 변환기 v{VERSION} 시작")
     
     def _init_ui(self) -> None:
         """UI 초기화"""
-        self.setWindowTitle("HWP 변환기 v7.0 - PyQt6")
+        self.setWindowTitle(f"HWP 변환기 v{VERSION} - PyQt6")
         self.setMinimumSize(750, 700)
         self.resize(800, 900)
         
@@ -1145,18 +1237,23 @@ class MainWindow(QMainWindow):
         
         self.pdf_radio = QRadioButton("📕 PDF")
         self.hwpx_radio = QRadioButton("📘 HWPX")
+        self.docx_radio = QRadioButton("📄 DOCX")
         
         self.format_group.addButton(self.pdf_radio, 0)
         self.format_group.addButton(self.hwpx_radio, 1)
+        self.format_group.addButton(self.docx_radio, 2)
         
         saved_format = self.config.get("format", "PDF")
-        if saved_format == "PDF":
-            self.pdf_radio.setChecked(True)
-        else:
+        if saved_format == "HWPX":
             self.hwpx_radio.setChecked(True)
+        elif saved_format == "DOCX":
+            self.docx_radio.setChecked(True)
+        else:
+            self.pdf_radio.setChecked(True)
         
         format_layout.addWidget(self.pdf_radio)
         format_layout.addWidget(self.hwpx_radio)
+        format_layout.addWidget(self.docx_radio)
         format_layout.addStretch()
         
         options_layout.addLayout(format_layout)
@@ -1325,8 +1422,17 @@ class MainWindow(QMainWindow):
         """변환 작업 목록 생성"""
         tasks = []
         is_folder_mode = self.folder_radio.isChecked()
-        format_type = "PDF" if self.pdf_radio.isChecked() else "HWPX"
-        output_ext = ".pdf" if format_type == "PDF" else ".hwpx"
+        
+        # 선택된 형식 결정
+        if self.hwpx_radio.isChecked():
+            format_type = "HWPX"
+        elif self.docx_radio.isChecked():
+            format_type = "DOCX"
+        else:
+            format_type = "PDF"
+        
+        format_info = FORMAT_TYPES[format_type]
+        output_ext = format_info['ext']
         
         if is_folder_mode:
             folder_path = self.folder_entry.text()
@@ -1337,11 +1443,11 @@ class MainWindow(QMainWindow):
             if not folder.exists():
                 raise ValueError("폴더가 존재하지 않습니다.")
             
-            # 검색할 확장자
-            if format_type == "PDF":
-                patterns = ["*.hwp", "*.hwpx"]
-            else:
+            # 검색할 확장자 (HWPX 출력 시 hwpx 입력 제외)
+            if format_type == "HWPX":
                 patterns = ["*.hwp"]
+            else:
+                patterns = ["*.hwp", "*.hwpx"]
             
             # 파일 검색
             input_files = []
@@ -1409,7 +1515,14 @@ class MainWindow(QMainWindow):
     def _save_settings(self) -> None:
         """설정 저장"""
         self.config["mode"] = "folder" if self.folder_radio.isChecked() else "files"
-        self.config["format"] = "PDF" if self.pdf_radio.isChecked() else "HWPX"
+        
+        if self.hwpx_radio.isChecked():
+            self.config["format"] = "HWPX"
+        elif self.docx_radio.isChecked():
+            self.config["format"] = "DOCX"
+        else:
+            self.config["format"] = "PDF"
+        
         self.config["include_sub"] = self.include_sub_check.isChecked()
         self.config["same_location"] = self.same_location_check.isChecked()
         self.config["overwrite"] = self.overwrite_check.isChecked()
@@ -1435,8 +1548,17 @@ class MainWindow(QMainWindow):
             self.progress_bar.setMaximum(len(self.tasks))
             self.progress_bar.setValue(0)
             
-            # 워커 시작
-            format_type = "PDF" if self.pdf_radio.isChecked() else "HWPX"
+            # 변환 시작 시간 기록
+            self.conversion_start_time = time.time()
+            
+            # 워커 시작 - 선택된 형식 사용
+            if self.hwpx_radio.isChecked():
+                format_type = "HWPX"
+            elif self.docx_radio.isChecked():
+                format_type = "DOCX"
+            else:
+                format_type = "PDF"
+            
             self.worker = ConversionWorker(self.tasks, format_type)
             self.worker.progress_updated.connect(self._on_progress_updated)
             self.worker.status_updated.connect(self._on_status_updated)
@@ -1444,6 +1566,8 @@ class MainWindow(QMainWindow):
             self.worker.error_occurred.connect(self._on_error_occurred)
             self.worker.finished.connect(self._on_worker_finished)
             self.worker.start()
+            
+            self.toast.show_message(f"{len(self.tasks)}개 파일 변환 시작", "🚀")
             
         except ValueError as e:
             QMessageBox.warning(self, "경고", str(e))
@@ -1472,7 +1596,17 @@ class MainWindow(QMainWindow):
     def _on_progress_updated(self, current: int, total: int, filename: str) -> None:
         """진행률 업데이트"""
         self.progress_bar.setValue(current)
-        self.progress_label.setText(f"{current} / {total}")
+        
+        # 예상 남은 시간 계산
+        if current > 0 and self.conversion_start_time:
+            elapsed = time.time() - self.conversion_start_time
+            avg_time = elapsed / current
+            remaining = avg_time * (total - current)
+            remaining_str = f" (남은 시간: {int(remaining)}초)" if remaining > 0 else ""
+        else:
+            remaining_str = ""
+        
+        self.progress_label.setText(f"{current} / {total}{remaining_str}")
         self.status_label.setText(f"변환 중: {filename}")
     
     def _on_status_updated(self, text: str) -> None:
@@ -1481,11 +1615,25 @@ class MainWindow(QMainWindow):
     
     def _on_task_completed(self, success: int, total: int, failed_tasks: list) -> None:
         """작업 완료"""
+        # 변환 시간 계산
+        if self.conversion_start_time:
+            elapsed = time.time() - self.conversion_start_time
+            elapsed_str = f"{elapsed:.1f}초"
+        else:
+            elapsed_str = "알 수 없음"
+        
+        # 토스트 알림
+        if success == total:
+            self.toast.show_message(f"✅ {success}개 파일 변환 완료! ({elapsed_str})", "🎉")
+        else:
+            self.toast.show_message(f"⚠️ {success}/{total}개 성공 ({elapsed_str})", "⚠️")
+        
         dialog = ResultDialog(success, total, failed_tasks, self)
         dialog.exec()
     
     def _on_error_occurred(self, error_msg: str) -> None:
         """오류 발생"""
+        self.toast.show_message("변환 중 오류 발생", "❌")
         QMessageBox.critical(self, "오류", f"변환 중 오류 발생:\n{error_msg}")
     
     def _on_worker_finished(self) -> None:
