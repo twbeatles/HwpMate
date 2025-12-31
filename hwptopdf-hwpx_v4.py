@@ -1,7 +1,19 @@
 """
-HWP/HWPX 변환기 v8.0 - PyQt6 현대화 버전
+HWP/HWPX 변환기 v8.2 - PyQt6 현대화 버전
 안정성과 사용성에 초점을 맞춘 현대적 GUI 버전
 DOCX 변환 지원 추가
+
+v8.1 업데이트:
+- 툴팁 추가 (모든 버튼 및 입력 필드)
+- 상태바 추가 (버전, 한글 연결 상태, 파일 수 표시)
+- 시스템 트레이 지원
+- 키보드 단축키 추가
+- Toast 알림 스택 기능
+- 드래그 앤 드롭 피드백 강화
+- 변환 완료 후 폴더 열기 기능
+- 메뉴바 추가
+
+Copyright (c) 2024-2025
 """
 
 import sys
@@ -9,6 +21,7 @@ import os
 import json
 import ctypes
 import logging
+import subprocess
 import time
 from pathlib import Path
 from typing import Optional, List, Tuple
@@ -18,12 +31,13 @@ os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 
 # 버전 및 상수
-VERSION = "8.0"
+VERSION = "8.2"
 SUPPORTED_EXTENSIONS = ('.hwp', '.hwpx')
+# 한글 COM SaveAs 지원 포맷: HWP, HWPX, ODT, HTML, TEXT, UNICODE, PDF, PDFA, OOXML(돁스)
 FORMAT_TYPES = {
     'PDF': {'ext': '.pdf', 'save_format': 'PDF'},
     'HWPX': {'ext': '.hwpx', 'save_format': 'HWPX'},
-    'DOCX': {'ext': '.docx', 'save_format': 'DOCX'},
+    'DOCX': {'ext': '.docx', 'save_format': 'OOXML'},  # OOXML = MS Word DOCX
 }
 
 # PyQt6 imports
@@ -32,17 +46,17 @@ try:
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QGroupBox, QRadioButton, QCheckBox, QPushButton, QLabel,
         QLineEdit, QFileDialog, QProgressBar, QTableWidget, QTableWidgetItem,
-        QHeaderView, QMessageBox, QDialog, QTextEdit, QFrame, QSplitter,
-        QSystemTrayIcon, QMenu, QButtonGroup, QScrollArea, QSizePolicy,
-        QStyle, QStyleFactory, QComboBox
+        QHeaderView, QMessageBox, QDialog, QTextEdit, QFrame,
+        QSystemTrayIcon, QMenu, QButtonGroup, QScrollArea,
+        QStyle, QStyleFactory, QStatusBar
     )
     from PyQt6.QtCore import (
         Qt, QThread, pyqtSignal, QPropertyAnimation, QEasingCurve,
-        QTimer, QSize, QMimeData, QUrl
+        QTimer
     )
     from PyQt6.QtGui import (
-        QFont, QIcon, QPalette, QColor, QDragEnterEvent, QDropEvent,
-        QAction, QPixmap, QPainter, QBrush, QPen
+        QFont, QIcon, QColor, QDragEnterEvent, QDropEvent,
+        QAction, QShortcut, QKeySequence
     )
     PYQT6_AVAILABLE = True
 except ImportError:
@@ -510,6 +524,8 @@ class ThemeManager:
 class ToastWidget(QFrame):
     """토스트 알림 위젯"""
     
+    closed = pyqtSignal(object)  # 닫힐 때 시그널
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
@@ -522,12 +538,15 @@ class ToastWidget(QFrame):
         self._timer.timeout.connect(self._fade_out)
         
     def _setup_ui(self) -> None:
-        self.setFixedSize(300, 60)
+        self.setFixedSize(320, 65)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(15, 10, 15, 10)
         
         self.icon_label = QLabel("ℹ️")
         self.icon_label.setFixedWidth(30)
+        font = self.icon_label.font()
+        font.setPointSize(14)
+        self.icon_label.setFont(font)
         layout.addWidget(self.icon_label)
         
         self.message_label = QLabel()
@@ -538,7 +557,7 @@ class ToastWidget(QFrame):
             ToastWidget {
                 background-color: rgba(22, 33, 62, 0.95);
                 border: 1px solid #0f3460;
-                border-radius: 10px;
+                border-radius: 12px;
             }
             QLabel {
                 color: #eaeaea;
@@ -546,7 +565,7 @@ class ToastWidget(QFrame):
             }
         """)
     
-    def show_message(self, message: str, icon: str = "ℹ️", duration: int = 3000) -> None:
+    def show_message(self, message: str, icon: str = "ℹ️", duration: int = 3000, position_y: int = None) -> None:
         """토스트 메시지 표시"""
         self.icon_label.setText(icon)
         self.message_label.setText(message)
@@ -555,7 +574,10 @@ class ToastWidget(QFrame):
         if self.parent():
             parent = self.parent()
             x = parent.x() + parent.width() - self.width() - 20
-            y = parent.y() + parent.height() - self.height() - 20
+            if position_y is not None:
+                y = position_y
+            else:
+                y = parent.y() + parent.height() - self.height() - 20
             self.move(x, y)
         
         self.setWindowOpacity(1.0)
@@ -571,8 +593,84 @@ class ToastWidget(QFrame):
         self._animation.setStartValue(1.0)
         self._animation.setEndValue(0.0)
         self._animation.setEasingCurve(QEasingCurve.Type.OutQuad)
-        self._animation.finished.connect(self.hide)
+        self._animation.finished.connect(self._on_fade_finished)
         self._animation.start()
+    
+    def _on_fade_finished(self) -> None:
+        """페이드 아웃 완료"""
+        self.hide()
+        self.closed.emit(self)
+
+
+class ToastManager:
+    """Toast 알림 관리자 - 스택 기능 지원"""
+    
+    MAX_TOASTS = 3
+    TOAST_HEIGHT = 70
+    TOAST_SPACING = 10
+    
+    def __init__(self, parent=None):
+        self.parent = parent
+        self.toasts = []
+    
+    def show_message(self, message: str, icon: str = "ℹ️", duration: int = 3000) -> None:
+        """새 토스트 메시지 표시"""
+        if not self.parent:
+            logger.warning("ToastManager: parent가 없어 메시지를 표시할 수 없습니다")
+            return
+        
+        try:
+            # 최대 개수 초과 시 가장 오래된 것 제거
+            while len(self.toasts) >= self.MAX_TOASTS:
+                old_toast = self.toasts.pop(0)
+                try:
+                    old_toast.hide()
+                    old_toast.deleteLater()
+                except RuntimeError:
+                    pass  # 이미 삭제된 위젯
+            
+            # 새 토스트 생성
+            toast = ToastWidget(self.parent)
+            toast.closed.connect(self._on_toast_closed)
+            self.toasts.append(toast)
+            
+            # 위치 계산 및 표시
+            self._update_positions()
+            position_y = self._get_position_for_toast(len(self.toasts) - 1)
+            toast.show_message(message, icon, duration, position_y)
+        except Exception as e:
+            logger.error(f"Toast 표시 오류: {e}")
+    
+    def _get_position_for_toast(self, index: int) -> int:
+        """토스트 위치 계산"""
+        if self.parent:
+            base_y = self.parent.y() + self.parent.height() - 20
+            return base_y - (index + 1) * (self.TOAST_HEIGHT + self.TOAST_SPACING)
+        return 100
+    
+    def _update_positions(self) -> None:
+        """모든 토스트 위치 업데이트"""
+        if not self.parent:
+            return
+        
+        for i, toast in enumerate(self.toasts):
+            try:
+                if toast.isVisible():
+                    x = self.parent.x() + self.parent.width() - toast.width() - 20
+                    y = self._get_position_for_toast(i)
+                    toast.move(x, y)
+            except RuntimeError:
+                pass  # 이미 삭제된 위젯
+    
+    def _on_toast_closed(self, toast: ToastWidget) -> None:
+        """토스트 닫힘 처리"""
+        try:
+            if toast in self.toasts:
+                self.toasts.remove(toast)
+                toast.deleteLater()
+                self._update_positions()
+        except RuntimeError:
+            pass  # 이미 삭제된 위젯
 
 
 # ============================================================================
@@ -593,7 +691,19 @@ def load_config() -> dict:
     try:
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+                logger.warning("설정 파일 형식이 올바르지 않습니다. 기본값 사용")
+    except json.JSONDecodeError as e:
+        logger.error(f"설정 파일 JSON 파싱 오류: {e}")
+        # 손상된 설정 파일 백업
+        try:
+            backup_path = CONFIG_FILE.with_suffix('.json.bak')
+            CONFIG_FILE.rename(backup_path)
+            logger.info(f"손상된 설정 파일을 {backup_path}로 백업했습니다")
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"설정 로드 실패: {e}")
     return {}
@@ -669,57 +779,40 @@ class HWPConverter:
             input_str = str(input_path)
             output_str = str(output_path)
             
-            self.hwp.Open(input_str, "HWP", "forceopen:true")
+            # 형식 자동 감지를 위해 빈 문자열 사용 (HWP/HWPX 모두 지원)
+            self.hwp.Open(input_str, "", "forceopen:true")
+            
+            # 문서 로딩 안정화 대기 (update_history.md 참고)
+            time.sleep(1.0)
             
             # 저장 형식 결정 (FORMAT_TYPES에서 가져오기)
             format_info = FORMAT_TYPES.get(format_type, FORMAT_TYPES['PDF'])
             save_format = format_info['save_format']
             
-            # 저장 시도 (3가지 방식으로 폴백)
-            save_success = False
+            # 저장 시도 (한글 버전에 따라 파라미터 개수가 다름)
             save_error = None
             
-            # 시도 1: SaveAs with 3 parameters (빈 문자열 추가 - 한글 2022 호환)
+            # 시도 1: 2개 파라미터 (한글 2020 이하)
             try:
-                self.hwp.SaveAs(output_str, save_format, "")
-                save_success = True
-                logger.debug(f"SaveAs 3-param 성공: {output_str}")
+                self.hwp.SaveAs(output_str, save_format)
+                logger.debug(f"SaveAs 2-param 성공: {output_str}")
             except Exception as e1:
-                save_error = str(e1)
-                logger.debug(f"SaveAs 3-param 실패: {e1}")
+                logger.debug(f"SaveAs 2-param 실패: {e1}")
                 
-                # 시도 2: SaveAs with 2 parameters (기존 방식)
+                # 시도 2: 3개 파라미터 (한글 2022+)
                 try:
-                    self.hwp.SaveAs(output_str, save_format)
-                    save_success = True
-                    logger.debug(f"SaveAs 2-param 성공: {output_str}")
+                    self.hwp.SaveAs(output_str, save_format, "")
+                    logger.debug(f"SaveAs 3-param 성공: {output_str}")
                 except Exception as e2:
-                    save_error = str(e2)
-                    logger.debug(f"SaveAs 2-param 실패: {e2}")
+                    save_error = f"2-param: {e1}, 3-param: {e2}"
+                    logger.error(f"모든 SaveAs 방식 실패: {save_error}")
                     
-                    # 시도 3: HAction 사용 (PDF만)
-                    if format_type == "PDF":
-                        try:
-                            # PDF 저장 액션
-                            act = self.hwp.CreateAction("FileSaveAsPdf")
-                            pset = act.CreateSet()
-                            act.GetDefault(pset)
-                            pset.SetItem("filename", output_str)
-                            pset.SetItem("Format", "PDF")
-                            act.Execute(pset)
-                            save_success = True
-                            logger.debug(f"HAction PDF 성공: {output_str}")
-                        except Exception as e3:
-                            save_error = f"모든 저장 방식 실패. 마지막 오류: {e3}"
-                            logger.debug(f"HAction 실패: {e3}")
-            
-            if not save_success:
-                # 문서 닫기
-                try:
-                    self.hwp.Clear(option=1)
-                except Exception:
-                    pass
-                return False, save_error
+                    # 문서 닫기
+                    try:
+                        self.hwp.Clear(option=1)
+                    except Exception:
+                        pass
+                    return False, save_error
             
             # 문서 닫기
             self.hwp.Clear(option=1)
@@ -898,6 +991,8 @@ class DropArea(QFrame):
         self.setAcceptDrops(True)
         self.setProperty("dropZone", True)
         self.setMinimumHeight(100)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("HWP/HWPX 파일을 드래그하여 추가하거나 클릭하여 선택하세요")
         
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -905,33 +1000,63 @@ class DropArea(QFrame):
         self.icon_label = QLabel("📂")
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         font = self.icon_label.font()
-        font.setPointSize(24)
+        font.setPointSize(28)
         self.icon_label.setFont(font)
         
         self.text_label = QLabel("여기에 파일을 드래그하거나 클릭하여 추가")
         self.text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.text_label.setProperty("subheading", True)
         
+        self.hint_label = QLabel("HWP, HWPX 파일 지원")
+        self.hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.hint_label.setStyleSheet("font-size: 8pt; color: #666680;")
+        
         layout.addWidget(self.icon_label)
         layout.addWidget(self.text_label)
+        layout.addWidget(self.hint_label)
+        
+        # 원본 텍스트 저장
+        self._original_icon = "📂"
+        self._original_text = "여기에 파일을 드래그하거나 클릭하여 추가"
     
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-            self.setStyleSheet("border-color: #e94560 !important; background-color: #1a3050 !important;")
+            # 유효한 파일인지 확인
+            valid_files = any(
+                url.toLocalFile().lower().endswith(SUPPORTED_EXTENSIONS) 
+                for url in event.mimeData().urls()
+            )
+            if valid_files:
+                event.acceptProposedAction()
+                self.icon_label.setText("📥")
+                self.text_label.setText("파일을 놓으세요!")
+                self.setStyleSheet("border-color: #e94560 !important; background-color: #1a3050 !important;")
+            else:
+                event.ignore()
+                self.text_label.setText("지원하지 않는 파일 형식입니다")
     
     def dragLeaveEvent(self, event) -> None:
-        self.setStyleSheet("")
+        self._reset_appearance()
     
     def dropEvent(self, event: QDropEvent) -> None:
-        self.setStyleSheet("")
+        self._reset_appearance()
         files = []
         for url in event.mimeData().urls():
             path = url.toLocalFile()
-            if path.lower().endswith(('.hwp', '.hwpx')):
+            if path.lower().endswith(SUPPORTED_EXTENSIONS):
                 files.append(path)
         if files:
             self.files_dropped.emit(files)
+            # 성공 피드백
+            self.icon_label.setText("✅")
+            self.text_label.setText(f"{len(files)}개 파일 추가됨!")
+            QTimer.singleShot(1500, self._reset_appearance)
+    
+    def _reset_appearance(self) -> None:
+        """외관 초기화"""
+        self.icon_label.setText(self._original_icon)
+        self.text_label.setText(self._original_text)
+        self.setStyleSheet("")
     
     def mousePressEvent(self, event) -> None:
         # 클릭 시 파일 선택 다이얼로그
@@ -952,11 +1077,14 @@ class DropArea(QFrame):
 class ResultDialog(QDialog):
     """변환 결과 다이얼로그"""
     
-    def __init__(self, success: int, total: int, failed_tasks: list, parent=None):
+    def __init__(self, success: int, total: int, failed_tasks: list, output_paths: list = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("변환 완료")
         self.setMinimumSize(600, 400)
         self.setModal(True)
+        
+        # 출력 경로 저장 (폴더 열기용)
+        self.output_paths = output_paths or []
         
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
@@ -993,16 +1121,40 @@ class ResultDialog(QDialog):
             failed_layout.addWidget(text_edit)
             layout.addWidget(failed_group)
         
+        # 버튼 영역
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        # 폴더 열기 버튼
+        if success > 0 and self.output_paths:
+            open_folder_btn = QPushButton("📂 폴더 열기")
+            open_folder_btn.setProperty("secondary", True)
+            open_folder_btn.setToolTip("변환된 파일이 있는 폴더를 엽니다")
+            open_folder_btn.clicked.connect(self._open_output_folder)
+            open_folder_btn.setMaximumWidth(150)
+            btn_layout.addWidget(open_folder_btn)
+        
         # 닫기 버튼
         close_btn = QPushButton("닫기")
         close_btn.clicked.connect(self.accept)
         close_btn.setMaximumWidth(150)
-        
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
         btn_layout.addWidget(close_btn)
+        
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
+    
+    def _open_output_folder(self) -> None:
+        """출력 폴더 열기"""
+        if self.output_paths:
+            # 첫 번째 출력 파일의 폴더 열기
+            first_path = Path(self.output_paths[0])
+            folder = first_path.parent if first_path.is_file() else first_path
+            if folder.exists():
+                try:
+                    # Windows 탐색기에서 폴더 열기
+                    subprocess.run(['explorer', str(folder)], check=False)
+                except Exception as e:
+                    logger.error(f"폴더 열기 실패: {e}")
 
 
 # ============================================================================
@@ -1027,15 +1179,193 @@ class MainWindow(QMainWindow):
         self.conversion_start_time = None
         
         # UI 초기화
+        self._init_menu_bar()
         self._init_ui()
+        self._init_status_bar()
+        self._init_shortcuts()
+        self._init_tray_icon()
         self._apply_theme()
         self._update_mode_ui()
         self._update_output_ui()
         
-        # Toast 위젯 초기화
-        self.toast = ToastWidget(self)
+        # Toast 관리자 초기화 (스택 지원)
+        self.toast = ToastManager(self)
         
         logger.info(f"HWP 변환기 v{VERSION} 시작")
+    
+    def _init_menu_bar(self) -> None:
+        """메뉴바 초기화"""
+        menubar = self.menuBar()
+        
+        # 파일 메뉴
+        file_menu = menubar.addMenu("파일(&F)")
+        
+        add_files_action = QAction("파일 추가(&A)", self)
+        add_files_action.setShortcut("Ctrl+O")
+        add_files_action.triggered.connect(self._browse_files)
+        file_menu.addAction(add_files_action)
+        
+        add_folder_action = QAction("폴더 선택(&F)", self)
+        add_folder_action.setShortcut("Ctrl+Shift+O")
+        add_folder_action.triggered.connect(self._select_folder)
+        file_menu.addAction(add_folder_action)
+        
+        file_menu.addSeparator()
+        
+        exit_action = QAction("종료(&X)", self)
+        exit_action.setShortcut("Alt+F4")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        
+        # 편집 메뉴
+        edit_menu = menubar.addMenu("편집(&E)")
+        
+        remove_selected_action = QAction("선택 파일 제거(&R)", self)
+        remove_selected_action.setShortcut("Delete")
+        remove_selected_action.triggered.connect(self._remove_selected)
+        edit_menu.addAction(remove_selected_action)
+        
+        clear_all_action = QAction("전체 제거(&C)", self)
+        clear_all_action.setShortcut("Ctrl+Delete")
+        clear_all_action.triggered.connect(self._clear_all)
+        edit_menu.addAction(clear_all_action)
+        
+        # 도움말 메뉴
+        help_menu = menubar.addMenu("도움말(&H)")
+        
+        usage_action = QAction("사용법(&U)", self)
+        usage_action.triggered.connect(self._show_usage)
+        help_menu.addAction(usage_action)
+        
+        help_menu.addSeparator()
+        
+        about_action = QAction("프로그램 정보(&A)", self)
+        about_action.setShortcut("F1")
+        about_action.triggered.connect(self._show_about)
+        help_menu.addAction(about_action)
+    
+    def _init_status_bar(self) -> None:
+        """상태바 초기화"""
+        self.status_bar = self.statusBar()
+        
+        # 버전 정보
+        self.version_label = QLabel(f"v{VERSION}")
+        self.status_bar.addPermanentWidget(self.version_label)
+        
+        # 한글 연결 상태
+        self.hwp_status_label = QLabel("🔵 한글 대기중")
+        self.status_bar.addPermanentWidget(self.hwp_status_label)
+        
+        # 파일 수
+        self.file_count_label = QLabel("📄 파일: 0개")
+        self.status_bar.addPermanentWidget(self.file_count_label)
+    
+    def _init_shortcuts(self) -> None:
+        """키보드 단축키 초기화"""
+        # Ctrl+Enter: 변환 시작
+        start_shortcut = QShortcut(QKeySequence("Ctrl+Return"), self)
+        start_shortcut.activated.connect(self._start_conversion)
+        
+        # Esc: 변환 취소
+        cancel_shortcut = QShortcut(QKeySequence("Escape"), self)
+        cancel_shortcut.activated.connect(self._cancel_conversion_if_running)
+    
+    def _init_tray_icon(self) -> None:
+        """시스템 트레이 아이콘 초기화"""
+        self.tray_icon = QSystemTrayIcon(self)
+        
+        # 기본 아이콘 설정 (앱 아이콘 또는 기본)
+        self.tray_icon.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView))
+        self.tray_icon.setToolTip(f"HWP 변환기 v{VERSION}")
+        
+        # 트레이 메뉴
+        tray_menu = QMenu()
+        
+        show_action = QAction("열기", self)
+        show_action.triggered.connect(self._show_from_tray)
+        tray_menu.addAction(show_action)
+        
+        tray_menu.addSeparator()
+        
+        quit_action = QAction("종료", self)
+        quit_action.triggered.connect(self._quit_app)
+        tray_menu.addAction(quit_action)
+        
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.activated.connect(self._on_tray_activated)
+    
+    def _show_from_tray(self) -> None:
+        """트레이에서 창 복원"""
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
+    
+    def _quit_app(self) -> None:
+        """애플리케이션 종료"""
+        self.tray_icon.hide()
+        QApplication.quit()
+    
+    def _on_tray_activated(self, reason) -> None:
+        """트레이 아이콘 클릭 이벤트"""
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self._show_from_tray()
+    
+    def _cancel_conversion_if_running(self) -> None:
+        """변환 중일 때만 취소"""
+        if self.is_converting:
+            self._cancel_conversion()
+    
+    def _show_usage(self) -> None:
+        """사용법 표시"""
+        usage_text = """<h3>HWP 변환기 사용법</h3>
+        
+<p><b>1. 변환 모드 선택</b></p>
+<ul>
+<li>폴더 일괄 변환: 폴더 내 모든 HWP/HWPX 파일 변환</li>
+<li>파일 개별 선택: 원하는 파일만 선택하여 변환</li>
+</ul>
+
+<p><b>2. 변환 형식 선택</b></p>
+<ul>
+<li>PDF: 문서 공유에 적합</li>
+<li>HWPX: 한글 호환 (XML 기반)</li>
+<li>DOCX: MS Word 호환</li>
+</ul>
+
+<p><b>3. 단축키</b></p>
+<ul>
+<li>Ctrl+O: 파일 추가</li>
+<li>Ctrl+Shift+O: 폴더 선택</li>
+<li>Ctrl+Enter: 변환 시작</li>
+<li>Esc: 변환 취소</li>
+<li>Delete: 선택 파일 제거</li>
+</ul>
+"""
+        QMessageBox.information(self, "사용법", usage_text)
+    
+    def _show_about(self) -> None:
+        """프로그램 정보 표시"""
+        about_text = f"""<h2>HWP 변환기 v{VERSION}</h2>
+<p>HWP/HWPX 파일을 PDF, HWPX, DOCX로 변환하는 프로그램</p>
+
+<p><b>주요 기능:</b></p>
+<ul>
+<li>폴더 일괄 변환 / 파일 개별 선택</li>
+<li>드래그 앤 드롭 지원</li>
+<li>다크/라이트 테마</li>
+<li>변환 진행률 및 예상 시간 표시</li>
+</ul>
+
+<p><b>요구사항:</b></p>
+<ul>
+<li>Windows 10/11</li>
+<li>한컴오피스 한글 2018 이상</li>
+<li>관리자 권한</li>
+</ul>
+
+<p>© 2024-2025</p>
+"""
+        QMessageBox.about(self, "프로그램 정보", about_text)
     
     def _init_ui(self) -> None:
         """UI 초기화"""
@@ -1071,6 +1401,7 @@ class MainWindow(QMainWindow):
         self.theme_btn = QPushButton("🌙 다크" if self.current_theme == "dark" else "☀️ 라이트")
         self.theme_btn.setProperty("secondary", True)
         self.theme_btn.setFixedWidth(100)
+        self.theme_btn.setToolTip("다크 모드와 라이트 모드를 전환합니다")
         self.theme_btn.clicked.connect(self._toggle_theme)
         header_layout.addWidget(self.theme_btn)
         
@@ -1084,7 +1415,9 @@ class MainWindow(QMainWindow):
         self.mode_group = QButtonGroup(self)
         
         self.folder_radio = QRadioButton("📁 폴더 일괄 변환 (폴더 내 모든 파일)")
+        self.folder_radio.setToolTip("폴더 내 모든 HWP/HWPX 파일을 일괄 변환합니다")
         self.files_radio = QRadioButton("📄 파일 개별 선택 (원하는 파일만)")
+        self.files_radio.setToolTip("원하는 파일만 선택하여 변환합니다")
         
         self.mode_group.addButton(self.folder_radio, 0)
         self.mode_group.addButton(self.files_radio, 1)
@@ -1131,6 +1464,7 @@ class MainWindow(QMainWindow):
         folder_layout.addLayout(folder_row)
         
         self.include_sub_check = QCheckBox("하위 폴더 포함")
+        self.include_sub_check.setToolTip("하위 폴더의 파일도 함께 변환합니다")
         self.include_sub_check.setChecked(self.config.get("include_sub", True))
         folder_layout.addWidget(self.include_sub_check)
         
@@ -1155,18 +1489,21 @@ class MainWindow(QMainWindow):
         add_btn = QPushButton("➕ 파일 추가")
         add_btn.setProperty("secondary", True)
         add_btn.setMinimumHeight(36)
+        add_btn.setToolTip("파일 선택 대화상자를 엽니다 (Ctrl+O)")
         add_btn.clicked.connect(self._browse_files)
         btn_row.addWidget(add_btn)
         
         remove_btn = QPushButton("➖ 선택 제거")
         remove_btn.setProperty("secondary", True)
         remove_btn.setMinimumHeight(36)
+        remove_btn.setToolTip("선택한 파일을 목록에서 제거합니다 (Delete)")
         remove_btn.clicked.connect(self._remove_selected)
         btn_row.addWidget(remove_btn)
         
         clear_btn = QPushButton("🗑️ 전체 제거")
         clear_btn.setProperty("secondary", True)
         clear_btn.setMinimumHeight(36)
+        clear_btn.setToolTip("모든 파일을 목록에서 제거합니다 (Ctrl+Delete)")
         clear_btn.clicked.connect(self._clear_all)
         btn_row.addWidget(clear_btn)
         
@@ -1195,6 +1532,7 @@ class MainWindow(QMainWindow):
         output_layout.setSpacing(10)
         
         self.same_location_check = QCheckBox("입력 파일과 같은 위치에 저장")
+        self.same_location_check.setToolTip("변환된 파일을 원본과 같은 폴더에 저장합니다")
         self.same_location_check.setChecked(self.config.get("same_location", True))
         self.same_location_check.toggled.connect(self._update_output_ui)
         output_layout.addWidget(self.same_location_check)
@@ -1236,8 +1574,11 @@ class MainWindow(QMainWindow):
         self.format_group = QButtonGroup(self)
         
         self.pdf_radio = QRadioButton("📕 PDF")
+        self.pdf_radio.setToolTip("PDF 형식으로 변환합니다 (문서 공유에 적합)")
         self.hwpx_radio = QRadioButton("📘 HWPX")
+        self.hwpx_radio.setToolTip("HWPX 형식으로 변환합니다 (한글 호환, XML 기반)")
         self.docx_radio = QRadioButton("📄 DOCX")
+        self.docx_radio.setToolTip("Word 형식으로 변환합니다 (MS Office 호환)")
         
         self.format_group.addButton(self.pdf_radio, 0)
         self.format_group.addButton(self.hwpx_radio, 1)
@@ -1260,6 +1601,7 @@ class MainWindow(QMainWindow):
         
         # 덮어쓰기 옵션
         self.overwrite_check = QCheckBox("기존 파일 덮어쓰기 (체크 해제 시 번호 자동 추가)")
+        self.overwrite_check.setToolTip("같은 이름의 파일이 있으면 덮어씁니다")
         self.overwrite_check.setChecked(self.config.get("overwrite", False))
         options_layout.addWidget(self.overwrite_check)
         
@@ -1271,6 +1613,7 @@ class MainWindow(QMainWindow):
         
         self.start_btn = QPushButton("🚀 변환 시작")
         self.start_btn.setMinimumHeight(55)
+        self.start_btn.setToolTip("선택한 파일을 변환합니다 (Ctrl+Enter)")
         font = self.start_btn.font()
         font.setPointSize(12)
         font.setBold(True)
@@ -1282,6 +1625,7 @@ class MainWindow(QMainWindow):
         self.cancel_btn.setProperty("secondary", True)
         self.cancel_btn.setMinimumHeight(55)
         self.cancel_btn.setFixedWidth(100)
+        self.cancel_btn.setToolTip("진행 중인 변환을 취소합니다 (Esc)")
         self.cancel_btn.setEnabled(False)
         self.cancel_btn.clicked.connect(self._cancel_conversion)
         btn_layout.addWidget(self.cancel_btn)
@@ -1386,12 +1730,13 @@ class MainWindow(QMainWindow):
         
         if added > 0:
             self.status_label.setText(f"{added}개 파일 추가됨 (총 {len(self.file_list)}개)")
+            self._update_file_count()
     
     def _remove_selected(self) -> None:
         """선택된 파일 제거"""
         selected = self.file_table.selectedItems()
         if not selected:
-            QMessageBox.warning(self, "경고", "제거할 파일을 선택하세요.")
+            # 선택된 항목이 없으면 조용히 반환 (단축키 사용 시 불필요한 팝업 방지)
             return
         
         rows = set(item.row() for item in selected)
@@ -1401,6 +1746,7 @@ class MainWindow(QMainWindow):
             self.file_table.removeRow(row)
         
         self.status_label.setText(f"선택 파일 제거됨 (총 {len(self.file_list)}개)")
+        self._update_file_count()
     
     def _clear_all(self) -> None:
         """전체 파일 제거"""
@@ -1417,6 +1763,12 @@ class MainWindow(QMainWindow):
             self.file_list.clear()
             self.file_table.setRowCount(0)
             self.status_label.setText("모든 파일 제거됨")
+            self._update_file_count()
+    
+    def _update_file_count(self) -> None:
+        """상태바 파일 수 업데이트"""
+        count = len(self.file_list)
+        self.file_count_label.setText(f"📄 파일: {count}개")
     
     def _collect_tasks(self) -> List[ConversionTask]:
         """변환 작업 목록 생성"""
@@ -1515,7 +1867,6 @@ class MainWindow(QMainWindow):
     def _save_settings(self) -> None:
         """설정 저장"""
         self.config["mode"] = "folder" if self.folder_radio.isChecked() else "files"
-        
         if self.hwpx_radio.isChecked():
             self.config["format"] = "HWPX"
         elif self.docx_radio.isChecked():
@@ -1566,6 +1917,9 @@ class MainWindow(QMainWindow):
             self.worker.error_occurred.connect(self._on_error_occurred)
             self.worker.finished.connect(self._on_worker_finished)
             self.worker.start()
+            
+            # 상태바 업데이트
+            self.hwp_status_label.setText("🟡 한글 연결 중...")
             
             self.toast.show_message(f"{len(self.tasks)}개 파일 변환 시작", "🚀")
             
@@ -1628,12 +1982,19 @@ class MainWindow(QMainWindow):
         else:
             self.toast.show_message(f"⚠️ {success}/{total}개 성공 ({elapsed_str})", "⚠️")
         
-        dialog = ResultDialog(success, total, failed_tasks, self)
+        # 성공한 파일들의 출력 경로 수집
+        output_paths = [str(task.output_file) for task in self.tasks if task.status == "성공"]
+        
+        # 상태바 한글 상태 업데이트
+        self.hwp_status_label.setText("🟢 한글 연결됨")
+        
+        dialog = ResultDialog(success, total, failed_tasks, output_paths, self)
         dialog.exec()
     
     def _on_error_occurred(self, error_msg: str) -> None:
         """오류 발생"""
         self.toast.show_message("변환 중 오류 발생", "❌")
+        self.hwp_status_label.setText("🔴 한글 연결 오류")
         QMessageBox.critical(self, "오류", f"변환 중 오류 발생:\n{error_msg}")
     
     def _on_worker_finished(self) -> None:
@@ -1670,6 +2031,10 @@ class MainWindow(QMainWindow):
                 self.worker.cancel()
                 self.worker.wait(3000)  # 최대 3초 대기
         
+        # 트레이 아이콘 숨김
+        if hasattr(self, 'tray_icon'):
+            self.tray_icon.hide()
+        
         save_config(self.config)
         event.accept()
 
@@ -1678,8 +2043,32 @@ class MainWindow(QMainWindow):
 # 메인 함수
 # ============================================================================
 
+def handle_exception(exc_type, exc_value, exc_traceback):
+    """글로벌 예외 핸들러"""
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    
+    logger.critical("치명적 오류 발생", exc_info=(exc_type, exc_value, exc_traceback))
+    
+    # GUI가 있으면 오류 메시지 표시
+    try:
+        if QApplication.instance():
+            QMessageBox.critical(
+                None, "치명적 오류",
+                f"프로그램에서 예기치 않은 오류가 발생했습니다.\n\n"
+                f"오류: {exc_type.__name__}: {exc_value}\n\n"
+                f"프로그램을 다시 시작해 주세요."
+            )
+    except Exception:
+        pass
+
+
 def main():
     """메인 함수"""
+    
+    # 글로벌 예외 핸들러 등록
+    sys.excepthook = handle_exception
     
     # pywin32 확인
     if not PYWIN32_AVAILABLE:
@@ -1703,13 +2092,17 @@ def main():
         sys.exit(1)
     
     # 애플리케이션 실행
-    app = QApplication(sys.argv)
-    app.setStyle(QStyleFactory.create("Fusion"))
-    
-    window = MainWindow()
-    window.show()
-    
-    sys.exit(app.exec())
+    try:
+        app = QApplication(sys.argv)
+        app.setStyle(QStyleFactory.create("Fusion"))
+        
+        window = MainWindow()
+        window.show()
+        
+        sys.exit(app.exec())
+    except Exception as e:
+        logger.critical(f"애플리케이션 실행 오류: {e}")
+        raise
 
 
 if __name__ == "__main__":
