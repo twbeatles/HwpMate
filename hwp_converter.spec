@@ -1,15 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec file for HWP/HWPX 변환기 v8.3
+PyInstaller spec file for HWP/HWPX 변환기 v8.4
 
 빌드 명령:
     pyinstaller hwp_converter.spec
 
 출력:
-    dist/HWP변환기_v8.3.exe
+    dist/HWP변환기_v8.4.exe
 
 변경 이력:
-    v8.3 - 드래그 앤 드롭 수정 (관리자 권한 호환)
+    v8.4 - 네이티브 Windows 드래그 앤 드롭 (관리자 권한 완벽 지원)
+    v8.3 - 드래그 앤 드롭 수정 시도
     v8.2 - 디버깅 및 리팩토링
     v8.1 - UI/UX 개선
     v8.0 - DOCX 변환 지원
@@ -70,6 +71,9 @@ a = Analysis(
         'PyQt6.QtGui',
         'PyQt6.QtWidgets',
         'PyQt6.sip',
+        # ctypes 모듈 (네이티브 드래그 앤 드롭에 필요)
+        'ctypes',
+        'ctypes.wintypes',
     ] + pywin32_hiddenimports + collect_submodules('win32com'),
     hookspath=[],
     hooksconfig={},
@@ -109,7 +113,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='HWP변환기_v8.3',
+    name='HWP변환기_v8.4',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -124,5 +128,5 @@ exe = EXE(
     entitlements_file=None,
     icon=None,  # 아이콘이 있다면 경로 지정: icon='icon.ico'
     version_info=None,
-    uac_admin=True,  # 관리자 권한 요청 (한글 COM 접근에 필요)
+    uac_admin=True,  # 관리자 권한 요청 (한글 COM 접근 및 드래그 앤 드롭에 필요)
 )

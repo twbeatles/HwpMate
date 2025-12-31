@@ -1,7 +1,11 @@
 """
-HWP/HWPX 변환기 v8.3 - PyQt6 현대화 버전
+HWP/HWPX 변환기 v8.4 - PyQt6 현대화 버전
 안정성과 사용성에 초점을 맞춘 현대적 GUI 버전
 DOCX 변환 지원 추가
+
+v8.4 업데이트:
+- 네이티브 Windows 드래그 앤 드롭 구현 (관리자 권한 호환)
+- 64비트 시스템 호환성 개선 (Drop Handle Overflow 수정)
 
 v8.1 업데이트:
 - 툴팁 추가 (모든 버튼 및 입력 필드)
@@ -31,7 +35,7 @@ os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 
 # 버전 및 상수
-VERSION = "8.3"
+VERSION = "8.4"
 SUPPORTED_EXTENSIONS = ('.hwp', '.hwpx')
 # 한글 COM SaveAs 지원 포맷: HWP, HWPX, ODT, HTML, TEXT, UNICODE, PDF, PDFA, OOXML(돁스)
 FORMAT_TYPES = {
@@ -52,7 +56,7 @@ try:
     )
     from PyQt6.QtCore import (
         Qt, QThread, pyqtSignal, QPropertyAnimation, QEasingCurve,
-        QTimer
+        QTimer, QAbstractNativeEventFilter
     )
     from PyQt6.QtGui import (
         QFont, QIcon, QColor, QDragEnterEvent, QDropEvent,
@@ -1027,17 +1031,186 @@ class ConversionWorker(QThread):
 
 
 # ============================================================================
+# 네이티브 Windows 드래그 앤 드롭 (관리자 권한 지원)
+# ============================================================================
+
+class NativeDropFilter(QAbstractNativeEventFilter):
+    """
+    Windows 네이티브 WM_DROPFILES 메시지 처리 필터
+    
+    관리자 권한으로 실행된 프로세스에서도 드래그 앤 드롭이 작동하도록
+    Qt의 OLE 드래그 앤 드롭 대신 Windows Shell의 WM_DROPFILES를 사용합니다.
+    """
+    
+    # 시그널을 위한 싱글톤 객체
+    _instance = None
+    files_dropped_callback = None
+    
+    WM_DROPFILES = 0x0233
+    
+    def __init__(self):
+        super().__init__()
+        self._shell32 = None
+        self._registered_hwnds = set()
+        
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+    
+    def register_window(self, hwnd: int) -> bool:
+        """윈도우에 드래그 앤 드롭 등록"""
+        if hwnd in self._registered_hwnds:
+            return True
+            
+        try:
+            shell32 = ctypes.windll.shell32
+            user32 = ctypes.windll.user32
+            ole32 = ctypes.windll.ole32
+            
+            # OLE 드래그 앤 드롭 해제 (Qt가 등록했을 수 있음)
+            # 이렇게 해야 탐색기가 WM_DROPFILES로 전환함
+            try:
+                ole32.RevokeDragDrop(hwnd)
+                logger.debug(f"OLE 드래그 앤 드롭 해제: HWND={hwnd}")
+            except Exception as e:
+                logger.debug(f"RevokeDragDrop 실패 (무시 가능): {e}")
+            
+            # 메시지 필터 허용 (UIPI 우회)
+            MSGFLT_ALLOW = 1
+            user32.ChangeWindowMessageFilter(self.WM_DROPFILES, MSGFLT_ALLOW)
+            user32.ChangeWindowMessageFilter(0x004A, MSGFLT_ALLOW)  # WM_COPYDATA
+            user32.ChangeWindowMessageFilter(0x0049, MSGFLT_ALLOW)  # WM_COPYGLOBALDATA
+            
+            # 윈도우별 필터도 설정
+            try:
+                user32.ChangeWindowMessageFilterEx(hwnd, self.WM_DROPFILES, MSGFLT_ALLOW, None)
+                user32.ChangeWindowMessageFilterEx(hwnd, 0x004A, MSGFLT_ALLOW, None)
+                user32.ChangeWindowMessageFilterEx(hwnd, 0x0049, MSGFLT_ALLOW, None)
+            except Exception as e:
+                logger.debug(f"ChangeWindowMessageFilterEx 실패 (무시): {e}")
+            
+            # DragAcceptFiles로 WM_DROPFILES 드롭 허용
+            shell32.DragAcceptFiles(hwnd, True)
+            
+            self._registered_hwnds.add(hwnd)
+            logger.info(f"네이티브 드래그 앤 드롭 등록 완료: HWND={hwnd}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"네이티브 드래그 앤 드롭 등록 실패: {e}")
+            return False
+    
+    def nativeEventFilter(self, eventType, message):
+        """네이티브 Windows 이벤트 필터"""
+        try:
+            # Windows 메시지만 처리
+            if eventType != b"windows_generic_MSG":
+                return False, 0
+            
+            # ctypes로 MSG 구조체 파싱
+            import ctypes.wintypes as wintypes
+            
+            class MSG(ctypes.Structure):
+                _fields_ = [
+                    ("hwnd", wintypes.HWND),
+                    ("message", wintypes.UINT),
+                    ("wParam", wintypes.WPARAM),
+                    ("lParam", wintypes.LPARAM),
+                    ("time", wintypes.DWORD),
+                    ("pt", wintypes.POINT),
+                ]
+            
+            # message는 sip.voidptr이므로 정수로 변환 후 MSG로 캐스팅
+            msg_ptr = int(message)
+            msg = ctypes.cast(msg_ptr, ctypes.POINTER(MSG)).contents
+            
+            if msg.message == self.WM_DROPFILES:
+                logger.debug("WM_DROPFILES 메시지 수신!")
+                dropped_files = self._get_dropped_files(msg.wParam)
+                
+                if dropped_files and self.files_dropped_callback:
+                    # 유효한 HWP/HWPX 파일만 필터링
+                    valid_files = []
+                    for f in dropped_files:
+                        if f.lower().endswith(SUPPORTED_EXTENSIONS):
+                            valid_files.append(f)
+                        elif Path(f).is_dir():
+                            # 폴더인 경우 하위 HWP/HWPX 파일 검색
+                            for ext in SUPPORTED_EXTENSIONS:
+                                valid_files.extend(str(p) for p in Path(f).rglob(f"*{ext}"))
+                    
+                    if valid_files:
+                        logger.info(f"네이티브 드롭: {len(valid_files)}개 파일")
+                        self.files_dropped_callback(valid_files)
+                
+                # 메시지 처리 완료
+                return True, 0
+                
+        except Exception as e:
+            logger.debug(f"nativeEventFilter 오류: {e}")
+        
+        return False, 0
+    
+    def _get_dropped_files(self, hDrop: int) -> list:
+        """WM_DROPFILES에서 파일 목록 추출"""
+        files = []
+        try:
+            shell32 = ctypes.windll.shell32
+            
+            # 64비트 핸들 처리를 위한 타입 설정
+            # HDROP은 HANDLE 타입으로 64비트 시스템에서는 8바이트
+            shell32.DragQueryFileW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_wchar_p, ctypes.c_uint]
+            shell32.DragQueryFileW.restype = ctypes.c_uint
+            shell32.DragFinish.argtypes = [ctypes.c_void_p]
+            shell32.DragFinish.restype = None
+            
+            # hDrop을 c_void_p로 변환
+            hDrop_ptr = ctypes.c_void_p(hDrop)
+            
+            # 드롭된 파일 수 확인 (0xFFFFFFFF = -1 = 파일 수 반환)
+            file_count = shell32.DragQueryFileW(hDrop_ptr, 0xFFFFFFFF, None, 0)
+            logger.debug(f"드롭된 파일 수: {file_count}")
+            
+            # 각 파일 경로 추출
+            buffer = ctypes.create_unicode_buffer(260)  # MAX_PATH
+            for i in range(file_count):
+                length = shell32.DragQueryFileW(hDrop_ptr, i, buffer, 260)
+                if length > 0:
+                    files.append(buffer.value)
+                    logger.debug(f"드롭된 파일 {i}: {buffer.value}")
+            
+            # 드롭 핸들 해제
+            shell32.DragFinish(hDrop_ptr)
+            
+        except Exception as e:
+            logger.error(f"드롭 파일 추출 실패: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return files
+
+
+# ============================================================================
 # 드래그 앤 드롭 영역
 # ============================================================================
 
 class DropArea(QFrame):
-    """파일 드래그 앤 드롭 영역"""
+    """파일 드래그 앤 드롭 영역
+    
+    Note: Qt의 OLE 드래그 앤 드롭(setAcceptDrops)을 비활성화합니다.
+    관리자 권한으로 실행 시 UIPI가 OLE 드롭을 차단하기 때문에,
+    Windows 네이티브 WM_DROPFILES만 사용합니다.
+    """
     
     files_dropped = pyqtSignal(list)
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setAcceptDrops(True)
+        # Qt OLE 드래그 앤 드롭 비활성화 (관리자 권한에서 UIPI 차단됨)
+        # 대신 MainWindow에서 네이티브 WM_DROPFILES 사용
+        self.setAcceptDrops(False)
         self.setProperty("dropZone", True)
         self.setMinimumHeight(100)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1309,7 +1482,7 @@ class MainWindow(QMainWindow):
         logger.info(f"HWP 변환기 v{VERSION} 시작")
     
     def showEvent(self, event) -> None:
-        """윈도우 표시 이벤트 - 드래그 앤 드롭 활성화"""
+        """윈도우 표시 이벤트 - 네이티브 드래그 앤 드롭 활성화"""
         super().showEvent(event)
         
         # 처음 표시될 때만 실행
@@ -1317,18 +1490,60 @@ class MainWindow(QMainWindow):
             self._drag_drop_initialized = True
             
             try:
+                # 네이티브 드래그 앤 드롭 필터 설정
+                drop_filter = NativeDropFilter.get_instance()
+                
                 # 메인 윈도우 핸들 가져오기
                 main_hwnd = int(self.winId())
-                enable_drag_drop_for_admin(main_hwnd)
+                drop_filter.register_window(main_hwnd)
                 
-                # DropArea 위젯에도 별도로 메시지 필터 적용
-                if hasattr(self, 'drop_area') and self.drop_area:
-                    drop_hwnd = int(self.drop_area.winId())
-                    enable_drag_drop_for_admin(drop_hwnd)
+                # 모든 자식 윈도우에도 등록 (Qt는 여러 계층의 윈도우를 생성함)
+                try:
+                    user32 = ctypes.windll.user32
+                    
+                    # 자식 윈도우 열거를 위한 콜백
+                    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+                    
+                    def enum_callback(child_hwnd, lParam):
+                        try:
+                            drop_filter.register_window(child_hwnd)
+                        except Exception:
+                            pass
+                        return True  # 계속 열거
+                    
+                    callback = WNDENUMPROC(enum_callback)
+                    user32.EnumChildWindows(main_hwnd, callback, 0)
+                    logger.debug("자식 윈도우 드래그 앤 드롭 등록 완료")
+                except Exception as e:
+                    logger.debug(f"자식 윈도우 열거 실패 (무시): {e}")
                 
-                logger.info("드래그 앤 드롭 메시지 필터 초기화 완료")
+                # 파일 드롭 콜백 설정
+                drop_filter.files_dropped_callback = self._on_native_files_dropped
+                
+                # 애플리케이션에 네이티브 이벤트 필터 설치
+                app = QApplication.instance()
+                if app:
+                    app.installNativeEventFilter(drop_filter)
+                    logger.info("네이티브 이벤트 필터 설치 완료")
+                
+                logger.info("네이티브 드래그 앤 드롭 초기화 완료")
             except Exception as e:
-                logger.warning(f"드래그 앤 드롭 초기화 중 오류: {e}")
+                logger.warning(f"네이티브 드래그 앤 드롭 초기화 중 오류: {e}")
+                import traceback
+                traceback.print_exc()
+    
+    def _on_native_files_dropped(self, files: list) -> None:
+        """네이티브 드래그 앤 드롭으로 파일이 추가됨"""
+        if files:
+            self._add_files(files)
+            # 시각적 피드백
+            if hasattr(self, 'drop_area') and self.drop_area:
+                self.drop_area.icon_label.setText("✅")
+                self.drop_area.text_label.setText(f"{len(files)}개 파일 추가됨!")
+                QTimer.singleShot(1500, self.drop_area._reset_appearance)
+            # 토스트 알림
+            if hasattr(self, 'toast'):
+                self.toast.show_message(f"📂 {len(files)}개 파일이 추가되었습니다", "✅")
     
     def _init_menu_bar(self) -> None:
         """메뉴바 초기화"""

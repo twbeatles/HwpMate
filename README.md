@@ -1,10 +1,10 @@
-# HWP/HWPX 변환기 v8.3 (PyQt6)
+# HWP/HWPX 변환기 v8.4 (PyQt6)
 
 한글(HWP/HWPX) 파일을 **PDF, HWPX, DOCX**로 일괄 변환하는 Windows용 GUI 프로그램
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![PyQt6](https://img.shields.io/badge/PyQt6-6.0+-green.svg)
-![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)
+![Platform](https://img.shields.io/badge/Platform-Windows_10/11-lightgrey.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ---
@@ -21,7 +21,7 @@
 ### UI/UX 기능
 - **폴더 일괄 변환** - 폴더 내 모든 HWP/HWPX 파일 일괄 처리
 - **파일 개별 선택** - 원하는 파일만 선택하여 변환
-- **드래그 앤 드롭** - 파일 또는 폴더를 드래그하여 추가 (관리자 권한에서도 동작)
+- **드래그 앤 드롭** - 파일 또는 폴더를 드래그하여 추가 (**관리자 권한에서도 완벽 동작**)
 - **다크/라이트 테마** - 사용자 환경 설정에 맞춘 테마
 - **Toast 알림** - 스택 기능 지원 (최대 3개 동시 표시)
 - **시스템 트레이** - 최소화 시 트레이로 숨김
@@ -36,7 +36,7 @@
 
 | 항목 | 요구사항 |
 |------|----------|
-| 운영체제 | Windows 10/11 |
+| 운영체제 | Windows 10/11 (64-bit) |
 | Python | 3.9 이상 |
 | 한컴오피스 | 한글 2018 이상 (**필수**) |
 | 권한 | **관리자 권한** 필요 |
@@ -62,7 +62,7 @@ python hwptopdf-hwpx_v4.py
 pyinstaller hwp_converter.spec
 
 # 생성된 파일 위치
-# dist/HWP변환기_v8.3.exe
+# dist/HWP변환기_v8.4.exe
 ```
 
 ---
@@ -95,14 +95,22 @@ hwp-to-pdf-hwpx/
 
 ## 🛠️ 버전 히스토리
 
-### v8.3 (2024-12-31) - 드래그 앤 드롭 수정
-**버그 수정:**
-- 관리자 권한에서 드래그 앤 드롭이 동작하지 않는 문제 수정 (UIPI 메시지 필터 적용)
-- `dragMoveEvent` 핸들러 추가로 드래그 이벤트 처리 개선
+### v8.4 (2025-01-01) - 네이티브 드래그 앤 드롭
+**핵심 변경:**
+- **네이티브 Windows 드래그 앤 드롭 구현** - 관리자 권한에서도 100% 동작
+- Qt OLE 드래그 앤 드롭 대신 Windows Shell API (`WM_DROPFILES`) 직접 사용
+- `NativeDropFilter` 클래스 추가 - `QAbstractNativeEventFilter` 기반
 
-**기능 개선:**
-- 폴더 드래그 앤 드롭 지원 (폴더 내 HWP/HWPX 파일 자동 검색)
-- 유효하지 않은 파일 드롭 시 피드백 메시지 표시
+**기술적 세부사항:**
+- `DragAcceptFiles`, `DragQueryFileW`, `DragFinish` API 사용
+- `RevokeDragDrop`으로 Qt OLE 드롭 해제 (UIPI 우회)
+- `ChangeWindowMessageFilterEx`로 윈도우별 메시지 필터 적용
+- `EnumChildWindows`로 모든 자식 윈도우에 드롭 허용
+- 64비트 핸들 오버플로 수정 (`c_void_p` 타입 사용)
+
+### v8.3 (2025-12-31) - 드래그 앤 드롭 수정 시도
+- UIPI 메시지 필터 적용 시도
+- `dragMoveEvent` 핸들러 추가
 
 ### v8.2 - 디버깅 & 리팩토링
 - ToastManager null 참조 버그 수정
@@ -127,9 +135,18 @@ hwp-to-pdf-hwpx/
 
 ## ⚠️ 주의사항
 
-1. **관리자 권한**: 한글 COM 객체 접근을 위해 관리자 권한이 필요합니다.
+1. **관리자 권한**: 한글 COM 객체 접근 및 드래그 앤 드롭을 위해 관리자 권한이 필요합니다.
 2. **한글 설치**: 한컴오피스 한글이 설치되어 있어야 합니다.
 3. **변환 중 한글 사용 금지**: 변환 중에는 한글 프로그램을 직접 사용하지 마세요.
+
+---
+
+## 🔧 기술 스택
+
+- **GUI Framework**: PyQt6
+- **COM Automation**: pywin32 (win32com)
+- **Drag & Drop**: Windows Shell API (WM_DROPFILES)
+- **Build Tool**: PyInstaller
 
 ---
 
