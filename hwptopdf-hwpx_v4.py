@@ -686,13 +686,16 @@ def is_admin() -> bool:
         return False
 
 
-def enable_drag_drop_for_admin() -> None:
+def enable_drag_drop_for_admin(hwnd: int = None) -> None:
     """
     관리자 권한으로 실행 시 드래그 앤 드롭 활성화
     
     Windows의 UIPI(User Interface Privilege Isolation)로 인해
     일반 사용자 프로세스(탐색기)에서 관리자 프로세스로 드래그 앤 드롭이
     기본적으로 차단됩니다. 이 함수는 메시지 필터를 변경하여 이를 허용합니다.
+    
+    Args:
+        hwnd: 윈도우 핸들. None이면 전역 필터 사용, 지정하면 해당 윈도우에만 적용
     """
     try:
         # WM_DROPFILES 및 관련 메시지 허용
@@ -701,17 +704,32 @@ def enable_drag_drop_for_admin() -> None:
         WM_COPYGLOBALDATA = 0x0049
         MSGFLT_ALLOW = 1
         
-        # ChangeWindowMessageFilterEx 사용 (Windows 7+)
         user32 = ctypes.windll.user32
         
-        # ChangeWindowMessageFilter 사용 (전역 설정)
-        try:
-            user32.ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ALLOW)
-            user32.ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ALLOW)
-            user32.ChangeWindowMessageFilter(WM_COPYGLOBALDATA, MSGFLT_ALLOW)
-            logger.debug("드래그 앤 드롭 메시지 필터 설정 완료")
-        except Exception as e:
-            logger.debug(f"메시지 필터 설정 실패 (무시 가능): {e}")
+        messages = [WM_DROPFILES, WM_COPYDATA, WM_COPYGLOBALDATA]
+        
+        if hwnd:
+            # 특정 윈도우에 대한 메시지 필터 (ChangeWindowMessageFilterEx - Windows 7+)
+            # 더 정확하고 안정적인 방법
+            try:
+                for msg in messages:
+                    result = user32.ChangeWindowMessageFilterEx(hwnd, msg, MSGFLT_ALLOW, None)
+                    if not result:
+                        logger.debug(f"ChangeWindowMessageFilterEx 실패: msg={hex(msg)}")
+                logger.info(f"윈도우 핸들 {hwnd}에 드래그 앤 드롭 메시지 필터 적용 완료")
+            except Exception as e:
+                logger.debug(f"ChangeWindowMessageFilterEx 실패, 전역 필터로 대체: {e}")
+                # 실패 시 전역 필터로 대체
+                for msg in messages:
+                    user32.ChangeWindowMessageFilter(msg, MSGFLT_ALLOW)
+        else:
+            # 전역 메시지 필터 (ChangeWindowMessageFilter)
+            try:
+                for msg in messages:
+                    user32.ChangeWindowMessageFilter(msg, MSGFLT_ALLOW)
+                logger.debug("전역 드래그 앤 드롭 메시지 필터 설정 완료")
+            except Exception as e:
+                logger.debug(f"전역 메시지 필터 설정 실패 (무시 가능): {e}")
             
     except Exception as e:
         logger.warning(f"드래그 앤 드롭 활성화 실패: {e}")
@@ -1088,17 +1106,25 @@ class DropArea(QFrame):
     
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         """드래그 진입 이벤트"""
+        logger.debug(f"dragEnterEvent 호출됨 - hasUrls: {event.mimeData().hasUrls()}")
+        
         if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            logger.debug(f"URL 개수: {len(urls)}, 첫번째: {urls[0].toLocalFile() if urls else 'N/A'}")
+            
             if self._has_valid_content(event.mimeData()):
                 event.acceptProposedAction()
                 self.icon_label.setText("📥")
                 self.text_label.setText("파일을 놓으세요!")
                 self.setStyleSheet("border-color: #e94560 !important; background-color: #1a3050 !important;")
+                logger.debug("드래그 수락됨")
             else:
                 event.ignore()
                 self.text_label.setText("지원하지 않는 파일 형식입니다")
+                logger.debug("유효하지 않은 콘텐츠 - 무시됨")
         else:
             event.ignore()
+            logger.debug("URL 없음 - 무시됨")
     
     def dragMoveEvent(self, event) -> None:
         """드래그 이동 이벤트 - 드래그 중 계속 호출됨"""
@@ -1113,13 +1139,16 @@ class DropArea(QFrame):
     
     def dropEvent(self, event: QDropEvent) -> None:
         """드롭 이벤트"""
+        logger.debug("dropEvent 호출됨")
         self._reset_appearance()
         
         if not event.mimeData().hasUrls():
+            logger.debug("dropEvent - URL 없음")
             event.ignore()
             return
         
         files = self._get_files_from_urls(event.mimeData().urls())
+        logger.debug(f"dropEvent - 추출된 파일 수: {len(files)}")
         
         if files:
             event.acceptProposedAction()
@@ -1128,10 +1157,12 @@ class DropArea(QFrame):
             self.icon_label.setText("✅")
             self.text_label.setText(f"{len(files)}개 파일 추가됨!")
             QTimer.singleShot(1500, self._reset_appearance)
+            logger.info(f"드래그 앤 드롭으로 {len(files)}개 파일 추가")
         else:
             event.ignore()
             self.text_label.setText("HWP/HWPX 파일이 없습니다")
             QTimer.singleShot(1500, self._reset_appearance)
+            logger.debug("dropEvent - 유효한 HWP/HWPX 파일 없음")
     
     def _reset_appearance(self) -> None:
         """외관 초기화"""
@@ -1259,6 +1290,9 @@ class MainWindow(QMainWindow):
         self.file_list = []
         self.conversion_start_time = None
         
+        # 드래그 앤 드롭 초기화 플래그
+        self._drag_drop_initialized = False
+        
         # UI 초기화
         self._init_menu_bar()
         self._init_ui()
@@ -1273,6 +1307,28 @@ class MainWindow(QMainWindow):
         self.toast = ToastManager(self)
         
         logger.info(f"HWP 변환기 v{VERSION} 시작")
+    
+    def showEvent(self, event) -> None:
+        """윈도우 표시 이벤트 - 드래그 앤 드롭 활성화"""
+        super().showEvent(event)
+        
+        # 처음 표시될 때만 실행
+        if not self._drag_drop_initialized:
+            self._drag_drop_initialized = True
+            
+            try:
+                # 메인 윈도우 핸들 가져오기
+                main_hwnd = int(self.winId())
+                enable_drag_drop_for_admin(main_hwnd)
+                
+                # DropArea 위젯에도 별도로 메시지 필터 적용
+                if hasattr(self, 'drop_area') and self.drop_area:
+                    drop_hwnd = int(self.drop_area.winId())
+                    enable_drag_drop_for_admin(drop_hwnd)
+                
+                logger.info("드래그 앤 드롭 메시지 필터 초기화 완료")
+            except Exception as e:
+                logger.warning(f"드래그 앤 드롭 초기화 중 오류: {e}")
     
     def _init_menu_bar(self) -> None:
         """메뉴바 초기화"""
