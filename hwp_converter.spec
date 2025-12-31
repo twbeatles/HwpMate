@@ -1,12 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec file for HWP/HWPX 변환기 v8.2
+PyInstaller spec file for HWP/HWPX 변환기 v8.3
 
 빌드 명령:
     pyinstaller hwp_converter.spec
 
 출력:
-    dist/HWP변환기_v8.2.exe
+    dist/HWP변환기_v8.3.exe
+
+변경 이력:
+    v8.3 - 드래그 앤 드롭 수정 (관리자 권한 호환)
+    v8.2 - 디버깅 및 리팩토링
+    v8.1 - UI/UX 개선
+    v8.0 - DOCX 변환 지원
 """
 
 import sys
@@ -103,7 +109,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='HWP변환기_v8.2',
+    name='HWP변환기_v8.3',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

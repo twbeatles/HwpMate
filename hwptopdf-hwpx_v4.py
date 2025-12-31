@@ -1,5 +1,5 @@
 """
-HWP/HWPX 변환기 v8.2 - PyQt6 현대화 버전
+HWP/HWPX 변환기 v8.3 - PyQt6 현대화 버전
 안정성과 사용성에 초점을 맞춘 현대적 GUI 버전
 DOCX 변환 지원 추가
 
@@ -31,7 +31,7 @@ os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 
 # 버전 및 상수
-VERSION = "8.2"
+VERSION = "8.3"
 SUPPORTED_EXTENSIONS = ('.hwp', '.hwpx')
 # 한글 COM SaveAs 지원 포맷: HWP, HWPX, ODT, HTML, TEXT, UNICODE, PDF, PDFA, OOXML(돁스)
 FORMAT_TYPES = {
@@ -686,6 +686,37 @@ def is_admin() -> bool:
         return False
 
 
+def enable_drag_drop_for_admin() -> None:
+    """
+    관리자 권한으로 실행 시 드래그 앤 드롭 활성화
+    
+    Windows의 UIPI(User Interface Privilege Isolation)로 인해
+    일반 사용자 프로세스(탐색기)에서 관리자 프로세스로 드래그 앤 드롭이
+    기본적으로 차단됩니다. 이 함수는 메시지 필터를 변경하여 이를 허용합니다.
+    """
+    try:
+        # WM_DROPFILES 및 관련 메시지 허용
+        WM_DROPFILES = 0x0233
+        WM_COPYDATA = 0x004A
+        WM_COPYGLOBALDATA = 0x0049
+        MSGFLT_ALLOW = 1
+        
+        # ChangeWindowMessageFilterEx 사용 (Windows 7+)
+        user32 = ctypes.windll.user32
+        
+        # ChangeWindowMessageFilter 사용 (전역 설정)
+        try:
+            user32.ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ALLOW)
+            user32.ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ALLOW)
+            user32.ChangeWindowMessageFilter(WM_COPYGLOBALDATA, MSGFLT_ALLOW)
+            logger.debug("드래그 앤 드롭 메시지 필터 설정 완료")
+        except Exception as e:
+            logger.debug(f"메시지 필터 설정 실패 (무시 가능): {e}")
+            
+    except Exception as e:
+        logger.warning(f"드래그 앤 드롭 활성화 실패: {e}")
+
+
 def load_config() -> dict:
     """설정 로드"""
     try:
@@ -1019,14 +1050,46 @@ class DropArea(QFrame):
         self._original_icon = "📂"
         self._original_text = "여기에 파일을 드래그하거나 클릭하여 추가"
     
+    def _get_files_from_urls(self, urls) -> list:
+        """URL 목록에서 HWP/HWPX 파일 추출 (폴더 지원)"""
+        files = []
+        for url in urls:
+            path = url.toLocalFile()
+            if not path:
+                continue
+            
+            path_obj = Path(path)
+            if path_obj.is_file():
+                if path.lower().endswith(SUPPORTED_EXTENSIONS):
+                    files.append(path)
+            elif path_obj.is_dir():
+                # 폴더인 경우 하위 파일 검색
+                for ext in SUPPORTED_EXTENSIONS:
+                    files.extend(str(f) for f in path_obj.rglob(f"*{ext}"))
+        return files
+    
+    def _has_valid_content(self, mime_data) -> bool:
+        """유효한 HWP/HWPX 파일이 있는지 확인"""
+        if not mime_data.hasUrls():
+            return False
+        
+        for url in mime_data.urls():
+            path = url.toLocalFile()
+            if not path:
+                continue
+            
+            path_obj = Path(path)
+            if path_obj.is_file() and path.lower().endswith(SUPPORTED_EXTENSIONS):
+                return True
+            elif path_obj.is_dir():
+                # 폴더인 경우에도 허용
+                return True
+        return False
+    
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        """드래그 진입 이벤트"""
         if event.mimeData().hasUrls():
-            # 유효한 파일인지 확인
-            valid_files = any(
-                url.toLocalFile().lower().endswith(SUPPORTED_EXTENSIONS) 
-                for url in event.mimeData().urls()
-            )
-            if valid_files:
+            if self._has_valid_content(event.mimeData()):
                 event.acceptProposedAction()
                 self.icon_label.setText("📥")
                 self.text_label.setText("파일을 놓으세요!")
@@ -1034,22 +1097,40 @@ class DropArea(QFrame):
             else:
                 event.ignore()
                 self.text_label.setText("지원하지 않는 파일 형식입니다")
+        else:
+            event.ignore()
+    
+    def dragMoveEvent(self, event) -> None:
+        """드래그 이동 이벤트 - 드래그 중 계속 호출됨"""
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
     
     def dragLeaveEvent(self, event) -> None:
+        """드래그 이탈 이벤트"""
         self._reset_appearance()
     
     def dropEvent(self, event: QDropEvent) -> None:
+        """드롭 이벤트"""
         self._reset_appearance()
-        files = []
-        for url in event.mimeData().urls():
-            path = url.toLocalFile()
-            if path.lower().endswith(SUPPORTED_EXTENSIONS):
-                files.append(path)
+        
+        if not event.mimeData().hasUrls():
+            event.ignore()
+            return
+        
+        files = self._get_files_from_urls(event.mimeData().urls())
+        
         if files:
+            event.acceptProposedAction()
             self.files_dropped.emit(files)
             # 성공 피드백
             self.icon_label.setText("✅")
             self.text_label.setText(f"{len(files)}개 파일 추가됨!")
+            QTimer.singleShot(1500, self._reset_appearance)
+        else:
+            event.ignore()
+            self.text_label.setText("HWP/HWPX 파일이 없습니다")
             QTimer.singleShot(1500, self._reset_appearance)
     
     def _reset_appearance(self) -> None:
@@ -1059,7 +1140,7 @@ class DropArea(QFrame):
         self.setStyleSheet("")
     
     def mousePressEvent(self, event) -> None:
-        # 클릭 시 파일 선택 다이얼로그
+        """클릭 시 파일 선택 다이얼로그"""
         files, _ = QFileDialog.getOpenFileNames(
             self,
             "파일 선택",
@@ -2093,6 +2174,9 @@ def main():
     
     # 애플리케이션 실행
     try:
+        # 관리자 권한에서 드래그 앤 드롭 활성화
+        enable_drag_drop_for_admin()
+        
         app = QApplication(sys.argv)
         app.setStyle(QStyleFactory.create("Fusion"))
         
