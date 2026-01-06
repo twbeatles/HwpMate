@@ -19,14 +19,14 @@
 | 📄 **DOCX** | MS Word 호환 OOXML 형식 |
 
 ### UI/UX 기능
+- **변환 형식 카드 UI** - 시각적으로 직관적인 형식 선택
 - **폴더 일괄 변환** - 폴더 내 모든 HWP/HWPX 파일 일괄 처리
 - **파일 개별 선택** - 원하는 파일만 선택하여 변환
 - **드래그 앤 드롭** - 파일 또는 폴더를 드래그하여 추가 (**관리자 권한에서도 완벽 동작**)
-- **다크/라이트 테마** - 사용자 환경 설정에 맞춘 테마
+- **다크/라이트 테마** - 모던한 디자인, 메뉴바/상태바 스타일 적용
 - **Toast 알림** - 스택 기능 지원 (최대 3개 동시 표시)
 - **시스템 트레이** - 최소화 시 트레이로 숨김
-- **메뉴바** - 파일/편집/도움말 메뉴
-- **상태바** - 버전, 한글 연결 상태, 파일 수 실시간 표시
+- **테이블 호버 효과** - 행 선택 시 시각적 피드백
 - **HiDPI 지원** - 고해상도 디스플레이 지원
 - **예상 시간 표시** - 변환 남은 시간 실시간 계산
 
@@ -86,7 +86,7 @@ pyinstaller hwp_converter.spec
 ```
 hwp-to-pdf-hwpx/
 ├── hwptopdf-hwpx_v4.py    # 메인 프로그램
-├── hwp_converter.spec      # PyInstaller 빌드 설정
+├── hwp_converter.spec      # PyInstaller 빌드 설정 (경량화)
 ├── README.md               # 문서
 └── update_history.md       # 업데이트 이력
 ```
@@ -95,49 +95,36 @@ hwp-to-pdf-hwpx/
 
 ## 🛠️ 버전 히스토리
 
+### v8.4.1 (2025-01-06) - 코드 품질 개선
+**UI/UX 개선:**
+- **FormatCard 카드 UI** - 변환 형식 선택을 시각적 카드로 개선
+- **테마 스타일 강화** - 메뉴바, 상태바, 테이블 호버 효과
+- **진행률 바 글로우** - 시각적 개선
+
+**코드 품질:**
+- 상수 추출 (윈도우 크기, 타이머, 변환 대기 시간)
+- 예외 처리 강화
+- 조건부 로깅 최적화
+- 리소스 관리 개선 (ToastWidget/Manager)
+- 파일 중복 체크 O(1) 성능
+
 ### v8.4 (2025-01-01) - 네이티브 드래그 앤 드롭
-**핵심 변경:**
-- **네이티브 Windows 드래그 앤 드롭 구현** - 관리자 권한에서도 100% 동작
-- Qt OLE 드래그 앤 드롭 대신 Windows Shell API (`WM_DROPFILES`) 직접 사용
-- `NativeDropFilter` 클래스 추가 - `QAbstractNativeEventFilter` 기반
+- **네이티브 Windows 드래그 앤 드롭** - 관리자 권한에서도 100% 동작
+- Windows Shell API (`WM_DROPFILES`) 직접 사용
+- 64비트 핸들 오버플로 수정
 
-**기술적 세부사항:**
-- `DragAcceptFiles`, `DragQueryFileW`, `DragFinish` API 사용
-- `RevokeDragDrop`으로 Qt OLE 드롭 해제 (UIPI 우회)
-- `ChangeWindowMessageFilterEx`로 윈도우별 메시지 필터 적용
-- `EnumChildWindows`로 모든 자식 윈도우에 드롭 허용
-- 64비트 핸들 오버플로 수정 (`c_void_p` 타입 사용)
-
-### v8.3 (2025-12-31) - 드래그 앤 드롭 수정 시도
-- UIPI 메시지 필터 적용 시도
-- `dragMoveEvent` 핸들러 추가
-
-### v8.2 - 디버깅 & 리팩토링
-- ToastManager null 참조 버그 수정
-- RuntimeError 예외 처리
-- 미사용 import 제거
-- 글로벌 예외 핸들러 추가
-- 상태바 연결 상태 실시간 표시 개선
-
-### v8.1 - UI/UX 개선
+### v8.1~8.3
 - 메뉴바, 상태바, 시스템 트레이 추가
 - 키보드 단축키, 툴팁 지원
-- Toast 스택 기능, 드래그 앤 드롭 피드백 강화
-- 변환 완료 후 폴더 열기 기능
-
-### v8.0 - 기능 추가
-- DOCX 변환 지원 (OOXML)
-- Toast 알림 시스템
-- HiDPI 지원
-- 예상 시간/소요 시간 표시
+- DOCX 변환 지원, HiDPI 지원
 
 ---
 
 ## ⚠️ 주의사항
 
-1. **관리자 권한**: 한글 COM 객체 접근 및 드래그 앤 드롭을 위해 관리자 권한이 필요합니다.
-2. **한글 설치**: 한컴오피스 한글이 설치되어 있어야 합니다.
-3. **변환 중 한글 사용 금지**: 변환 중에는 한글 프로그램을 직접 사용하지 마세요.
+1. **관리자 권한**: 한글 COM 객체 접근 및 드래그 앤 드롭을 위해 필요
+2. **한글 설치**: 한컴오피스 한글이 설치되어 있어야 합니다
+3. **변환 중 한글 사용 금지**: 변환 중에는 한글 프로그램을 직접 사용하지 마세요
 
 ---
 
@@ -146,15 +133,13 @@ hwp-to-pdf-hwpx/
 - **GUI Framework**: PyQt6
 - **COM Automation**: pywin32 (win32com)
 - **Drag & Drop**: Windows Shell API (WM_DROPFILES)
-- **Build Tool**: PyInstaller
+- **Build Tool**: PyInstaller (경량화 빌드)
 
 ---
 
 ## 📄 라이선스
 
-MIT License
-
-Copyright (c) 2024-2025
+MIT License | Copyright (c) 2024-2025
 
 ---
 

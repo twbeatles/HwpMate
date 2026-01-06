@@ -37,12 +37,28 @@ os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 # 버전 및 상수
 VERSION = "8.4"
 SUPPORTED_EXTENSIONS = ('.hwp', '.hwpx')
+
 # 한글 COM SaveAs 지원 포맷: HWP, HWPX, ODT, HTML, TEXT, UNICODE, PDF, PDFA, OOXML(돁스)
 FORMAT_TYPES = {
     'PDF': {'ext': '.pdf', 'save_format': 'PDF'},
     'HWPX': {'ext': '.hwpx', 'save_format': 'HWPX'},
     'DOCX': {'ext': '.docx', 'save_format': 'OOXML'},  # OOXML = MS Word DOCX
 }
+
+# UI 상수
+WINDOW_MIN_WIDTH = 750
+WINDOW_MIN_HEIGHT = 700
+WINDOW_DEFAULT_WIDTH = 800
+WINDOW_DEFAULT_HEIGHT = 900
+
+# 타이머 상수 (밀리초)
+TOAST_DURATION_DEFAULT = 3000
+TOAST_FADE_DURATION = 300
+FEEDBACK_RESET_DELAY = 1500
+WORKER_WAIT_TIMEOUT = 3000
+
+# 변환 안정화 대기 시간 (초)
+DOCUMENT_LOAD_DELAY = 1.0
 
 # PyQt6 imports
 try:
@@ -220,6 +236,9 @@ class ThemeManager:
             padding: 8px;
             border-bottom: 1px solid #0f3460;
         }
+        QTableWidget::item:hover {
+            background-color: #1e3a5f;
+        }
         QTableWidget::item:selected {
             background-color: #e94560;
             color: white;
@@ -236,15 +255,54 @@ class ThemeManager:
         QProgressBar {
             background-color: #0f3460;
             border: none;
-            border-radius: 10px;
-            height: 20px;
+            border-radius: 12px;
+            height: 24px;
             text-align: center;
             color: white;
+            font-weight: bold;
         }
         QProgressBar::chunk {
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #e94560, stop:1 #ff7b95);
-            border-radius: 10px;
+                stop:0 #e94560, stop:0.5 #ff7b95, stop:1 #e94560);
+            border-radius: 12px;
+        }
+        
+        /* 메뉴바 */
+        QMenuBar {
+            background-color: #16213e;
+            color: #eaeaea;
+            border-bottom: 1px solid #0f3460;
+            padding: 5px;
+        }
+        QMenuBar::item {
+            padding: 8px 15px;
+            border-radius: 5px;
+        }
+        QMenuBar::item:selected {
+            background-color: #0f3460;
+        }
+        QMenu {
+            background-color: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            padding: 5px;
+        }
+        QMenu::item {
+            padding: 8px 25px;
+            border-radius: 5px;
+        }
+        QMenu::item:selected {
+            background-color: #e94560;
+        }
+        
+        /* 상태바 */
+        QStatusBar {
+            background-color: #16213e;
+            color: #eaeaea;
+            border-top: 1px solid #0f3460;
+        }
+        QStatusBar::item {
+            border: none;
         }
         
         /* 스크롤바 */
@@ -299,13 +357,31 @@ class ThemeManager:
         
         /* 레이블 */
         QLabel[heading="true"] {
-            font-size: 14pt;
+            font-size: 16pt;
             font-weight: bold;
             color: #e94560;
         }
         QLabel[subheading="true"] {
             font-size: 9pt;
             color: #888899;
+        }
+        
+        /* 포맷 카드 */
+        QFrame[formatCard="true"] {
+            background-color: #0f3460;
+            border: 2px solid #1a4a80;
+            border-radius: 12px;
+            padding: 15px;
+        }
+        QFrame[formatCard="true"]:hover {
+            border-color: #e94560;
+            background-color: #162850;
+        }
+        QFrame[formatCardSelected="true"] {
+            background-color: #1e3a5f;
+            border: 2px solid #e94560;
+            border-radius: 12px;
+            padding: 15px;
         }
     """
     
@@ -425,6 +501,9 @@ class ThemeManager:
             padding: 8px;
             border-bottom: 1px solid #dfe6e9;
         }
+        QTableWidget::item:hover {
+            background-color: #f0f0ff;
+        }
         QTableWidget::item:selected {
             background-color: #6c5ce7;
             color: white;
@@ -441,15 +520,55 @@ class ThemeManager:
         QProgressBar {
             background-color: #dfe6e9;
             border: none;
-            border-radius: 10px;
-            height: 20px;
+            border-radius: 12px;
+            height: 24px;
             text-align: center;
             color: #2d3436;
+            font-weight: bold;
         }
         QProgressBar::chunk {
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #6c5ce7, stop:1 #a29bfe);
-            border-radius: 10px;
+                stop:0 #6c5ce7, stop:0.5 #a29bfe, stop:1 #6c5ce7);
+            border-radius: 12px;
+        }
+        
+        /* 메뉴바 */
+        QMenuBar {
+            background-color: #ffffff;
+            color: #2d3436;
+            border-bottom: 1px solid #dfe6e9;
+            padding: 5px;
+        }
+        QMenuBar::item {
+            padding: 8px 15px;
+            border-radius: 5px;
+        }
+        QMenuBar::item:selected {
+            background-color: #f0f0ff;
+        }
+        QMenu {
+            background-color: #ffffff;
+            border: 1px solid #dfe6e9;
+            border-radius: 8px;
+            padding: 5px;
+        }
+        QMenu::item {
+            padding: 8px 25px;
+            border-radius: 5px;
+        }
+        QMenu::item:selected {
+            background-color: #6c5ce7;
+            color: white;
+        }
+        
+        /* 상태바 */
+        QStatusBar {
+            background-color: #ffffff;
+            color: #2d3436;
+            border-top: 1px solid #dfe6e9;
+        }
+        QStatusBar::item {
+            border: none;
         }
         
         /* 스크롤바 */
@@ -504,13 +623,31 @@ class ThemeManager:
         
         /* 레이블 */
         QLabel[heading="true"] {
-            font-size: 14pt;
+            font-size: 16pt;
             font-weight: bold;
             color: #6c5ce7;
         }
         QLabel[subheading="true"] {
             font-size: 9pt;
             color: #636e72;
+        }
+        
+        /* 포맷 카드 */
+        QFrame[formatCard="true"] {
+            background-color: #ffffff;
+            border: 2px solid #dfe6e9;
+            border-radius: 12px;
+            padding: 15px;
+        }
+        QFrame[formatCard="true"]:hover {
+            border-color: #6c5ce7;
+            background-color: #f0f0ff;
+        }
+        QFrame[formatCardSelected="true"] {
+            background-color: #f0f0ff;
+            border: 2px solid #6c5ce7;
+            border-radius: 12px;
+            padding: 15px;
         }
     """
     
@@ -603,7 +740,16 @@ class ToastWidget(QFrame):
     def _on_fade_finished(self) -> None:
         """페이드 아웃 완료"""
         self.hide()
+        self._cleanup()
         self.closed.emit(self)
+    
+    def _cleanup(self) -> None:
+        """리소스 정리"""
+        if self._timer:
+            self._timer.stop()
+        if self._animation:
+            self._animation.stop()
+            self._animation = None
 
 
 class ToastManager:
@@ -675,6 +821,17 @@ class ToastManager:
                 self._update_positions()
         except RuntimeError:
             pass  # 이미 삭제된 위젯
+    
+    def clear_all(self) -> None:
+        """모든 토스트 제거 및 정리"""
+        for toast in self.toasts[:]:
+            try:
+                toast._cleanup()
+                toast.hide()
+                toast.deleteLater()
+            except RuntimeError:
+                pass
+        self.toasts.clear()
 
 
 # ============================================================================
@@ -1048,10 +1205,40 @@ class NativeDropFilter(QAbstractNativeEventFilter):
     
     WM_DROPFILES = 0x0233
     
+    # MSG 구조체를 클래스 레벨로 정의 (반복 생성 방지)
+    # ctypes.wintypes를 직접 참조
+    class _MSG(ctypes.Structure):
+        import ctypes.wintypes as wintypes
+        _fields_ = [
+            ("hwnd", wintypes.HWND),
+            ("message", wintypes.UINT),
+            ("wParam", wintypes.WPARAM),
+            ("lParam", wintypes.LPARAM),
+            ("time", wintypes.DWORD),
+            ("pt", wintypes.POINT),
+        ]
+    
     def __init__(self):
         super().__init__()
-        self._shell32 = None
+        self._shell32 = ctypes.windll.shell32
         self._registered_hwnds = set()
+        self._argtypes_configured = False
+        
+        # ctypes argtypes를 한 번만 설정
+        self._configure_argtypes()
+    
+    def _configure_argtypes(self) -> None:
+        """ctypes 함수 시그니처 설정 (한 번만 실행)"""
+        if self._argtypes_configured:
+            return
+        try:
+            self._shell32.DragQueryFileW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_wchar_p, ctypes.c_uint]
+            self._shell32.DragQueryFileW.restype = ctypes.c_uint
+            self._shell32.DragFinish.argtypes = [ctypes.c_void_p]
+            self._shell32.DragFinish.restype = None
+            self._argtypes_configured = True
+        except Exception as e:
+            logger.debug(f"ctypes argtypes 설정 실패: {e}")
         
     @classmethod
     def get_instance(cls):
@@ -1109,25 +1296,14 @@ class NativeDropFilter(QAbstractNativeEventFilter):
             if eventType != b"windows_generic_MSG":
                 return False, 0
             
-            # ctypes로 MSG 구조체 파싱
-            import ctypes.wintypes as wintypes
-            
-            class MSG(ctypes.Structure):
-                _fields_ = [
-                    ("hwnd", wintypes.HWND),
-                    ("message", wintypes.UINT),
-                    ("wParam", wintypes.WPARAM),
-                    ("lParam", wintypes.LPARAM),
-                    ("time", wintypes.DWORD),
-                    ("pt", wintypes.POINT),
-                ]
-            
+            # 클래스 레벨 MSG 구조체 사용 (매번 재생성 방지)
             # message는 sip.voidptr이므로 정수로 변환 후 MSG로 캐스팅
             msg_ptr = int(message)
-            msg = ctypes.cast(msg_ptr, ctypes.POINTER(MSG)).contents
+            msg = ctypes.cast(msg_ptr, ctypes.POINTER(self._MSG)).contents
             
             if msg.message == self.WM_DROPFILES:
-                logger.debug("WM_DROPFILES 메시지 수신!")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug("WM_DROPFILES 메시지 수신!")
                 dropped_files = self._get_dropped_files(msg.wParam)
                 
                 if dropped_files and self.files_dropped_callback:
@@ -1149,7 +1325,8 @@ class NativeDropFilter(QAbstractNativeEventFilter):
                 return True, 0
                 
         except Exception as e:
-            logger.debug(f"nativeEventFilter 오류: {e}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"nativeEventFilter 오류: {e}")
         
         return False, 0
     
@@ -1157,32 +1334,27 @@ class NativeDropFilter(QAbstractNativeEventFilter):
         """WM_DROPFILES에서 파일 목록 추출"""
         files = []
         try:
-            shell32 = ctypes.windll.shell32
-            
-            # 64비트 핸들 처리를 위한 타입 설정
-            # HDROP은 HANDLE 타입으로 64비트 시스템에서는 8바이트
-            shell32.DragQueryFileW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_wchar_p, ctypes.c_uint]
-            shell32.DragQueryFileW.restype = ctypes.c_uint
-            shell32.DragFinish.argtypes = [ctypes.c_void_p]
-            shell32.DragFinish.restype = None
-            
+            # 미리 초기화된 shell32 사용 (argtypes도 이미 설정됨)
             # hDrop을 c_void_p로 변환
             hDrop_ptr = ctypes.c_void_p(hDrop)
             
             # 드롭된 파일 수 확인 (0xFFFFFFFF = -1 = 파일 수 반환)
-            file_count = shell32.DragQueryFileW(hDrop_ptr, 0xFFFFFFFF, None, 0)
-            logger.debug(f"드롭된 파일 수: {file_count}")
+            file_count = self._shell32.DragQueryFileW(hDrop_ptr, 0xFFFFFFFF, None, 0)
+            
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"드롭된 파일 수: {file_count}")
             
             # 각 파일 경로 추출
             buffer = ctypes.create_unicode_buffer(260)  # MAX_PATH
             for i in range(file_count):
-                length = shell32.DragQueryFileW(hDrop_ptr, i, buffer, 260)
+                length = self._shell32.DragQueryFileW(hDrop_ptr, i, buffer, 260)
                 if length > 0:
                     files.append(buffer.value)
-                    logger.debug(f"드롭된 파일 {i}: {buffer.value}")
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"드롭된 파일 {i}: {buffer.value}")
             
             # 드롭 핸들 해제
-            shell32.DragFinish(hDrop_ptr)
+            self._shell32.DragFinish(hDrop_ptr)
             
         except Exception as e:
             logger.error(f"드롭 파일 추출 실패: {e}")
@@ -1356,6 +1528,76 @@ class DropArea(QFrame):
 
 
 # ============================================================================
+# 포맷 선택 카드
+# ============================================================================
+
+class FormatCard(QFrame):
+    """변환 형식 선택 카드"""
+    
+    clicked = pyqtSignal(str)  # format_type 시그널
+    
+    def __init__(self, format_type: str, icon: str, title: str, description: str, parent=None):
+        super().__init__(parent)
+        self.format_type = format_type
+        self._selected = False
+        
+        self.setProperty("formatCard", True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setMinimumSize(140, 100)
+        self.setMaximumWidth(180)
+        
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(5)
+        
+        # 아이콘
+        self.icon_label = QLabel(icon)
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_font = self.icon_label.font()
+        icon_font.setPointSize(24)
+        self.icon_label.setFont(icon_font)
+        layout.addWidget(self.icon_label)
+        
+        # 타이틀
+        self.title_label = QLabel(title)
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_font = self.title_label.font()
+        title_font.setPointSize(11)
+        title_font.setBold(True)
+        self.title_label.setFont(title_font)
+        layout.addWidget(self.title_label)
+        
+        # 설명
+        self.desc_label = QLabel(description)
+        self.desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.desc_label.setProperty("subheading", True)
+        self.desc_label.setStyleSheet("font-size: 8pt;")
+        layout.addWidget(self.desc_label)
+        
+        self.setToolTip(f"{title} 형식으로 변환합니다")
+    
+    def mousePressEvent(self, event) -> None:
+        """클릭 이벤트"""
+        self.clicked.emit(self.format_type)
+    
+    def setSelected(self, selected: bool) -> None:
+        """선택 상태 설정"""
+        self._selected = selected
+        if selected:
+            self.setProperty("formatCard", False)
+            self.setProperty("formatCardSelected", True)
+        else:
+            self.setProperty("formatCard", True)
+            self.setProperty("formatCardSelected", False)
+        # 스타일 갱신
+        self.style().unpolish(self)
+        self.style().polish(self)
+    
+    def isSelected(self) -> bool:
+        return self._selected
+
+
+# ============================================================================
 # 결과 다이얼로그
 # ============================================================================
 
@@ -1460,7 +1702,8 @@ class MainWindow(QMainWindow):
         self.tasks = []
         self.worker = None
         self.is_converting = False
-        self.file_list = []
+        self.file_list = []  # 순서 유지를 위한 리스트
+        self._file_set = set()  # 중복 체크를 위한 세트 (O(1) 성능)
         self.conversion_start_time = None
         
         # 드래그 앤 드롭 초기화 플래그
@@ -1659,8 +1902,11 @@ class MainWindow(QMainWindow):
     
     def _on_tray_activated(self, reason) -> None:
         """트레이 아이콘 클릭 이벤트"""
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self._show_from_tray()
+        try:
+            if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+                self._show_from_tray()
+        except Exception as e:
+            logger.debug(f"트레이 아이콘 이벤트 처리 오류: {e}")
     
     def _cancel_conversion_if_running(self) -> None:
         """변환 중일 때만 취소"""
@@ -1722,8 +1968,8 @@ class MainWindow(QMainWindow):
     def _init_ui(self) -> None:
         """UI 초기화"""
         self.setWindowTitle(f"HWP 변환기 v{VERSION} - PyQt6")
-        self.setMinimumSize(750, 700)
-        self.resize(800, 900)
+        self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
+        self.resize(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT)
         
         # 스크롤 영역 설정
         scroll_area = QScrollArea()
@@ -1913,43 +2159,36 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(output_group)
         
         # === 변환 옵션 ===
-        options_group = QGroupBox("변환 옵션")
+        options_group = QGroupBox("변환 형식")
         options_layout = QVBoxLayout(options_group)
-        options_layout.setSpacing(10)
+        options_layout.setSpacing(15)
         
-        # 변환 형식
-        format_layout = QHBoxLayout()
-        format_label = QLabel("변환 형식:")
-        format_label.setFixedWidth(70)
-        format_layout.addWidget(format_label)
+        # 변환 형식 카드 UI
+        format_cards_layout = QHBoxLayout()
+        format_cards_layout.setSpacing(15)
         
-        self.format_group = QButtonGroup(self)
+        # PDF 카드
+        self.pdf_card = FormatCard("PDF", "📕", "PDF", "문서 공유용")
+        self.pdf_card.clicked.connect(self._on_format_card_clicked)
+        format_cards_layout.addWidget(self.pdf_card)
         
-        self.pdf_radio = QRadioButton("📕 PDF")
-        self.pdf_radio.setToolTip("PDF 형식으로 변환합니다 (문서 공유에 적합)")
-        self.hwpx_radio = QRadioButton("📘 HWPX")
-        self.hwpx_radio.setToolTip("HWPX 형식으로 변환합니다 (한글 호환, XML 기반)")
-        self.docx_radio = QRadioButton("📄 DOCX")
-        self.docx_radio.setToolTip("Word 형식으로 변환합니다 (MS Office 호환)")
+        # HWPX 카드
+        self.hwpx_card = FormatCard("HWPX", "📘", "HWPX", "한글 호환")
+        self.hwpx_card.clicked.connect(self._on_format_card_clicked)
+        format_cards_layout.addWidget(self.hwpx_card)
         
-        self.format_group.addButton(self.pdf_radio, 0)
-        self.format_group.addButton(self.hwpx_radio, 1)
-        self.format_group.addButton(self.docx_radio, 2)
+        # DOCX 카드
+        self.docx_card = FormatCard("DOCX", "📄", "DOCX", "Word 호환")
+        self.docx_card.clicked.connect(self._on_format_card_clicked)
+        format_cards_layout.addWidget(self.docx_card)
         
-        saved_format = self.config.get("format", "PDF")
-        if saved_format == "HWPX":
-            self.hwpx_radio.setChecked(True)
-        elif saved_format == "DOCX":
-            self.docx_radio.setChecked(True)
-        else:
-            self.pdf_radio.setChecked(True)
+        format_cards_layout.addStretch()
         
-        format_layout.addWidget(self.pdf_radio)
-        format_layout.addWidget(self.hwpx_radio)
-        format_layout.addWidget(self.docx_radio)
-        format_layout.addStretch()
+        # 저장된 형식 복원
+        self._selected_format = self.config.get("format", "PDF")
+        self._update_format_cards()
         
-        options_layout.addLayout(format_layout)
+        options_layout.addLayout(format_cards_layout)
         
         # 덮어쓰기 옵션
         self.overwrite_check = QCheckBox("기존 파일 덮어쓰기 (체크 해제 시 번호 자동 추가)")
@@ -2025,6 +2264,17 @@ class MainWindow(QMainWindow):
         self.config["theme"] = self.current_theme
         save_config(self.config)
     
+    def _on_format_card_clicked(self, format_type: str) -> None:
+        """포맷 카드 클릭 이벤트"""
+        self._selected_format = format_type
+        self._update_format_cards()
+    
+    def _update_format_cards(self) -> None:
+        """포맷 카드 선택 상태 업데이트"""
+        self.pdf_card.setSelected(self._selected_format == "PDF")
+        self.hwpx_card.setSelected(self._selected_format == "HWPX")
+        self.docx_card.setSelected(self._selected_format == "DOCX")
+    
     def _update_mode_ui(self) -> None:
         """모드에 따라 UI 업데이트"""
         is_folder_mode = self.folder_radio.isChecked()
@@ -2065,11 +2315,19 @@ class MainWindow(QMainWindow):
             self._add_files(files)
     
     def _add_files(self, files: list) -> None:
-        """파일 추가"""
-        added = 0
-        for file_path in files:
-            if file_path not in self.file_list:
+        """파일 추가 (배치 UI 업데이트로 성능 최적화)"""
+        # 중복 제거된 새 파일만 필터링 (O(1) 체크)
+        new_files = [f for f in files if f not in self._file_set]
+        
+        if not new_files:
+            return
+        
+        # 대량 파일 추가 시 UI 업데이트 일시 중지
+        self.file_table.blockSignals(True)
+        try:
+            for file_path in new_files:
                 self.file_list.append(file_path)
+                self._file_set.add(file_path)
                 
                 row = self.file_table.rowCount()
                 self.file_table.insertRow(row)
@@ -2077,12 +2335,12 @@ class MainWindow(QMainWindow):
                 name = Path(file_path).name
                 self.file_table.setItem(row, 0, QTableWidgetItem(name))
                 self.file_table.setItem(row, 1, QTableWidgetItem(str(Path(file_path).parent)))
-                
-                added += 1
+        finally:
+            self.file_table.blockSignals(False)
         
-        if added > 0:
-            self.status_label.setText(f"{added}개 파일 추가됨 (총 {len(self.file_list)}개)")
-            self._update_file_count()
+        added = len(new_files)
+        self.status_label.setText(f"{added}개 파일 추가됨 (총 {len(self.file_list)}개)")
+        self._update_file_count()
     
     def _remove_selected(self) -> None:
         """선택된 파일 제거"""
@@ -2094,6 +2352,8 @@ class MainWindow(QMainWindow):
         rows = set(item.row() for item in selected)
         for row in sorted(rows, reverse=True):
             if row < len(self.file_list):
+                removed_file = self.file_list[row]
+                self._file_set.discard(removed_file)  # 세트에서도 제거
                 del self.file_list[row]
             self.file_table.removeRow(row)
         
@@ -2113,6 +2373,7 @@ class MainWindow(QMainWindow):
         
         if reply == QMessageBox.StandardButton.Yes:
             self.file_list.clear()
+            self._file_set.clear()  # 세트도 정리
             self.file_table.setRowCount(0)
             self.status_label.setText("모든 파일 제거됨")
             self._update_file_count()
@@ -2127,13 +2388,8 @@ class MainWindow(QMainWindow):
         tasks = []
         is_folder_mode = self.folder_radio.isChecked()
         
-        # 선택된 형식 결정
-        if self.hwpx_radio.isChecked():
-            format_type = "HWPX"
-        elif self.docx_radio.isChecked():
-            format_type = "DOCX"
-        else:
-            format_type = "PDF"
+        # 선택된 형식 결정 (FormatCard 사용)
+        format_type = self._selected_format
         
         format_info = FORMAT_TYPES[format_type]
         output_ext = format_info['ext']
@@ -2219,12 +2475,7 @@ class MainWindow(QMainWindow):
     def _save_settings(self) -> None:
         """설정 저장"""
         self.config["mode"] = "folder" if self.folder_radio.isChecked() else "files"
-        if self.hwpx_radio.isChecked():
-            self.config["format"] = "HWPX"
-        elif self.docx_radio.isChecked():
-            self.config["format"] = "DOCX"
-        else:
-            self.config["format"] = "PDF"
+        self.config["format"] = self._selected_format
         
         self.config["include_sub"] = self.include_sub_check.isChecked()
         self.config["same_location"] = self.same_location_check.isChecked()
@@ -2254,13 +2505,8 @@ class MainWindow(QMainWindow):
             # 변환 시작 시간 기록
             self.conversion_start_time = time.time()
             
-            # 워커 시작 - 선택된 형식 사용
-            if self.hwpx_radio.isChecked():
-                format_type = "HWPX"
-            elif self.docx_radio.isChecked():
-                format_type = "DOCX"
-            else:
-                format_type = "PDF"
+            # 워커 시작 - 선택된 형식 사용 (FormatCard)
+            format_type = self._selected_format
             
             self.worker = ConversionWorker(self.tasks, format_type)
             self.worker.progress_updated.connect(self._on_progress_updated)
@@ -2382,6 +2628,10 @@ class MainWindow(QMainWindow):
             if self.worker:
                 self.worker.cancel()
                 self.worker.wait(3000)  # 최대 3초 대기
+        
+        # 토스트 매니저 정리
+        if hasattr(self, 'toast') and self.toast:
+            self.toast.clear_all()
         
         # 트레이 아이콘 숨김
         if hasattr(self, 'tray_icon'):
