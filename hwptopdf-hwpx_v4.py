@@ -329,6 +329,10 @@ class ThemeManager:
             border: 2px dashed #1a4a80;
             border-radius: 15px;
         }
+        QFrame[dropZone="true"] QLabel {
+            color: #eaeaea;
+            background-color: transparent;
+        }
         QFrame[dropZone="true"]:hover {
             border-color: #e94560;
             background-color: #162850;
@@ -373,6 +377,10 @@ class ThemeManager:
             border-radius: 12px;
             padding: 15px;
         }
+        QFrame[formatCard="true"] QLabel {
+            color: #eaeaea;
+            background-color: transparent;
+        }
         QFrame[formatCard="true"]:hover {
             border-color: #e94560;
             background-color: #162850;
@@ -382,6 +390,10 @@ class ThemeManager:
             border: 2px solid #e94560;
             border-radius: 12px;
             padding: 15px;
+        }
+        QFrame[formatCardSelected="true"] QLabel {
+            color: #ffffff;
+            background-color: transparent;
         }
     """
     
@@ -595,6 +607,10 @@ class ThemeManager:
             border: 2px dashed #b2bec3;
             border-radius: 15px;
         }
+        QFrame[dropZone="true"] QLabel {
+            color: #2d3436;
+            background-color: transparent;
+        }
         QFrame[dropZone="true"]:hover {
             border-color: #6c5ce7;
             background-color: #f0f0ff;
@@ -639,6 +655,10 @@ class ThemeManager:
             border-radius: 12px;
             padding: 15px;
         }
+        QFrame[formatCard="true"] QLabel {
+            color: #2d3436;
+            background-color: transparent;
+        }
         QFrame[formatCard="true"]:hover {
             border-color: #6c5ce7;
             background-color: #f0f0ff;
@@ -648,6 +668,10 @@ class ThemeManager:
             border: 2px solid #6c5ce7;
             border-radius: 12px;
             padding: 15px;
+        }
+        QFrame[formatCardSelected="true"] QLabel {
+            color: #2d3436;
+            background-color: transparent;
         }
     """
     
