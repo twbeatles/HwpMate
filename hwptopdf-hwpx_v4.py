@@ -35,7 +35,7 @@ os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 
 # 버전 및 상수
-VERSION = "8.4"
+VERSION = "8.5"
 SUPPORTED_EXTENSIONS = ('.hwp', '.hwpx')
 
 # 한글 COM SaveAs 지원 포맷: HWP, HWPX, ODT, HTML, TEXT, UNICODE, PDF, PDFA, OOXML(돁스)
@@ -59,6 +59,10 @@ WORKER_WAIT_TIMEOUT = 3000
 
 # 변환 안정화 대기 시간 (초)
 DOCUMENT_LOAD_DELAY = 1.0
+
+# 안정성 상수
+MAX_FILENAME_COUNTER = 1000  # 파일명 충돌 시 최대 카운터 제한
+CONFIG_VERSION = 1  # 설정 파일 스키마 버전
 
 # PyQt6 imports
 try:
@@ -922,12 +926,30 @@ def enable_drag_drop_for_admin(hwnd: int = None) -> None:
 
 def load_config() -> dict:
     """설정 로드"""
+    # 기본 설정값
+    default_config = {
+        "config_version": CONFIG_VERSION,
+        "theme": "dark",
+        "mode": "folder",
+        "format": "PDF",
+        "include_sub": True,
+        "same_location": True,
+        "overwrite": False,
+    }
+    
     try:
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 if isinstance(data, dict):
-                    return data
+                    # 버전 확인 및 기본값 병합
+                    saved_version = data.get("config_version", 0)
+                    if saved_version < CONFIG_VERSION:
+                        logger.info(f"설정 파일 버전 업그레이드: {saved_version} -> {CONFIG_VERSION}")
+                    # 기본값과 병합 (기존 설정 우선)
+                    merged = {**default_config, **data}
+                    merged["config_version"] = CONFIG_VERSION
+                    return merged
                 logger.warning("설정 파일 형식이 올바르지 않습니다. 기본값 사용")
     except json.JSONDecodeError as e:
         logger.error(f"설정 파일 JSON 파싱 오류: {e}")
@@ -940,7 +962,7 @@ def load_config() -> dict:
             pass
     except Exception as e:
         logger.error(f"설정 로드 실패: {e}")
-    return {}
+    return default_config.copy()
 
 
 def save_config(config: dict) -> None:
@@ -950,6 +972,25 @@ def save_config(config: dict) -> None:
             json.dump(config, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"설정 저장 실패: {e}")
+
+
+def is_valid_path_name(path: str) -> bool:
+    """Windows 파일 경로에 유효하지 않은 문자가 있는지 검증"""
+    invalid_chars = '<>"|?*'
+    # 드라이브 문자(:) 제외
+    path_without_drive = path[2:] if len(path) > 2 and path[1] == ':' else path
+    return not any(char in path_without_drive for char in invalid_chars)
+
+
+def check_write_permission(folder_path: Path) -> bool:
+    """폴더에 쓰기 권한이 있는지 확인"""
+    try:
+        test_file = folder_path / f".write_test_{os.getpid()}"
+        test_file.touch()
+        test_file.unlink()
+        return True
+    except (PermissionError, OSError):
+        return False
 
 
 # ============================================================================
@@ -1186,11 +1227,11 @@ class ConversionWorker(QThread):
                     task.error = error
                     failed_tasks.append(task)
             
-            # 완료
-            self.progress_updated.emit(total, total, "완료")
+            # 완료 (취소된 경우도 부분 결과 표시)
+            self.progress_updated.emit(total, total, "완료" if not self.cancel_requested else "취소됨")
             
-            if not self.cancel_requested:
-                self.task_completed.emit(success_count, total, failed_tasks)
+            # 결과 시그널 발생 (취소 시에도 부분 결과 표시)
+            self.task_completed.emit(success_count, total, failed_tasks)
             
         except Exception as e:
             logger.exception("변환 중 오류 발생")
@@ -1676,6 +1717,16 @@ class ResultDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         
+        # 실패 목록 내보내기 버튼 (실패한 파일이 있을 때만)
+        if failed_tasks:
+            self._failed_tasks = failed_tasks  # 내보내기용 저장
+            export_btn = QPushButton("📋 실패 목록 저장")
+            export_btn.setProperty("secondary", True)
+            export_btn.setToolTip("실패한 파일 목록을 텍스트 파일로 저장합니다")
+            export_btn.clicked.connect(self._export_failed_list)
+            export_btn.setMaximumWidth(150)
+            btn_layout.addWidget(export_btn)
+        
         # 폴더 열기 버튼
         if success > 0 and self.output_paths:
             open_folder_btn = QPushButton("📂 폴더 열기")
@@ -1693,6 +1744,29 @@ class ResultDialog(QDialog):
         
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
+    
+    def _export_failed_list(self) -> None:
+        """실패 목록 텍스트 파일로 내보내기"""
+        from datetime import datetime
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "실패 목록 저장",
+            f"변환실패_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            "텍스트 파일 (*.txt)"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(f"HWP 변환 실패 목록 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write("=" * 50 + "\n\n")
+                    for task in self._failed_tasks:
+                        f.write(f"파일: {task.input_file}\n")
+                        f.write(f"오류: {task.error}\n\n")
+                QMessageBox.information(self, "저장 완료", f"실패 목록이 저장되었습니다:\n{file_path}")
+            except Exception as e:
+                QMessageBox.warning(self, "저장 실패", f"파일 저장 중 오류 발생:\n{e}")
     
     def _open_output_folder(self) -> None:
         """출력 폴더 열기"""
@@ -1912,6 +1986,7 @@ class MainWindow(QMainWindow):
         
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.activated.connect(self._on_tray_activated)
+        self.tray_icon.show()  # 시스템 트레이에 아이콘 표시
     
     def _show_from_tray(self) -> None:
         """트레이에서 창 복원"""
@@ -2076,12 +2151,12 @@ class MainWindow(QMainWindow):
         self.folder_entry.setMinimumHeight(40)
         folder_row.addWidget(self.folder_entry)
         
-        folder_btn = QPushButton("찾아보기")
-        folder_btn.setProperty("secondary", True)
-        folder_btn.setFixedWidth(100)
-        folder_btn.setMinimumHeight(40)
-        folder_btn.clicked.connect(self._select_folder)
-        folder_row.addWidget(folder_btn)
+        self.folder_btn = QPushButton("찾아보기")
+        self.folder_btn.setProperty("secondary", True)
+        self.folder_btn.setFixedWidth(100)
+        self.folder_btn.setMinimumHeight(40)
+        self.folder_btn.clicked.connect(self._select_folder)
+        folder_row.addWidget(self.folder_btn)
         
         folder_layout.addLayout(folder_row)
         
@@ -2089,6 +2164,11 @@ class MainWindow(QMainWindow):
         self.include_sub_check.setToolTip("하위 폴더의 파일도 함께 변환합니다")
         self.include_sub_check.setChecked(self.config.get("include_sub", True))
         folder_layout.addWidget(self.include_sub_check)
+        
+        # 저장된 폴더 경로 복원
+        saved_folder = self.config.get("folder_path", "")
+        if saved_folder and Path(saved_folder).exists():
+            self.folder_entry.setText(saved_folder)
         
         input_layout.addWidget(self.folder_widget)
         
@@ -2108,26 +2188,26 @@ class MainWindow(QMainWindow):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
         
-        add_btn = QPushButton("➕ 파일 추가")
-        add_btn.setProperty("secondary", True)
-        add_btn.setMinimumHeight(36)
-        add_btn.setToolTip("파일 선택 대화상자를 엽니다 (Ctrl+O)")
-        add_btn.clicked.connect(self._browse_files)
-        btn_row.addWidget(add_btn)
+        self.add_btn = QPushButton("➕ 파일 추가")
+        self.add_btn.setProperty("secondary", True)
+        self.add_btn.setMinimumHeight(36)
+        self.add_btn.setToolTip("파일 선택 대화상자를 엽니다 (Ctrl+O)")
+        self.add_btn.clicked.connect(self._browse_files)
+        btn_row.addWidget(self.add_btn)
         
-        remove_btn = QPushButton("➖ 선택 제거")
-        remove_btn.setProperty("secondary", True)
-        remove_btn.setMinimumHeight(36)
-        remove_btn.setToolTip("선택한 파일을 목록에서 제거합니다 (Delete)")
-        remove_btn.clicked.connect(self._remove_selected)
-        btn_row.addWidget(remove_btn)
+        self.remove_btn = QPushButton("➖ 선택 제거")
+        self.remove_btn.setProperty("secondary", True)
+        self.remove_btn.setMinimumHeight(36)
+        self.remove_btn.setToolTip("선택한 파일을 목록에서 제거합니다 (Delete)")
+        self.remove_btn.clicked.connect(self._remove_selected)
+        btn_row.addWidget(self.remove_btn)
         
-        clear_btn = QPushButton("🗑️ 전체 제거")
-        clear_btn.setProperty("secondary", True)
-        clear_btn.setMinimumHeight(36)
-        clear_btn.setToolTip("모든 파일을 목록에서 제거합니다 (Ctrl+Delete)")
-        clear_btn.clicked.connect(self._clear_all)
-        btn_row.addWidget(clear_btn)
+        self.clear_btn = QPushButton("🗑️ 전체 제거")
+        self.clear_btn.setProperty("secondary", True)
+        self.clear_btn.setMinimumHeight(36)
+        self.clear_btn.setToolTip("모든 파일을 목록에서 제거합니다 (Ctrl+Delete)")
+        self.clear_btn.clicked.connect(self._clear_all)
+        btn_row.addWidget(self.clear_btn)
         
         btn_row.addStretch()
         files_layout.addLayout(btn_row)
@@ -2142,6 +2222,7 @@ class MainWindow(QMainWindow):
         self.file_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.file_table.setFixedHeight(180)
         self.file_table.verticalHeader().setVisible(False)
+        self.file_table.setSortingEnabled(False)  # 정렬 비활성화 - file_list 동기화 문제 방지
         files_layout.addWidget(self.file_table)
         
         input_layout.addWidget(self.files_widget)
@@ -2179,6 +2260,11 @@ class MainWindow(QMainWindow):
         output_row.addWidget(self.output_btn)
         
         output_layout.addLayout(output_row)
+        
+        # 저장된 출력 경로 복원
+        saved_output = self.config.get("output_path", "")
+        if saved_output and Path(saved_output).exists():
+            self.output_entry.setText(saved_output)
         
         main_layout.addWidget(output_group)
         
@@ -2318,6 +2404,25 @@ class MainWindow(QMainWindow):
         if folder:
             self.folder_entry.setText(folder)
             self.config["last_folder"] = folder
+            
+            # 폴더 내 HWP/HWPX 파일 수 미리보기
+            try:
+                folder_path = Path(folder)
+                include_sub = self.include_sub_check.isChecked()
+                patterns = ["*.hwp", "*.hwpx"]
+                file_count = 0
+                for pattern in patterns:
+                    if include_sub:
+                        file_count += len(list(folder_path.rglob(pattern)))
+                    else:
+                        file_count += len(list(folder_path.glob(pattern)))
+                
+                if file_count == 0:
+                    self.status_label.setText("⚠️ 폴더에 HWP/HWPX 파일이 없습니다")
+                else:
+                    self.status_label.setText(f"📁 {file_count}개 HWP/HWPX 파일 발견")
+            except Exception as e:
+                logger.warning(f"폴더 스캔 오류: {e}")
     
     def _select_output(self) -> None:
         """출력 폴더 선택"""
@@ -2340,8 +2445,23 @@ class MainWindow(QMainWindow):
     
     def _add_files(self, files: list) -> None:
         """파일 추가 (배치 UI 업데이트로 성능 최적화)"""
+        # 대용량 파일 처리 알림
+        if len(files) > 50:
+            self.status_label.setText(f"📥 {len(files)}개 파일 처리 중...")
+            QApplication.processEvents()  # UI 업데이트 강제
+        
+        # 경로 정규화 (대소문자 차이, 상대/절대 경로 차이 해결)
+        normalized_files = []
+        for f in files:
+            try:
+                normalized = str(Path(f).resolve())
+                normalized_files.append(normalized)
+            except Exception as e:
+                logger.warning(f"경로 정규화 실패: {f} - {e}")
+                normalized_files.append(f)
+        
         # 중복 제거된 새 파일만 필터링 (O(1) 체크)
-        new_files = [f for f in files if f not in self._file_set]
+        new_files = [f for f in normalized_files if f not in self._file_set]
         
         if not new_files:
             return
@@ -2450,9 +2570,12 @@ class MainWindow(QMainWindow):
                 if self.same_location_check.isChecked():
                     output_file = input_file.parent / (input_file.stem + output_ext)
                 else:
-                    output_folder = Path(self.output_entry.text())
-                    if not output_folder:
+                    output_folder_text = self.output_entry.text().strip()
+                    if not output_folder_text:
                         raise ValueError("출력 폴더를 선택하세요.")
+                    output_folder = Path(output_folder_text)
+                    if not output_folder.exists():
+                        raise ValueError(f"출력 폴더가 존재하지 않습니다: {output_folder}")
                     
                     rel_path = input_file.relative_to(folder)
                     output_file = output_folder / rel_path.parent / (input_file.stem + output_ext)
@@ -2463,24 +2586,44 @@ class MainWindow(QMainWindow):
             if not self.file_list:
                 raise ValueError("파일을 추가하세요.")
             
+            # hwpx -> hwpx 변환 방지: 건너뛸 파일 수 카운트
+            skipped_hwpx = 0
+            
             for file_path in self.file_list:
                 input_file = Path(file_path)
+                
+                # HWPX 형식으로 변환 시 .hwpx 파일은 건너뛰기
+                if format_type == "HWPX" and input_file.suffix.lower() == ".hwpx":
+                    skipped_hwpx += 1
+                    logger.info(f"HWPX->HWPX 변환 건너뜀: {input_file.name}")
+                    continue
                 
                 if self.same_location_check.isChecked():
                     output_file = input_file.parent / (input_file.stem + output_ext)
                 else:
-                    output_folder = Path(self.output_entry.text())
-                    if not output_folder:
+                    output_folder_text = self.output_entry.text().strip()
+                    if not output_folder_text:
                         raise ValueError("출력 폴더를 선택하세요.")
+                    output_folder = Path(output_folder_text)
+                    if not output_folder.exists():
+                        raise ValueError(f"출력 폴더가 존재하지 않습니다: {output_folder}")
                     
                     output_file = output_folder / (input_file.stem + output_ext)
                 
                 tasks.append(ConversionTask(input_file, output_file))
+            
+            # 모든 파일이 건너뛰어진 경우
+            if skipped_hwpx > 0 and not tasks:
+                raise ValueError(f"선택한 모든 파일({skipped_hwpx}개)이 이미 HWPX 형식입니다.\nHWPX 파일을 다시 HWPX로 변환할 수 없습니다.")
+            elif skipped_hwpx > 0:
+                logger.info(f"{skipped_hwpx}개 HWPX 파일을 건너뛰었습니다 (HWPX->HWPX 변환 불가)")
         
         return tasks
     
     def _adjust_output_paths(self, tasks: List[ConversionTask]) -> None:
         """출력 경로 조정 (덮어쓰기 방지)"""
+        import datetime
+        
         for task in tasks:
             if task.output_file.exists():
                 counter = 1
@@ -2488,13 +2631,19 @@ class MainWindow(QMainWindow):
                 ext = task.output_file.suffix
                 parent = task.output_file.parent
                 
-                while True:
+                while counter <= MAX_FILENAME_COUNTER:
                     new_name = f"{stem} ({counter}){ext}"
                     new_path = parent / new_name
                     if not new_path.exists():
                         task.output_file = new_path
                         break
                     counter += 1
+                else:
+                    # 카운터 초과 시 타임스탬프 사용
+                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    new_name = f"{stem}_{timestamp}{ext}"
+                    task.output_file = parent / new_name
+                    logger.warning(f"파일명 카운터 초과, 타임스탬프 사용: {new_name}")
     
     def _save_settings(self) -> None:
         """설정 저장"""
@@ -2504,11 +2653,26 @@ class MainWindow(QMainWindow):
         self.config["include_sub"] = self.include_sub_check.isChecked()
         self.config["same_location"] = self.same_location_check.isChecked()
         self.config["overwrite"] = self.overwrite_check.isChecked()
+        
+        # 폴더 및 출력 경로 저장
+        if self.folder_entry.text().strip():
+            self.config["folder_path"] = self.folder_entry.text().strip()
+        if self.output_entry.text().strip():
+            self.config["output_path"] = self.output_entry.text().strip()
+        
         save_config(self.config)
     
     def _start_conversion(self) -> None:
         """변환 시작"""
         try:
+            # 출력 폴더 쓰기 권한 사전 검사
+            if not self.same_location_check.isChecked():
+                output_path = self.output_entry.text().strip()
+                if output_path:
+                    output_folder = Path(output_path)
+                    if output_folder.exists() and not check_write_permission(output_folder):
+                        raise ValueError(f"출력 폴더에 쓰기 권한이 없습니다:\n{output_folder}")
+            
             # 작업 목록 생성
             self.tasks = self._collect_tasks()
             
@@ -2564,10 +2728,36 @@ class MainWindow(QMainWindow):
             self.status_label.setText("취소 중...")
     
     def _set_converting_state(self, converting: bool) -> None:
-        """변환 중 상태 설정"""
+        """변환 중 상태 설정 - 입력 위젯 비활성화 포함"""
         self.is_converting = converting
         self.start_btn.setEnabled(not converting)
         self.cancel_btn.setEnabled(converting)
+        
+        # 변환 중에는 주요 입력 위젯 비활성화
+        self.folder_radio.setEnabled(not converting)
+        self.files_radio.setEnabled(not converting)
+        self.pdf_card.setEnabled(not converting)
+        self.hwpx_card.setEnabled(not converting)
+        self.docx_card.setEnabled(not converting)
+        self.same_location_check.setEnabled(not converting)
+        self.overwrite_check.setEnabled(not converting)
+        self.include_sub_check.setEnabled(not converting)
+        
+        # 파일 목록 변경 방지 - 변환 중 파일 추가/제거 차단
+        if hasattr(self, 'drop_area'):
+            self.drop_area.setEnabled(not converting)
+        if hasattr(self, 'add_btn'):
+            self.add_btn.setEnabled(not converting)
+        if hasattr(self, 'remove_btn'):
+            self.remove_btn.setEnabled(not converting)
+        if hasattr(self, 'clear_btn'):
+            self.clear_btn.setEnabled(not converting)
+        
+        # 폴더 모드 버튼도 비활성화
+        if hasattr(self, 'folder_btn'):
+            self.folder_btn.setEnabled(not converting)
+        if hasattr(self, 'output_btn'):
+            self.output_btn.setEnabled(not converting)
     
     def _on_progress_updated(self, current: int, total: int, filename: str) -> None:
         """진행률 업데이트"""
@@ -2623,6 +2813,12 @@ class MainWindow(QMainWindow):
         """워커 종료"""
         self._set_converting_state(False)
         
+        # UI 상태 초기화 (취소 후에도 깔끔한 UI)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("0 / 0")
+        self.status_label.setText("대기 중")
+        self.hwp_status_label.setText("🟢 한글 대기중")
+        
         # 시그널 연결 해제 (메모리 누수 방지)
         if self.worker:
             try:
@@ -2651,7 +2847,8 @@ class MainWindow(QMainWindow):
             
             if self.worker:
                 self.worker.cancel()
-                self.worker.wait(3000)  # 최대 3초 대기
+                if not self.worker.wait(WORKER_WAIT_TIMEOUT):
+                    logger.warning(f"워커 스레드가 {WORKER_WAIT_TIMEOUT}ms 내에 종료되지 않았습니다")
         
         # 토스트 매니저 정리
         if hasattr(self, 'toast') and self.toast:
