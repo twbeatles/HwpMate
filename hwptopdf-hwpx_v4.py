@@ -1,7 +1,16 @@
 """
-HWP/HWPX 변환기 v8.4 - PyQt6 현대화 버전
+HWP/HWPX 변환기 v8.6 - PyQt6 현대화 버전
 안정성과 사용성에 초점을 맞춘 현대적 GUI 버전
 DOCX 변환 지원 추가
+
+v8.6 업데이트:
+- 탭 기반 변환 형식 선택 UI (문서/이미지 분리)
+- 자동 백업 기능 추가 (변환 전 원본 백업)
+- 다양한 포맷 지원 확장 (이미지, 웹 문서 등)
+
+v8.5 업데이트:
+- 안정성 및 UX 개선
+- 실패 목록 내보내기
 
 v8.4 업데이트:
 - 네이티브 Windows 드래그 앤 드롭 구현 (관리자 권한 호환)
@@ -25,6 +34,8 @@ import os
 import json
 import ctypes
 import logging
+from logging.handlers import RotatingFileHandler
+import platform
 import subprocess
 import time
 from pathlib import Path
@@ -35,14 +46,27 @@ os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 
 # 버전 및 상수
-VERSION = "8.5"
+VERSION = "8.6"
 SUPPORTED_EXTENSIONS = ('.hwp', '.hwpx')
 
 # 한글 COM SaveAs 지원 포맷: HWP, HWPX, ODT, HTML, TEXT, UNICODE, PDF, PDFA, OOXML(돁스)
+# 한글 COM SaveAs 지원 포맷 정의
 FORMAT_TYPES = {
-    'PDF': {'ext': '.pdf', 'save_format': 'PDF'},
-    'HWPX': {'ext': '.hwpx', 'save_format': 'HWPX'},
-    'DOCX': {'ext': '.docx', 'save_format': 'OOXML'},  # OOXML = MS Word DOCX
+    # 문서 포맷
+    'HWP': {'ext': '.hwp', 'save_format': 'HWP', 'icon': '📝', 'desc': '한글 문서'},
+    'HWPX': {'ext': '.hwpx', 'save_format': 'HWPX', 'icon': '📘', 'desc': '한글 표준 문서'},
+    'PDF': {'ext': '.pdf', 'save_format': 'PDF', 'icon': '📕', 'desc': 'PDF 문서'},
+    'DOCX': {'ext': '.docx', 'save_format': 'OOXML', 'icon': '📄', 'desc': 'MS Word'},
+    'ODT': {'ext': '.odt', 'save_format': 'ODT', 'icon': '🌐', 'desc': 'ODF 텍스트'},
+    'HTML': {'ext': '.html', 'save_format': 'HTML', 'icon': '🌍', 'desc': '웹 문서'},
+    'RTF': {'ext': '.rtf', 'save_format': 'RTF', 'icon': '📋', 'desc': '서식있는 텍스트'},
+    'TXT': {'ext': '.txt', 'save_format': 'TEXT', 'icon': '📝', 'desc': '텍스트 문서'},
+    
+    # 이미지 포맷
+    'PNG': {'ext': '.png', 'save_format': 'PNG', 'icon': '🖼️', 'desc': 'PNG 이미지'},
+    'JPG': {'ext': '.jpg', 'save_format': 'JPG', 'icon': '📷', 'desc': 'JPG 이미지'},
+    'BMP': {'ext': '.bmp', 'save_format': 'BMP', 'icon': '🎨', 'desc': 'BMP 이미지'},
+    'GIF': {'ext': '.gif', 'save_format': 'GIF', 'icon': '🎞️', 'desc': 'GIF 이미지'},
 }
 
 # UI 상수
@@ -72,7 +96,7 @@ try:
         QLineEdit, QFileDialog, QProgressBar, QTableWidget, QTableWidgetItem,
         QHeaderView, QMessageBox, QDialog, QTextEdit, QFrame,
         QSystemTrayIcon, QMenu, QButtonGroup, QScrollArea,
-        QStyle, QStyleFactory, QStatusBar
+        QStyle, QStyleFactory, QStatusBar, QTabWidget
     )
     from PyQt6.QtCore import (
         Qt, QThread, pyqtSignal, QPropertyAnimation, QEasingCurve,
@@ -97,11 +121,21 @@ except ImportError:
     PYWIN32_AVAILABLE = False
 
 # 로깅 설정
+log_dir = Path.home() / ".hwp_converter" / "logs"
+log_dir.mkdir(parents=True, exist_ok=True)
+log_file = log_dir / "hwp_converter.log"
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
+        RotatingFileHandler(
+            log_file,
+            maxBytes=10*1024*1024,  # 10MB
+            backupCount=5,
+            encoding='utf-8'
+        )
     ]
 )
 logger = logging.getLogger(__name__)
@@ -399,6 +433,37 @@ class ThemeManager:
             color: #ffffff;
             background-color: transparent;
         }
+
+        /* 탭 위젯 */
+        QTabWidget::pane {
+            border: 1px solid #0f3460;
+            background-color: #16213e;
+            border-radius: 8px;
+        }
+        QTabWidget::tab-bar {
+            left: 5px;
+        }
+        QTabBar::tab {
+            background: #0f3460;
+            color: #888899;
+            border: 1px solid #0f3460;
+            border-bottom-color: #0f3460;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            min-width: 100px;
+            padding: 8px 15px;
+            margin-right: 2px;
+            font-weight: bold;
+        }
+        QTabBar::tab:selected, QTabBar::tab:hover {
+            background: #16213e;
+            color: #e94560;
+            border-color: #0f3460;
+            border-bottom-color: #16213e;
+        }
+        QTabBar::tab:selected {
+            border-top: 2px solid #e94560;
+        }
     """
     
     LIGHT_THEME = """
@@ -655,9 +720,9 @@ class ThemeManager:
         /* 포맷 카드 */
         QFrame[formatCard="true"] {
             background-color: #ffffff;
-            border: 2px solid #dfe6e9;
-            border-radius: 12px;
-            padding: 15px;
+            border: 4px solid #dfe6e9;
+            border-radius: 13px;
+            padding: 17px;
         }
         QFrame[formatCard="true"] QLabel {
             color: #2d3436;
@@ -669,13 +734,44 @@ class ThemeManager:
         }
         QFrame[formatCardSelected="true"] {
             background-color: #f0f0ff;
-            border: 2px solid #6c5ce7;
-            border-radius: 12px;
-            padding: 15px;
+            border: 4px solid #6c5ce7;
+            border-radius: 13px;
+            padding: 17px;
         }
         QFrame[formatCardSelected="true"] QLabel {
             color: #2d3436;
             background-color: transparent;
+        }
+
+        /* 탭 위젯 */
+        QTabWidget::pane {
+            border: 1px solid #dfe6e9;
+            background-color: #ffffff;
+            border-radius: 8px;
+        }
+        QTabWidget::tab-bar {
+            left: 5px;
+        }
+        QTabBar::tab {
+            background: #f1f2f6;
+            color: #636e72;
+            border: 1px solid #dfe6e9;
+            border-bottom-color: #dfe6e9;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            min-width: 100px;
+            padding: 8px 15px;
+            margin-right: 2px;
+            font-weight: bold;
+        }
+        QTabBar::tab:selected, QTabBar::tab:hover {
+            background: #ffffff;
+            color: #6c5ce7;
+            border-color: #dfe6e9;
+            border-bottom-color: #ffffff;
+        }
+        QTabBar::tab:selected {
+            border-top: 2px solid #6c5ce7;
         }
     """
     
@@ -1194,6 +1290,13 @@ class ConversionWorker(QThread):
                 # 상태 업데이트
                 self.progress_updated.emit(idx, total, task.input_file.name)
                 
+                # 0. 백업 수행 (안전장치)
+                try:
+                    self._create_backup(task.input_file)
+                except Exception as e:
+                    logger.warning(f"백업 실패 (계속 진행): {e}")
+                    # 백업 실패해도 변환은 계속 진행 (선택사항)
+                
                 # 출력 폴더 생성
                 try:
                     task.output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1250,6 +1353,41 @@ class ConversionWorker(QThread):
                     pythoncom.CoUninitialize()
                 except Exception:
                     pass
+
+    def force_terminate(self) -> None:
+        """한글 프로세스 강제 종료 (응답 없음 시)"""
+        try:
+            # HWP 프로세스 찾아서 종료 (taskkill 사용)
+            # HwpCtrl.exe 또는 Hwp.exe
+            subprocess.run(["taskkill", "/F", "/IM", "Hwp.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["taskkill", "/F", "/IM", "HwpCtrl.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logger.warning("한글 프로세스를 강제로 종료했습니다.")
+        except Exception as e:
+            logger.error(f"프로세스 강제 종료 실패: {e}")
+
+
+    def _create_backup(self, file_path: Path) -> None:
+        """파일 백업 생성"""
+        try:
+            # backup 폴더 생성
+            backup_dir = file_path.parent / "backup"
+            backup_dir.mkdir(exist_ok=True)
+            
+            # 백업 파일명 생성 (원본이름_시간.확장자)
+            # 안전을 위해 덮어쓰지 않고 항상 새 파일 생성
+            import shutil
+            from datetime import datetime
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_name = f"{file_path.stem}_{timestamp}{file_path.suffix}"
+            backup_path = backup_dir / backup_name
+            
+            shutil.copy2(file_path, backup_path)
+            logger.info(f"백업 생성 완료: {backup_path}")
+            
+        except Exception as e:
+            logger.error(f"백업 생성 중 오류: {e}")
+            raise e
 
 
 # ============================================================================
@@ -1613,7 +1751,8 @@ class FormatCard(QFrame):
         
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setSpacing(5)
+        layout.setSpacing(8)  # 간격 약간 증가
+        layout.setContentsMargins(10, 15, 10, 15)  # 상하 여백 확보
         
         # 아이콘
         self.icon_label = QLabel(icon)
@@ -1640,6 +1779,14 @@ class FormatCard(QFrame):
         layout.addWidget(self.desc_label)
         
         self.setToolTip(f"{title} 형식으로 변환합니다")
+        
+        # 그림자 효과 추가
+        from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(10)
+        shadow.setColor(QColor(0, 0, 0, 30))
+        shadow.setOffset(0, 2)
+        self.setGraphicsEffect(shadow)
     
     def mousePressEvent(self, event) -> None:
         """클릭 이벤트"""
@@ -1769,14 +1916,23 @@ class ResultDialog(QDialog):
                 QMessageBox.warning(self, "저장 실패", f"파일 저장 중 오류 발생:\n{e}")
     
     def _open_output_folder(self) -> None:
-        """출력 폴더 열기"""
+        """출력 폴더 열기 (파일 선택)"""
         if self.output_paths:
-            # 첫 번째 출력 파일의 폴더 열기
+            # 첫 번째 출력 파일
             first_path = Path(self.output_paths[0])
+            
+            # 파일이 존재하면 /select로 선택하여 열기
+            if first_path.exists():
+                try:
+                    subprocess.run(['explorer', '/select,', str(first_path)], check=False)
+                    return
+                except Exception as e:
+                    logger.debug(f"파일 선택 열기 실패: {e}")
+
+            # 파일 선택 실패 시 폴더만 열기
             folder = first_path.parent if first_path.is_file() else first_path
             if folder.exists():
                 try:
-                    # Windows 탐색기에서 폴더 열기
                     subprocess.run(['explorer', str(folder)], check=False)
                 except Exception as e:
                     logger.error(f"폴더 열기 실패: {e}")
@@ -1821,6 +1977,8 @@ class MainWindow(QMainWindow):
         self.toast = ToastManager(self)
         
         logger.info(f"HWP 변환기 v{VERSION} 시작")
+        logger.info(f"시스템 정보: {platform.system()} {platform.release()} ({platform.version()})")
+        logger.info(f"Python 버전: {sys.version}")
     
     def showEvent(self, event) -> None:
         """윈도우 표시 이벤트 - 네이티브 드래그 앤 드롭 활성화"""
@@ -2273,32 +2431,79 @@ class MainWindow(QMainWindow):
         options_layout = QVBoxLayout(options_group)
         options_layout.setSpacing(15)
         
-        # 변환 형식 카드 UI
-        format_cards_layout = QHBoxLayout()
-        format_cards_layout.setSpacing(15)
+        # 변환 형식 카드 UI (Tab Widget 사용)
+        from PyQt6.QtWidgets import QGridLayout, QTabWidget
         
-        # PDF 카드
-        self.pdf_card = FormatCard("PDF", "📕", "PDF", "문서 공유용")
-        self.pdf_card.clicked.connect(self._on_format_card_clicked)
-        format_cards_layout.addWidget(self.pdf_card)
+        self.format_tabs = QTabWidget()
+        self.format_cards = {}
         
-        # HWPX 카드
-        self.hwpx_card = FormatCard("HWPX", "📘", "HWPX", "한글 호환")
-        self.hwpx_card.clicked.connect(self._on_format_card_clicked)
-        format_cards_layout.addWidget(self.hwpx_card)
+        # 탭별 포맷 정의
+        tabs_config = {
+            "문서 변환": [
+                'HWP', 'HWPX', 'PDF', 'DOCX', 
+                'ODT', 'HTML', 'RTF', 'TXT'
+            ],
+            "이미지 변환": [
+                'PNG', 'JPG', 'BMP', 'GIF'
+            ]
+        }
         
-        # DOCX 카드
-        self.docx_card = FormatCard("DOCX", "📄", "DOCX", "Word 호환")
-        self.docx_card.clicked.connect(self._on_format_card_clicked)
-        format_cards_layout.addWidget(self.docx_card)
-        
-        format_cards_layout.addStretch()
+        for tab_name, formats in tabs_config.items():
+            tab_widget = QWidget()
+            tab_layout = QGridLayout(tab_widget)
+            tab_layout.setSpacing(15)
+            tab_layout.setContentsMargins(15, 15, 15, 15)
+            
+            row = 0
+            col = 0
+            max_cols = 4
+            
+            for fmt_key in formats:
+                if fmt_key not in FORMAT_TYPES:
+                    continue
+                    
+                info = FORMAT_TYPES[fmt_key]
+                card = FormatCard(
+                    fmt_key, 
+                    info['icon'], 
+                    fmt_key, 
+                    info['desc']
+                )
+                card.clicked.connect(self._on_format_card_clicked)
+                card.setMinimumSize(120, 120) # 크기 충분히 확보 (텍스트 잘림 방지)
+                card.setMaximumWidth(1000)
+                
+                tab_layout.addWidget(card, row, col)
+                self.format_cards[fmt_key] = card
+                
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row += 1
+            
+            # 빈 공간 채우기 (레이아웃 틀어짐 방지)
+            if col > 0:
+                tab_layout.setColumnStretch(max_cols-1, 1)
+            tab_layout.setRowStretch(row+1, 1)
+                
+            self.format_tabs.addTab(tab_widget, tab_name)
         
         # 저장된 형식 복원
         self._selected_format = self.config.get("format", "PDF")
+        # 없는 형식이면 기본값 PDF
+        if self._selected_format not in FORMAT_TYPES:
+            self._selected_format = "PDF"
+            
+        # 선택된 포맷이 있는 탭 활성화
+        for i in range(self.format_tabs.count()):
+            tab_name = self.format_tabs.tabText(i)
+            if self._selected_format in tabs_config.get(tab_name, []):
+                self.format_tabs.setCurrentIndex(i)
+                break
+            
         self._update_format_cards()
         
-        options_layout.addLayout(format_cards_layout)
+        options_layout.addWidget(self.format_tabs)
         
         # 덮어쓰기 옵션
         self.overwrite_check = QCheckBox("기존 파일 덮어쓰기 (체크 해제 시 번호 자동 추가)")
@@ -2332,6 +2537,12 @@ class MainWindow(QMainWindow):
         btn_layout.addWidget(self.cancel_btn)
         
         main_layout.addLayout(btn_layout)
+        
+        # 팁 메시지
+        tip_label = QLabel("💡 Tip: 변환 시작 시 나오는 팝업에서 '모두 허용'을 눌러주셔야 진행됩니다.")
+        tip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        tip_label.setStyleSheet("color: #ff9f43; font-weight: bold; margin-top: 5px;")
+        main_layout.addWidget(tip_label)
         
         # === 진행 상태 ===
         progress_group = QGroupBox("진행 상태")
@@ -2381,9 +2592,8 @@ class MainWindow(QMainWindow):
     
     def _update_format_cards(self) -> None:
         """포맷 카드 선택 상태 업데이트"""
-        self.pdf_card.setSelected(self._selected_format == "PDF")
-        self.hwpx_card.setSelected(self._selected_format == "HWPX")
-        self.docx_card.setSelected(self._selected_format == "DOCX")
+        for fmt_key, card in self.format_cards.items():
+            card.setSelected(self._selected_format == fmt_key)
     
     def _update_mode_ui(self) -> None:
         """모드에 따라 UI 업데이트"""
@@ -2467,6 +2677,7 @@ class MainWindow(QMainWindow):
             return
         
         # 대량 파일 추가 시 UI 업데이트 일시 중지
+        self.file_table.setUpdatesEnabled(False)
         self.file_table.blockSignals(True)
         try:
             for file_path in new_files:
@@ -2481,6 +2692,7 @@ class MainWindow(QMainWindow):
                 self.file_table.setItem(row, 1, QTableWidgetItem(str(Path(file_path).parent)))
         finally:
             self.file_table.blockSignals(False)
+            self.file_table.setUpdatesEnabled(True)
         
         added = len(new_files)
         self.status_label.setText(f"{added}개 파일 추가됨 (총 {len(self.file_list)}개)")
@@ -2717,15 +2929,27 @@ class MainWindow(QMainWindow):
     
     def _cancel_conversion(self) -> None:
         """변환 취소"""
+        if not self.worker:
+            return
+
         reply = QMessageBox.question(
             self, "확인",
-            "변환을 취소하시겠습니까?",
+            "변환을 취소하시겠습니까?\n(응답이 없으면 '강제 종료'를 시도합니다)",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
-        if reply == QMessageBox.StandardButton.Yes and self.worker:
+        if reply == QMessageBox.StandardButton.Yes:
+            self.status_label.setText("취소 요청 중...")
             self.worker.cancel()
-            self.status_label.setText("취소 중...")
+            
+            # 3초 내에 종료되지 않으면 강제 종료
+            if not self.worker.wait(3000):
+                self.status_label.setText("응답 없음 - 강제 종료 중...")
+                QApplication.processEvents()
+                self.worker.force_terminate()
+                self.worker.wait(1000)  # 강제 종료 후 잠시 대기
+            
+            self.status_label.setText("취소됨")
     
     def _set_converting_state(self, converting: bool) -> None:
         """변환 중 상태 설정 - 입력 위젯 비활성화 포함"""
@@ -2736,9 +2960,12 @@ class MainWindow(QMainWindow):
         # 변환 중에는 주요 입력 위젯 비활성화
         self.folder_radio.setEnabled(not converting)
         self.files_radio.setEnabled(not converting)
-        self.pdf_card.setEnabled(not converting)
-        self.hwpx_card.setEnabled(not converting)
-        self.docx_card.setEnabled(not converting)
+        self.files_radio.setEnabled(not converting)
+        
+        # 포맷 카드 비활성화
+        for card in self.format_cards.values():
+            card.setEnabled(not converting)
+            
         self.same_location_check.setEnabled(not converting)
         self.overwrite_check.setEnabled(not converting)
         self.include_sub_check.setEnabled(not converting)
