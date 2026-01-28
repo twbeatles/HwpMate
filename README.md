@@ -1,6 +1,6 @@
-# HWP/HWPX 변환기 v8.6 (PyQt6)
+# HwpMate 
 
-한글(HWP/HWPX) 파일을 **PDF, HWPX, DOCX**로 일괄 변환하는 Windows용 GUI 프로그램
+한컴오피스 한글(HWP/HWPX) 파일을 **PDF, HWPX, DOCX, HTML, ODT, RTF, TXT, 이미지(PNG, JPG, BMP, GIF)** 등 다양한 포맷으로 손쉽게 일괄 변환하는 Windows용 GUI 프로그램입니다.
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![PyQt6](https://img.shields.io/badge/PyQt6-6.0+-green.svg)
@@ -20,7 +20,7 @@
 | 🌐 **HTML/ODT** | 웹 및 오픈 문서 형식 지원 |
 | 🖼️ **이미지** | PNG, JPG, BMP, GIF 이미지 변환 지원 |
 
-### UI/UX 기능
+### HwpMate만의 특징
 - **탭 기반 인터페이스** - '문서 변환'과 '이미지 변환'을 탭으로 구분하여 정리
 - **변환 형식 카드 UI** - 시각적으로 직관적인 형식 선택 (텍스트 잘림 방지 개선)
 - **자동 백업** - 변환 전 원본 파일을 안전하게 백업 (`backup` 폴더 자동 생성)
@@ -165,7 +165,7 @@ hwp-to-pdf-hwpx/
 
 ## 📄 라이선스
 
-MIT License | Copyright (c) 2024-2025
+MIT License | Copyright (c) 2025-2026
 
 ---
 
