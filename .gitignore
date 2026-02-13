@@ -1,0 +1,41 @@
+# ===== Python cache/bytecode =====
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ===== Virtual environments =====
+.venv/
+venv/
+ENV/
+env/
+
+# ===== Test/Lint caches (있을 수 있으니 선제 대응) =====
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ===== Packaging/Build =====
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# ===== PyInstaller extras =====
+# (spec 파일은 추적할 것이므로 *.spec 는 ignore 하지 않음)
+*.manifest
+
+# ===== Logs / local artifacts =====
+*.log
+*.bak
+*.tmp
+*.swp
+
+# ===== OS / IDE =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+
