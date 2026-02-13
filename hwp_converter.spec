@@ -83,7 +83,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='HwpMate',
+    name='HWP변환기_v8.6',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,  # Windows에서는 strip 효과 제한적

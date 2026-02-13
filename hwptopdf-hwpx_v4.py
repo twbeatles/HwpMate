@@ -1,5 +1,5 @@
 """
-HwpMate v8.6 - PyQt6 현대화 버전
+HWP/HWPX 변환기 v8.6 - PyQt6 현대화 버전
 안정성과 사용성에 초점을 맞춘 현대적 GUI 버전
 DOCX 변환 지원 추가
 
@@ -1976,7 +1976,7 @@ class MainWindow(QMainWindow):
         # Toast 관리자 초기화 (스택 지원)
         self.toast = ToastManager(self)
         
-        logger.info(f"HwpMate v{VERSION} 시작")
+        logger.info(f"HWP 변환기 v{VERSION} 시작")
         logger.info(f"시스템 정보: {platform.system()} {platform.release()} ({platform.version()})")
         logger.info(f"Python 버전: {sys.version}")
     
@@ -2127,7 +2127,7 @@ class MainWindow(QMainWindow):
         
         # 기본 아이콘 설정 (앱 아이콘 또는 기본)
         self.tray_icon.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView))
-        self.tray_icon.setToolTip(f"HwpMate v{VERSION}")
+        self.tray_icon.setToolTip(f"HWP 변환기 v{VERSION}")
         
         # 트레이 메뉴
         tray_menu = QMenu()
@@ -2172,7 +2172,7 @@ class MainWindow(QMainWindow):
     
     def _show_usage(self) -> None:
         """사용법 표시"""
-        usage_text = """<h3>HwpMate 사용법</h3>
+        usage_text = """<h3>HWP 변환기 사용법</h3>
         
 <p><b>1. 변환 모드 선택</b></p>
 <ul>
@@ -2200,7 +2200,7 @@ class MainWindow(QMainWindow):
     
     def _show_about(self) -> None:
         """프로그램 정보 표시"""
-        about_text = f"""<h2>HwpMate v{VERSION}</h2>
+        about_text = f"""<h2>HWP 변환기 v{VERSION}</h2>
 <p>HWP/HWPX 파일을 PDF, HWPX, DOCX로 변환하는 프로그램</p>
 
 <p><b>주요 기능:</b></p>
@@ -2224,7 +2224,7 @@ class MainWindow(QMainWindow):
     
     def _init_ui(self) -> None:
         """UI 초기화"""
-        self.setWindowTitle(f"HwpMate v{VERSION}")
+        self.setWindowTitle(f"HWP 변환기 v{VERSION} - PyQt6")
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         self.resize(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT)
         
@@ -2246,7 +2246,7 @@ class MainWindow(QMainWindow):
         # === 헤더 ===
         header_layout = QHBoxLayout()
         
-        title_label = QLabel("HwpMate")
+        title_label = QLabel("HWP / HWPX 변환기")
         title_label.setProperty("heading", True)
         header_layout.addWidget(title_label)
         
