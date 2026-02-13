@@ -14,6 +14,22 @@ hwp.SaveAs(path, format, "") 형태로 3번째 인자(빈 문자열)를 명시�
 
 파일 열기(Open)와 저장(SaveAs) 사이 안정적인 처리를 위해 time.sleep(1.0) 대기 시간 유지.
 
+👑 v8.6 (Modern UI & Stability)
+
+통합 및 안정성 강화:
+
+코드베이스 동기화: 개발 버전(dist copy)을 메인으로 통합 및 정리.
+
+로깅 시스템: RotatingFileHandler 도입 (로그 자동 순환, 시스템 정보 기록).
+
+프로세스 안전장치: 변환 중 '응답 없음' 시 좀비 프로세스(Hwp.exe) 강제 종료(Force Kill) 기능 추가.
+
+최적화:
+
+대량 파일 추가 시 UI 프리징 현상 해결 (SetUpdatesEnabled 최적화).
+
+결과 창에서 '폴더 열기' 시 해당 파일 자동 선택(Highlight) 기능 지원.
+
 🛠 v8.0 ~ v8.2: 구조 개선 및 레지스트리 오류 대응
 
 리팩토링 및 COM 객체 연결 안정화
