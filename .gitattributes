@@ -1,0 +1,35 @@
+# Normalize line endings to LF in the repo to reduce merge noise on Windows.
+# (Working tree CRLF/LF behavior will follow these rules, regardless of core.autocrlf.)
+* text=auto
+
+# Git control files
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+
+# Source/docs
+*.py   text eol=lf
+*.md   text eol=lf
+*.spec text eol=lf
+*.txt  text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+
+# Windows scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets
+*.exe binary
+*.dll binary
+*.pyd binary
+*.7z  binary
+*.zip binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
