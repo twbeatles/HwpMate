@@ -4,9 +4,6 @@ HWP 변환기 v8.4 - PyInstaller 빌드 설정
 경량화 빌드를 위한 최적화 설정 적용
 """
 
-import sys
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
-
 block_cipher = None
 
 # 제외할 불필요한 모듈 목록 (경량화)
@@ -29,6 +26,9 @@ EXCLUDES = [
     'PyQt6.QtTextToSpeech', 'PyQt6.Qt3DCore',
     'PyQt6.Qt3DInput', 'PyQt6.Qt3DLogic',
     'PyQt6.Qt3DRender', 'PyQt6.Qt3DExtras',
+    'PyQt6.QtCharts', 'PyQt6.QtStateMachine',
+    'PyQt6.QtWebSockets', 'PyQt6.QtSerialBus',
+    'PyQt6.QtSpatialAudio',
     
     # 사용하지 않는 기타 모듈
     'PIL', 'numpy', 'pandas', 'matplotlib',
@@ -70,6 +70,8 @@ a.binaries = [
         'qt6webengine', 'qt6multimedia', 'qt6quick',
         'qt6qml', 'qt6sql', 'qt6network', 'qt6opengl',
         'qt6svg', 'qt6pdf', 'qt6designer',
+        'qt6charts', 'qt6statemachine', 'qt6websockets',
+        'qt6serialbus', 'qt6spatialaudio',
         'd3dcompiler', 'opengl32sw',
     ])
 ]

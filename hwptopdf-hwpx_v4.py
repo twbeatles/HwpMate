@@ -39,7 +39,7 @@ import platform
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Callable, Iterable, Set
 
 # HiDPI 지원 설정 (Qt 초기화 전에 설정 필요)
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
@@ -87,6 +87,8 @@ DOCUMENT_LOAD_DELAY = 1.0
 # 안정성 상수
 MAX_FILENAME_COUNTER = 1000  # 파일명 충돌 시 최대 카운터 제한
 CONFIG_VERSION = 1  # 설정 파일 스키마 버전
+SCAN_BATCH_SIZE = 100
+SCAN_CANCEL_WAIT_MS = 200
 
 # PyQt6 imports
 try:
@@ -100,7 +102,7 @@ try:
     )
     from PyQt6.QtCore import (
         Qt, QThread, pyqtSignal, QPropertyAnimation, QEasingCurve,
-        QTimer, QAbstractNativeEventFilter
+        QTimer, QAbstractNativeEventFilter, QSignalBlocker
     )
     from PyQt6.QtGui import (
         QFont, QIcon, QColor, QDragEnterEvent, QDropEvent,
@@ -1089,6 +1091,142 @@ def check_write_permission(folder_path: Path) -> bool:
         return False
 
 
+def canonicalize_path(path: str) -> str:
+    """경로를 비교/표시에 일관적인 절대경로 문자열로 정규화"""
+    return os.path.abspath(os.path.normpath(str(path)))
+
+
+def make_path_key(path: str) -> str:
+    """Windows 대소문자 비민감 중복 체크용 키 생성"""
+    return os.path.normcase(canonicalize_path(path))
+
+
+def iter_supported_files(
+    root_path: Path,
+    include_sub: bool = True,
+    allowed_exts: Optional[Set[str]] = None,
+    cancel_checker: Optional[Callable[[], bool]] = None,
+) -> Iterable[Path]:
+    """단일 패스로 지원 확장자 파일을 순회"""
+    allowed = allowed_exts or set(SUPPORTED_EXTENSIONS)
+    allowed = {ext.lower() for ext in allowed}
+
+    try:
+        if root_path.is_file():
+            if root_path.suffix.lower() in allowed:
+                yield root_path
+            return
+    except OSError:
+        return
+
+    if not root_path.is_dir():
+        return
+
+    if include_sub:
+        try:
+            for dirpath, _, filenames in os.walk(root_path):
+                if cancel_checker and cancel_checker():
+                    return
+                for filename in filenames:
+                    if cancel_checker and cancel_checker():
+                        return
+                    _, ext = os.path.splitext(filename)
+                    if ext.lower() in allowed:
+                        yield Path(dirpath) / filename
+        except OSError as e:
+            logger.debug(f"하위 폴더 스캔 실패: {root_path} - {e}")
+        return
+
+    try:
+        with os.scandir(root_path) as entries:
+            for entry in entries:
+                if cancel_checker and cancel_checker():
+                    return
+                if not entry.is_file():
+                    continue
+                _, ext = os.path.splitext(entry.name)
+                if ext.lower() in allowed:
+                    yield Path(entry.path)
+    except OSError as e:
+        logger.debug(f"폴더 스캔 실패: {root_path} - {e}")
+
+
+class FileScanWorker(QThread):
+    """파일/폴더 입력을 비동기로 스캔하고 배치 단위로 전달"""
+
+    batch_found = pyqtSignal(list)          # list[str]
+    scan_progress = pyqtSignal(int, int)    # current_root, total_roots
+    scan_finished = pyqtSignal(int, bool)   # total_found, canceled
+    scan_error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        input_paths: List[str],
+        include_sub: bool = True,
+        allowed_exts: Optional[Set[str]] = None,
+        batch_size: int = SCAN_BATCH_SIZE,
+    ):
+        super().__init__()
+        self.input_paths = [str(p) for p in input_paths if str(p).strip()]
+        self.include_sub = include_sub
+        self.allowed_exts = {ext.lower() for ext in (allowed_exts or set(SUPPORTED_EXTENSIONS))}
+        self.batch_size = max(1, int(batch_size))
+        self._cancel_requested = False
+
+    def cancel(self) -> None:
+        self._cancel_requested = True
+
+    def run(self) -> None:
+        start_ts = time.perf_counter()
+        batch: List[str] = []
+        seen_keys: Set[str] = set()
+        found_count = 0
+        total_roots = len(self.input_paths)
+
+        try:
+            for idx, raw_path in enumerate(self.input_paths, start=1):
+                if self._cancel_requested:
+                    break
+
+                root = Path(raw_path)
+                for file_path in iter_supported_files(
+                    root,
+                    include_sub=self.include_sub,
+                    allowed_exts=self.allowed_exts,
+                    cancel_checker=lambda: self._cancel_requested,
+                ):
+                    if self._cancel_requested:
+                        break
+
+                    normalized = canonicalize_path(str(file_path))
+                    key = make_path_key(normalized)
+                    if key in seen_keys:
+                        continue
+
+                    seen_keys.add(key)
+                    batch.append(normalized)
+                    found_count += 1
+
+                    if len(batch) >= self.batch_size:
+                        self.batch_found.emit(batch)
+                        batch = []
+
+                self.scan_progress.emit(idx, total_roots)
+
+            if batch:
+                self.batch_found.emit(batch)
+
+            elapsed = time.perf_counter() - start_ts
+            logger.debug(
+                f"FileScanWorker 완료: 입력={total_roots}, 발견={found_count}, "
+                f"취소={self._cancel_requested}, 소요={elapsed:.3f}s"
+            )
+            self.scan_finished.emit(found_count, self._cancel_requested)
+        except Exception as e:
+            logger.exception("FileScanWorker 실행 중 오류")
+            self.scan_error.emit(str(e))
+
+
 # ============================================================================
 # 변환 엔진 (수정 없음 - 기존 로직 유지)
 # ============================================================================
@@ -1383,7 +1521,7 @@ class ConversionWorker(QThread):
             backup_path = backup_dir / backup_name
             
             shutil.copy2(file_path, backup_path)
-            logger.info(f"백업 생성 완료: {backup_path}")
+            logger.debug(f"백업 생성 완료: {backup_path}")
             
         except Exception as e:
             logger.error(f"백업 생성 중 오류: {e}")
@@ -1510,19 +1648,16 @@ class NativeDropFilter(QAbstractNativeEventFilter):
                 dropped_files = self._get_dropped_files(msg.wParam)
                 
                 if dropped_files and self.files_dropped_callback:
-                    # 유효한 HWP/HWPX 파일만 필터링
-                    valid_files = []
-                    for f in dropped_files:
-                        if f.lower().endswith(SUPPORTED_EXTENSIONS):
-                            valid_files.append(f)
-                        elif Path(f).is_dir():
-                            # 폴더인 경우 하위 HWP/HWPX 파일 검색
-                            for ext in SUPPORTED_EXTENSIONS:
-                                valid_files.extend(str(p) for p in Path(f).rglob(f"*{ext}"))
-                    
-                    if valid_files:
-                        logger.info(f"네이티브 드롭: {len(valid_files)}개 파일")
-                        self.files_dropped_callback(valid_files)
+                    # 폴더 확장은 여기서 하지 않고 MainWindow 비동기 스캐너에서 처리
+                    accepted_inputs = []
+                    for raw_path in dropped_files:
+                        path_obj = Path(raw_path)
+                        if path_obj.is_dir() or raw_path.lower().endswith(SUPPORTED_EXTENSIONS):
+                            accepted_inputs.append(raw_path)
+
+                    if accepted_inputs:
+                        logger.debug(f"네이티브 드롭 입력: {len(accepted_inputs)}개 경로")
+                        self.files_dropped_callback(accepted_inputs)
                 
                 # 메시지 처리 완료
                 return True, 0
@@ -1617,7 +1752,7 @@ class DropArea(QFrame):
         self._original_text = "여기에 파일을 드래그하거나 클릭하여 추가"
     
     def _get_files_from_urls(self, urls) -> list:
-        """URL 목록에서 HWP/HWPX 파일 추출 (폴더 지원)"""
+        """URL 목록에서 스캔 대상 경로(지원 파일/폴더) 추출"""
         files = []
         for url in urls:
             path = url.toLocalFile()
@@ -1625,13 +1760,8 @@ class DropArea(QFrame):
                 continue
             
             path_obj = Path(path)
-            if path_obj.is_file():
-                if path.lower().endswith(SUPPORTED_EXTENSIONS):
-                    files.append(path)
-            elif path_obj.is_dir():
-                # 폴더인 경우 하위 파일 검색
-                for ext in SUPPORTED_EXTENSIONS:
-                    files.extend(str(f) for f in path_obj.rglob(f"*{ext}"))
+            if path_obj.is_dir() or (path_obj.is_file() and path.lower().endswith(SUPPORTED_EXTENSIONS)):
+                files.append(path)
         return files
     
     def _has_valid_content(self, mime_data) -> bool:
@@ -1703,13 +1833,13 @@ class DropArea(QFrame):
             self.files_dropped.emit(files)
             # 성공 피드백
             self.icon_label.setText("✅")
-            self.text_label.setText(f"{len(files)}개 파일 추가됨!")
-            QTimer.singleShot(1500, self._reset_appearance)
-            logger.info(f"드래그 앤 드롭으로 {len(files)}개 파일 추가")
+            self.text_label.setText(f"{len(files)}개 경로 스캔 시작")
+            QTimer.singleShot(FEEDBACK_RESET_DELAY, self._reset_appearance)
+            logger.debug(f"드래그 앤 드롭 입력 수신: {len(files)}개 경로")
         else:
             event.ignore()
             self.text_label.setText("HWP/HWPX 파일이 없습니다")
-            QTimer.singleShot(1500, self._reset_appearance)
+            QTimer.singleShot(FEEDBACK_RESET_DELAY, self._reset_appearance)
             logger.debug("dropEvent - 유효한 HWP/HWPX 파일 없음")
     
     def _reset_appearance(self) -> None:
@@ -1957,8 +2087,13 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.is_converting = False
         self.file_list = []  # 순서 유지를 위한 리스트
-        self._file_set = set()  # 중복 체크를 위한 세트 (O(1) 성능)
+        self._file_set = set()  # 중복 체크용 키 세트 (대소문자 비민감)
         self.conversion_start_time = None
+        self.file_scan_worker = None
+        self._scan_mode = None
+        self._scan_new_file_count = 0
+        self._scan_preview_count = 0
+        self._scan_started_at = None
         
         # 드래그 앤 드롭 초기화 플래그
         self._drag_drop_initialized = False
@@ -2032,17 +2167,17 @@ class MainWindow(QMainWindow):
                 traceback.print_exc()
     
     def _on_native_files_dropped(self, files: list) -> None:
-        """네이티브 드래그 앤 드롭으로 파일이 추가됨"""
+        """네이티브 드래그 앤 드롭 입력 처리 (파일/폴더 경로)"""
         if files:
             self._add_files(files)
             # 시각적 피드백
             if hasattr(self, 'drop_area') and self.drop_area:
                 self.drop_area.icon_label.setText("✅")
-                self.drop_area.text_label.setText(f"{len(files)}개 파일 추가됨!")
-                QTimer.singleShot(1500, self.drop_area._reset_appearance)
+                self.drop_area.text_label.setText(f"{len(files)}개 경로 스캔 시작")
+                QTimer.singleShot(FEEDBACK_RESET_DELAY, self.drop_area._reset_appearance)
             # 토스트 알림
             if hasattr(self, 'toast'):
-                self.toast.show_message(f"📂 {len(files)}개 파일이 추가되었습니다", "✅")
+                self.toast.show_message(f"📂 {len(files)}개 경로를 스캔합니다", "✅")
     
     def _init_menu_bar(self) -> None:
         """메뉴바 초기화"""
@@ -2321,6 +2456,7 @@ class MainWindow(QMainWindow):
         self.include_sub_check = QCheckBox("하위 폴더 포함")
         self.include_sub_check.setToolTip("하위 폴더의 파일도 함께 변환합니다")
         self.include_sub_check.setChecked(self.config.get("include_sub", True))
+        self.include_sub_check.toggled.connect(self._on_include_sub_toggled)
         folder_layout.addWidget(self.include_sub_check)
         
         # 저장된 폴더 경로 복원
@@ -2597,6 +2733,7 @@ class MainWindow(QMainWindow):
     
     def _update_mode_ui(self) -> None:
         """모드에 따라 UI 업데이트"""
+        self._cancel_active_scan()
         is_folder_mode = self.folder_radio.isChecked()
         self.folder_widget.setVisible(is_folder_mode)
         self.files_widget.setVisible(not is_folder_mode)
@@ -2606,6 +2743,212 @@ class MainWindow(QMainWindow):
         same_location = self.same_location_check.isChecked()
         self.output_entry.setEnabled(not same_location)
         self.output_btn.setEnabled(not same_location)
+
+    def _on_include_sub_toggled(self, _: bool) -> None:
+        """하위 폴더 옵션 변경 시 폴더 미리보기 재스캔"""
+        if self.folder_radio.isChecked() and self.folder_entry.text().strip():
+            self._start_folder_preview_scan(self.folder_entry.text().strip())
+
+    def _cancel_active_scan(self, wait_ms: int = SCAN_CANCEL_WAIT_MS) -> bool:
+        """진행 중인 파일 스캔이 있으면 취소"""
+        worker = self.file_scan_worker
+        if not worker:
+            return True
+
+        if worker.isRunning():
+            worker.cancel()
+            worker.wait(wait_ms)
+
+        if worker.isRunning():
+            return False
+
+        try:
+            worker.batch_found.disconnect(self._on_scan_batch_found)
+            worker.scan_progress.disconnect(self._on_scan_progress)
+            worker.scan_finished.disconnect(self._on_scan_finished)
+            worker.scan_error.disconnect(self._on_scan_error)
+            worker.finished.disconnect(self._on_scan_worker_finished)
+        except (TypeError, RuntimeError):
+            pass
+
+        worker.deleteLater()
+        self.file_scan_worker = None
+        self._scan_mode = None
+        self._scan_started_at = None
+        self._scan_new_file_count = 0
+        self._scan_preview_count = 0
+        return True
+
+    def _start_scan(
+        self,
+        input_paths: List[str],
+        mode: str,
+        include_sub: bool = True,
+        allowed_exts: Optional[Set[str]] = None,
+    ) -> None:
+        """비동기 파일 스캔 시작"""
+        cleaned_inputs = [str(p).strip() for p in input_paths if str(p).strip()]
+        if not cleaned_inputs:
+            return
+
+        if not self._cancel_active_scan():
+            logger.warning("이전 파일 스캔이 아직 종료되지 않아 새 스캔을 시작하지 않습니다.")
+            return
+
+        self._scan_mode = mode
+        self._scan_new_file_count = 0
+        self._scan_preview_count = 0
+        self._scan_started_at = time.perf_counter()
+
+        self.file_scan_worker = FileScanWorker(
+            cleaned_inputs,
+            include_sub=include_sub,
+            allowed_exts=allowed_exts or set(SUPPORTED_EXTENSIONS),
+            batch_size=SCAN_BATCH_SIZE,
+        )
+        self.file_scan_worker.batch_found.connect(self._on_scan_batch_found)
+        self.file_scan_worker.scan_progress.connect(self._on_scan_progress)
+        self.file_scan_worker.scan_finished.connect(self._on_scan_finished)
+        self.file_scan_worker.scan_error.connect(self._on_scan_error)
+        self.file_scan_worker.finished.connect(self._on_scan_worker_finished)
+        self.file_scan_worker.start()
+
+    def _start_folder_preview_scan(self, folder_path: str) -> None:
+        """폴더 모드 파일 수 미리보기 스캔 시작"""
+        self.status_label.setText("📂 폴더 스캔 중...")
+        self._start_scan(
+            [folder_path],
+            mode="folder_preview",
+            include_sub=self.include_sub_check.isChecked(),
+            allowed_exts=set(SUPPORTED_EXTENSIONS),
+        )
+
+    def _append_files_batch(self, files: List[str]) -> int:
+        """파일 목록을 배치로 렌더링"""
+        if not files:
+            return 0
+
+        unique_files: List[str] = []
+        for raw_path in files:
+            normalized = canonicalize_path(raw_path)
+            key = make_path_key(normalized)
+            if key in self._file_set:
+                continue
+            self._file_set.add(key)
+            unique_files.append(normalized)
+
+        if not unique_files:
+            return 0
+
+        render_start = time.perf_counter()
+        start_row = self.file_table.rowCount()
+        end_row = start_row + len(unique_files)
+
+        self.file_table.setUpdatesEnabled(False)
+        blocker = QSignalBlocker(self.file_table)
+        try:
+            self.file_table.setRowCount(end_row)
+            for row_idx, file_path in enumerate(unique_files, start=start_row):
+                file_obj = Path(file_path)
+                self.file_table.setItem(row_idx, 0, QTableWidgetItem(file_obj.name))
+                self.file_table.setItem(row_idx, 1, QTableWidgetItem(str(file_obj.parent)))
+        finally:
+            del blocker
+            self.file_table.setUpdatesEnabled(True)
+
+        self.file_list.extend(unique_files)
+        self._update_file_count()
+
+        if logger.isEnabledFor(logging.DEBUG):
+            elapsed = time.perf_counter() - render_start
+            logger.debug(f"파일 목록 렌더링: batch={len(unique_files)}, 소요={elapsed:.4f}s")
+        return len(unique_files)
+
+    def _on_scan_batch_found(self, batch: list) -> None:
+        """비동기 스캔 배치 결과 처리"""
+        if self.sender() is not self.file_scan_worker:
+            return
+
+        if self._scan_mode == "add_files":
+            added = self._append_files_batch(batch)
+            self._scan_new_file_count += added
+            return
+
+        if self._scan_mode == "folder_preview":
+            self._scan_preview_count += len(batch)
+
+    def _on_scan_progress(self, current: int, total: int) -> None:
+        """비동기 스캔 진행률 처리"""
+        if self.sender() is not self.file_scan_worker:
+            return
+
+        if self._scan_mode == "add_files":
+            self.status_label.setText(
+                f"📥 파일 스캔 중... {current}/{total} 경로 처리 (신규 {self._scan_new_file_count}개)"
+            )
+            return
+
+        if self._scan_mode == "folder_preview":
+            self.status_label.setText(
+                f"📂 폴더 스캔 중... {current}/{total} 경로 처리 ({self._scan_preview_count}개 발견)"
+            )
+
+    def _on_scan_finished(self, total_found: int, canceled: bool) -> None:
+        """비동기 스캔 완료 처리"""
+        if self.sender() is not self.file_scan_worker:
+            return
+
+        elapsed = 0.0
+        if self._scan_started_at is not None:
+            elapsed = time.perf_counter() - self._scan_started_at
+
+        if self._scan_mode == "add_files":
+            if canceled:
+                self.status_label.setText("파일 스캔이 취소되었습니다")
+            elif self._scan_new_file_count == 0:
+                self.status_label.setText("추가할 새 파일이 없습니다")
+            else:
+                self.status_label.setText(
+                    f"{self._scan_new_file_count}개 파일 추가됨 (총 {len(self.file_list)}개)"
+                )
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    f"파일 추가 스캔 완료: 발견={total_found}, 신규={self._scan_new_file_count}, "
+                    f"취소={canceled}, 소요={elapsed:.3f}s"
+                )
+            return
+
+        if self._scan_mode == "folder_preview":
+            if canceled:
+                self.status_label.setText("폴더 스캔이 취소되었습니다")
+            elif self._scan_preview_count == 0:
+                self.status_label.setText("⚠️ 폴더에 HWP/HWPX 파일이 없습니다")
+            else:
+                self.status_label.setText(f"📁 {self._scan_preview_count}개 HWP/HWPX 파일 발견")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    f"폴더 미리보기 스캔 완료: 발견={self._scan_preview_count}, "
+                    f"취소={canceled}, 소요={elapsed:.3f}s"
+                )
+
+    def _on_scan_error(self, error_msg: str) -> None:
+        """비동기 스캔 오류 처리"""
+        if self.sender() is not self.file_scan_worker:
+            return
+        logger.error(f"파일 스캔 오류: {error_msg}")
+        self.status_label.setText("파일 스캔 중 오류가 발생했습니다")
+
+    def _on_scan_worker_finished(self) -> None:
+        """스캔 워커 종료 처리"""
+        worker = self.sender()
+        if worker is not self.file_scan_worker:
+            return
+        worker.deleteLater()
+        self.file_scan_worker = None
+        self._scan_mode = None
+        self._scan_started_at = None
+        self._scan_new_file_count = 0
+        self._scan_preview_count = 0
     
     def _select_folder(self) -> None:
         """폴더 선택"""
@@ -2614,25 +2957,7 @@ class MainWindow(QMainWindow):
         if folder:
             self.folder_entry.setText(folder)
             self.config["last_folder"] = folder
-            
-            # 폴더 내 HWP/HWPX 파일 수 미리보기
-            try:
-                folder_path = Path(folder)
-                include_sub = self.include_sub_check.isChecked()
-                patterns = ["*.hwp", "*.hwpx"]
-                file_count = 0
-                for pattern in patterns:
-                    if include_sub:
-                        file_count += len(list(folder_path.rglob(pattern)))
-                    else:
-                        file_count += len(list(folder_path.glob(pattern)))
-                
-                if file_count == 0:
-                    self.status_label.setText("⚠️ 폴더에 HWP/HWPX 파일이 없습니다")
-                else:
-                    self.status_label.setText(f"📁 {file_count}개 HWP/HWPX 파일 발견")
-            except Exception as e:
-                logger.warning(f"폴더 스캔 오류: {e}")
+            self._start_folder_preview_scan(folder)
     
     def _select_output(self) -> None:
         """출력 폴더 선택"""
@@ -2654,49 +2979,25 @@ class MainWindow(QMainWindow):
             self._add_files(files)
     
     def _add_files(self, files: list) -> None:
-        """파일 추가 (배치 UI 업데이트로 성능 최적화)"""
-        # 대용량 파일 처리 알림
-        if len(files) > 50:
-            self.status_label.setText(f"📥 {len(files)}개 파일 처리 중...")
-            QApplication.processEvents()  # UI 업데이트 강제
-        
-        # 경로 정규화 (대소문자 차이, 상대/절대 경로 차이 해결)
-        normalized_files = []
-        for f in files:
-            try:
-                normalized = str(Path(f).resolve())
-                normalized_files.append(normalized)
-            except Exception as e:
-                logger.warning(f"경로 정규화 실패: {f} - {e}")
-                normalized_files.append(f)
-        
-        # 중복 제거된 새 파일만 필터링 (O(1) 체크)
-        new_files = [f for f in normalized_files if f not in self._file_set]
-        
-        if not new_files:
+        """파일/폴더 입력을 비동기로 스캔해 파일 목록에 추가"""
+        if not files:
             return
-        
-        # 대량 파일 추가 시 UI 업데이트 일시 중지
-        self.file_table.setUpdatesEnabled(False)
-        self.file_table.blockSignals(True)
-        try:
-            for file_path in new_files:
-                self.file_list.append(file_path)
-                self._file_set.add(file_path)
-                
-                row = self.file_table.rowCount()
-                self.file_table.insertRow(row)
-                
-                name = Path(file_path).name
-                self.file_table.setItem(row, 0, QTableWidgetItem(name))
-                self.file_table.setItem(row, 1, QTableWidgetItem(str(Path(file_path).parent)))
-        finally:
-            self.file_table.blockSignals(False)
-            self.file_table.setUpdatesEnabled(True)
-        
-        added = len(new_files)
-        self.status_label.setText(f"{added}개 파일 추가됨 (총 {len(self.file_list)}개)")
-        self._update_file_count()
+
+        requested = [canonicalize_path(p) for p in files if str(p).strip()]
+        if not requested:
+            return
+
+        scan_enqueue_start = time.perf_counter()
+        self.status_label.setText(f"📥 {len(requested)}개 경로 스캔 시작...")
+        self._start_scan(
+            requested,
+            mode="add_files",
+            include_sub=True,
+            allowed_exts=set(SUPPORTED_EXTENSIONS),
+        )
+        if logger.isEnabledFor(logging.DEBUG):
+            elapsed = time.perf_counter() - scan_enqueue_start
+            logger.debug(f"파일 스캔 요청 등록: 입력={len(requested)}, 소요={elapsed:.4f}s")
     
     def _remove_selected(self) -> None:
         """선택된 파일 제거"""
@@ -2709,7 +3010,7 @@ class MainWindow(QMainWindow):
         for row in sorted(rows, reverse=True):
             if row < len(self.file_list):
                 removed_file = self.file_list[row]
-                self._file_set.discard(removed_file)  # 세트에서도 제거
+                self._file_set.discard(make_path_key(removed_file))  # 세트에서도 제거
                 del self.file_list[row]
             self.file_table.removeRow(row)
         
@@ -2751,34 +3052,33 @@ class MainWindow(QMainWindow):
         output_ext = format_info['ext']
         
         if is_folder_mode:
+            collect_start = time.perf_counter()
             folder_path = self.folder_entry.text()
             if not folder_path:
                 raise ValueError("폴더를 선택하세요.")
             
-            folder = Path(folder_path)
+            folder = Path(canonicalize_path(folder_path))
             if not folder.exists():
                 raise ValueError("폴더가 존재하지 않습니다.")
             
-            # 검색할 확장자 (HWPX 출력 시 hwpx 입력 제외)
-            if format_type == "HWPX":
-                patterns = ["*.hwp"]
-            else:
-                patterns = ["*.hwp", "*.hwpx"]
-            
-            # 파일 검색
-            input_files = []
-            if self.include_sub_check.isChecked():
-                for pattern in patterns:
-                    input_files.extend(folder.rglob(pattern))
-            else:
-                for pattern in patterns:
-                    input_files.extend(folder.glob(pattern))
+            allowed_exts = {".hwp"} if format_type == "HWPX" else set(SUPPORTED_EXTENSIONS)
+            input_files = [
+                Path(canonicalize_path(str(p)))
+                for p in iter_supported_files(
+                    folder,
+                    include_sub=self.include_sub_check.isChecked(),
+                    allowed_exts=allowed_exts,
+                )
+            ]
             
             if not input_files:
                 raise ValueError("변환할 파일이 없습니다.")
 
             # 작업 순서 고정 (재현성/로그 추적 용이)
             input_files = sorted(input_files, key=lambda p: str(p).lower())
+            if logger.isEnabledFor(logging.DEBUG):
+                elapsed = time.perf_counter() - collect_start
+                logger.debug(f"폴더 작업 수집: {len(input_files)}개, 소요={elapsed:.3f}s")
             
             # 작업 생성
             for input_file in input_files:
@@ -2810,7 +3110,7 @@ class MainWindow(QMainWindow):
                 # HWPX 형식으로 변환 시 .hwpx 파일은 건너뛰기
                 if format_type == "HWPX" and input_file.suffix.lower() == ".hwpx":
                     skipped_hwpx += 1
-                    logger.info(f"HWPX->HWPX 변환 건너뜀: {input_file.name}")
+                    logger.debug(f"HWPX->HWPX 변환 건너뜀: {input_file.name}")
                     continue
                 
                 if self.same_location_check.isChecked():
@@ -2831,7 +3131,7 @@ class MainWindow(QMainWindow):
             if skipped_hwpx > 0 and not tasks:
                 raise ValueError(f"선택한 모든 파일({skipped_hwpx}개)이 이미 HWPX 형식입니다.\nHWPX 파일을 다시 HWPX로 변환할 수 없습니다.")
             elif skipped_hwpx > 0:
-                logger.info(f"{skipped_hwpx}개 HWPX 파일을 건너뛰었습니다 (HWPX->HWPX 변환 불가)")
+                logger.debug(f"{skipped_hwpx}개 HWPX 파일을 건너뛰었습니다 (HWPX->HWPX 변환 불가)")
         
         return tasks
     
@@ -2890,6 +3190,14 @@ class MainWindow(QMainWindow):
     def _start_conversion(self) -> None:
         """변환 시작"""
         try:
+            if self.file_scan_worker and self.file_scan_worker.isRunning():
+                if self._scan_mode == "add_files":
+                    QMessageBox.warning(self, "경고", "파일 스캔이 진행 중입니다. 스캔 완료 후 다시 시도하세요.")
+                    return
+                if not self._cancel_active_scan():
+                    QMessageBox.warning(self, "경고", "폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요.")
+                    return
+
             # 출력 폴더 쓰기 권한 사전 검사
             if not self.same_location_check.isChecked():
                 output_path = self.output_entry.text().strip()
@@ -2899,7 +3207,13 @@ class MainWindow(QMainWindow):
                         raise ValueError(f"출력 폴더에 쓰기 권한이 없습니다:\n{output_folder}")
             
             # 작업 목록 생성
+            task_collect_start = time.perf_counter()
             self.tasks = self._collect_tasks()
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    f"작업 목록 생성 완료: {len(self.tasks)}개, "
+                    f"소요={time.perf_counter() - task_collect_start:.3f}s"
+                )
             
             # 덮어쓰기 확인
             if not self.overwrite_check.isChecked():
@@ -3007,6 +3321,9 @@ class MainWindow(QMainWindow):
     
     def _set_converting_state(self, converting: bool) -> None:
         """변환 중 상태 설정 - 입력 위젯 비활성화 포함"""
+        if converting:
+            self._cancel_active_scan()
+
         self.is_converting = converting
         self.start_btn.setEnabled(not converting)
         self.cancel_btn.setEnabled(converting)
@@ -3120,6 +3437,11 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event) -> None:
         """윈도우 닫기 이벤트"""
+        if not self._cancel_active_scan(wait_ms=WORKER_WAIT_TIMEOUT):
+            self.status_label.setText("파일 스캔 종료 대기 중...")
+            event.ignore()
+            return
+
         if self.is_converting:
             reply = QMessageBox.question(
                 self, "확인",
