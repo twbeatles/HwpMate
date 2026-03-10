@@ -2,7 +2,20 @@ HWP to PDF/HWPX 변환기 개발 히스토리
 
 이 문서는 Python과 pywin32를 활용한 한글(HWP) 자동화 변환기 프로젝트의 버전별 변경 사항과 기술적 이슈 해결 과정을 기록합니다.
 
-✅ 최종 버전: v8.3
+✅ 현재 메인라인 기준: v8.6
+
+🧪 v8.6.x (2026-03-10): 정적 분석 및 인코딩 안정화
+
+개발 환경 정비:
+
+- `pyrightconfig.json` 추가로 `typeCheckingMode = "basic"`, Windows, Python 3.9 기준을 고정.
+- `.editorconfig` 추가로 UTF-8, LF, trailing whitespace 규칙을 저장소 공용 정책으로 명시.
+- PyQt6 `Optional` 반환값과 COM 동적 객체에 타입 보강을 적용하여 Pylance 기준 오류 0건 유지.
+
+문서 및 배포 설정 정합성:
+
+- `README.md`, `claude.md`, `gemini.md`, `PROJECT_STRUCTURE_ANALYSIS.md`의 설명을 현재 코드와 맞게 갱신.
+- `hwp_converter.spec` 헤더 버전과 산출물 명칭 설명을 현재 메인 버전에 맞게 정리.
 
 안정화 및 호환성 최종 수정
 

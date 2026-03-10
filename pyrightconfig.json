@@ -1,0 +1,17 @@
+{
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.9",
+  "pythonPlatform": "Windows",
+  "include": [
+    "hwptopdf-hwpx_v4.py",
+    "hwptopdf-hwpx v3.py"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".venv",
+    "venv",
+    "env",
+    "build",
+    "dist"
+  ]
+}

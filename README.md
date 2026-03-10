@@ -66,7 +66,19 @@ python hwptopdf-hwpx_v4.py
 pyinstaller hwp_converter.spec
 
 # 생성된 파일 위치
-# dist/HWP변환기_v8.4.exe
+# dist/HWP변환기_v8.6.exe
+```
+
+### 4. 개발용 정적 분석 (선택사항)
+```bash
+# 개발 검사용 도구 설치
+pip install pyright
+
+# Pylance/pyright 기준 확인
+pyright
+
+# 문법 체크
+python -m py_compile "hwptopdf-hwpx_v4.py" "hwptopdf-hwpx v3.py"
 ```
 
 ---
@@ -87,17 +99,29 @@ pyinstaller hwp_converter.spec
 
 ## 📁 프로젝트 구조
 
+```text
+HwpMate/
+├── hwptopdf-hwpx_v4.py   # 메인 프로그램
+├── hwptopdf-hwpx v3.py   # 레거시 tkinter 버전
+├── hwp_converter.spec    # PyInstaller 빌드 설정
+├── pyrightconfig.json    # Pylance/pyright 공용 설정
+├── .editorconfig         # UTF-8/LF 편집 규칙
+└── *.md                  # 사용자/유지보수 문서
 ```
-hwp-to-pdf-hwpx/
-├── hwptopdf-hwpx_v4.py    # 메인 프로그램
-├── hwp_converter.spec      # PyInstaller 빌드 설정 (경량화)
-├── README.md               # 문서
-└── update_history.md       # 업데이트 이력
-```
+
+### 개발 규칙 메모
+- `pyrightconfig.json` 기준으로 `pyright` 오류 0건 상태를 유지합니다.
+- 저장소 텍스트 파일은 `.editorconfig` 기준으로 UTF-8, LF 개행을 사용합니다.
 
 ---
 
 ## 🛠️ 버전 히스토리
+
+### v8.6.x (2026-03-10) - 개발 환경 안정화
+- `pyrightconfig.json` 추가 및 `Basic` 기준 정적 분석 0건 유지
+- `.editorconfig` 추가로 UTF-8/LF 규칙 고정
+- PyQt6/COM 타입 보강으로 Pylance 오탐 최소화
+- `README`, 유지보수 문서, 빌드 설정 정합성 갱신
 
 ### v8.6 (2026-01-26) - 포맷 확장 및 UI 개선
 **기능 확장:**
@@ -165,7 +189,7 @@ hwp-to-pdf-hwpx/
 
 ## 📄 라이선스
 
-MIT License | Copyright (c) 2025-2026
+MIT License | Copyright (c) 2024-2026
 
 ---
 

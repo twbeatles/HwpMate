@@ -13,7 +13,14 @@ env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.pyre/
+.pytype/
+.hypothesis/
+.tox/
+.nox/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 
 # ===== Packaging/Build =====
@@ -38,4 +45,3 @@ Thumbs.db
 Desktop.ini
 .vscode/
 .idea/
-

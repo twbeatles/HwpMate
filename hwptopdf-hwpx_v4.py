@@ -26,7 +26,7 @@ v8.1 업데이트:
 - 변환 완료 후 폴더 열기 기능
 - 메뉴바 추가
 
-Copyright (c) 2024-2025
+Copyright (c) 2024-2026
 """
 
 import sys
@@ -39,7 +39,7 @@ import platform
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional, List, Tuple, Callable, Iterable, Set
+from typing import Any, Callable, Collection, Iterable, List, Optional, Protocol, Set, Tuple, cast
 
 # HiDPI 지원 설정 (Qt 초기화 전에 설정 필요)
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
@@ -49,7 +49,7 @@ os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 VERSION = "8.6"
 SUPPORTED_EXTENSIONS = ('.hwp', '.hwpx')
 
-# 한글 COM SaveAs 지원 포맷: HWP, HWPX, ODT, HTML, TEXT, UNICODE, PDF, PDFA, OOXML(돁스)
+# 한글 COM SaveAs 지원 포맷: HWP, HWPX, ODT, HTML, TEXT, UNICODE, PDF, PDFA, OOXML(독스)
 # 한글 COM SaveAs 지원 포맷 정의
 FORMAT_TYPES = {
     # 문서 포맷
@@ -97,16 +97,17 @@ try:
         QGroupBox, QRadioButton, QCheckBox, QPushButton, QLabel,
         QLineEdit, QFileDialog, QProgressBar, QTableWidget, QTableWidgetItem,
         QHeaderView, QMessageBox, QDialog, QTextEdit, QFrame,
-        QSystemTrayIcon, QMenu, QButtonGroup, QScrollArea,
+        QSystemTrayIcon, QMenu, QMenuBar, QButtonGroup, QScrollArea,
         QStyle, QStyleFactory, QStatusBar, QTabWidget
     )
     from PyQt6.QtCore import (
         Qt, QThread, pyqtSignal, QPropertyAnimation, QEasingCurve,
-        QTimer, QAbstractNativeEventFilter, QSignalBlocker
+        QTimer, QAbstractNativeEventFilter, QSignalBlocker, QMimeData
     )
     from PyQt6.QtGui import (
-        QFont, QIcon, QColor, QDragEnterEvent, QDropEvent,
-        QAction, QShortcut, QKeySequence
+        QFont, QIcon, QColor, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent,
+        QDropEvent, QAction, QShortcut, QKeySequence, QMouseEvent, QShowEvent,
+        QCloseEvent
     )
     PYQT6_AVAILABLE = True
 except ImportError:
@@ -115,12 +116,38 @@ except ImportError:
     sys.exit(1)
 
 # pywin32 import (COM 사용)
+pythoncom: Any = None
+win32com_client: Any = None
 try:
-    import pythoncom
-    import win32com.client
+    import pythoncom as _pythoncom
+    import win32com.client as _win32com_client
+    pythoncom = _pythoncom
+    win32com_client = _win32com_client
     PYWIN32_AVAILABLE = True
 except ImportError:
     PYWIN32_AVAILABLE = False
+
+
+class HwpAutomationProtocol(Protocol):
+    """한글 COM 객체에서 실제로 사용하는 최소 인터페이스"""
+
+    def RegisterModule(self, module_name: str, dll_name: str) -> Any:
+        ...
+
+    def SetMessageBoxMode(self, mode: int) -> Any:
+        ...
+
+    def Open(self, path: str, fmt: str, option: str) -> Any:
+        ...
+
+    def SaveAs(self, path: str, save_format: str, arg3: str = "") -> Any:
+        ...
+
+    def Clear(self, option: int = 0) -> Any:
+        ...
+
+    def Quit(self) -> Any:
+        ...
 
 # 로깅 설정
 log_dir = Path.home() / ".hwp_converter" / "logs"
@@ -832,14 +859,20 @@ class ToastWidget(QFrame):
             }
         """)
     
-    def show_message(self, message: str, icon: str = "ℹ️", duration: int = 3000, position_y: int = None) -> None:
+    def show_message(
+        self,
+        message: str,
+        icon: str = "ℹ️",
+        duration: int = 3000,
+        position_y: Optional[int] = None,
+    ) -> None:
         """토스트 메시지 표시"""
         self.icon_label.setText(icon)
         self.message_label.setText(message)
         
         # 부모 윈도우 기준 위치 계산
-        if self.parent():
-            parent = self.parent()
+        parent = self.parentWidget()
+        if parent is not None:
             x = parent.x() + parent.width() - self.width() - 20
             if position_y is not None:
                 y = position_y
@@ -973,7 +1006,7 @@ def is_admin() -> bool:
         return False
 
 
-def enable_drag_drop_for_admin(hwnd: int = None) -> None:
+def enable_drag_drop_for_admin(hwnd: Optional[int] = None) -> None:
     """
     관리자 권한으로 실행 시 드래그 앤 드롭 활성화
     
@@ -995,7 +1028,7 @@ def enable_drag_drop_for_admin(hwnd: int = None) -> None:
         
         messages = [WM_DROPFILES, WM_COPYDATA, WM_COPYGLOBALDATA]
         
-        if hwnd:
+        if hwnd is not None:
             # 특정 윈도우에 대한 메시지 필터 (ChangeWindowMessageFilterEx - Windows 7+)
             # 더 정확하고 안정적인 방법
             try:
@@ -1104,7 +1137,7 @@ def make_path_key(path: str) -> str:
 def iter_supported_files(
     root_path: Path,
     include_sub: bool = True,
-    allowed_exts: Optional[Set[str]] = None,
+    allowed_exts: Optional[Collection[str]] = None,
     cancel_checker: Optional[Callable[[], bool]] = None,
 ) -> Iterable[Path]:
     """단일 패스로 지원 확장자 파일을 순회"""
@@ -1163,7 +1196,7 @@ class FileScanWorker(QThread):
         self,
         input_paths: List[str],
         include_sub: bool = True,
-        allowed_exts: Optional[Set[str]] = None,
+        allowed_exts: Optional[Collection[str]] = None,
         batch_size: int = SCAN_BATCH_SIZE,
     ):
         super().__init__()
@@ -1235,14 +1268,17 @@ class HWPConverter:
     """한글 변환 엔진 - 기존 로직 완전 유지"""
     
     def __init__(self):
-        self.hwp = None
-        self.progid_used = None
+        self.hwp: Optional[HwpAutomationProtocol] = None
+        self.progid_used: Optional[str] = None
         self.is_initialized = False
         
     def initialize(self) -> bool:
         """COM 초기화 및 한글 객체 생성"""
         if self.is_initialized:
             return True
+
+        if not PYWIN32_AVAILABLE or pythoncom is None or win32com_client is None:
+            raise RuntimeError("pywin32 라이브러리가 필요합니다.\n\npip install pywin32")
             
         try:
             pythoncom.CoInitialize()
@@ -1252,7 +1288,7 @@ class HWPConverter:
         errors = []
         for progid in HWP_PROGIDS:
             try:
-                self.hwp = win32com.client.Dispatch(progid)
+                self.hwp = cast(HwpAutomationProtocol, win32com_client.Dispatch(progid))
                 self.progid_used = progid
                 
                 # 한글 설정
@@ -1280,7 +1316,8 @@ class HWPConverter:
         Returns:
             (성공여부, 오류메시지) 튜플
         """
-        if not self.is_initialized:
+        hwp = self.hwp
+        if not self.is_initialized or hwp is None:
             return False, "한글 객체가 초기화되지 않았습니다"
         
         try:
@@ -1289,7 +1326,7 @@ class HWPConverter:
             output_str = str(output_path)
             
             # 형식 자동 감지를 위해 빈 문자열 사용 (HWP/HWPX 모두 지원)
-            self.hwp.Open(input_str, "", "forceopen:true")
+            hwp.Open(input_str, "", "forceopen:true")
             
             # 문서 로딩 안정화 대기 (update_history.md 참고)
             time.sleep(1.0)
@@ -1303,14 +1340,14 @@ class HWPConverter:
             
             # 시도 1: 2개 파라미터 (한글 2020 이하)
             try:
-                self.hwp.SaveAs(output_str, save_format)
+                hwp.SaveAs(output_str, save_format)
                 logger.debug(f"SaveAs 2-param 성공: {output_str}")
             except Exception as e1:
                 logger.debug(f"SaveAs 2-param 실패: {e1}")
                 
                 # 시도 2: 3개 파라미터 (한글 2022+)
                 try:
-                    self.hwp.SaveAs(output_str, save_format, "")
+                    hwp.SaveAs(output_str, save_format, "")
                     logger.debug(f"SaveAs 3-param 성공: {output_str}")
                 except Exception as e2:
                     save_error = f"2-param: {e1}, 3-param: {e2}"
@@ -1318,13 +1355,13 @@ class HWPConverter:
                     
                     # 문서 닫기
                     try:
-                        self.hwp.Clear(option=1)
+                        hwp.Clear(option=1)
                     except Exception:
                         pass
                     return False, save_error
             
             # 문서 닫기
-            self.hwp.Clear(option=1)
+            hwp.Clear(option=1)
             
             return True, None
             
@@ -1333,7 +1370,7 @@ class HWPConverter:
             logger.error(f"변환 실패 ({input_path}): {error_msg}")
             # 문서 닫기 시도
             try:
-                self.hwp.Clear(option=1)
+                hwp.Clear(option=1)
             except Exception:
                 pass
             
@@ -1365,10 +1402,10 @@ class ConversionTask:
     """변환 작업 정보 - 기존 로직 유지"""
     
     def __init__(self, input_file, output_file):
-        self.input_file = Path(input_file)
-        self.output_file = Path(output_file)
-        self.status = "대기"  # 대기, 진행중, 성공, 실패
-        self.error = None
+        self.input_file: Path = Path(input_file)
+        self.output_file: Path = Path(output_file)
+        self.status: str = "대기"  # 대기, 진행중, 성공, 실패
+        self.error: Optional[str] = None
 
 
 # ============================================================================
@@ -1541,8 +1578,8 @@ class NativeDropFilter(QAbstractNativeEventFilter):
     """
     
     # 시그널을 위한 싱글톤 객체
-    _instance = None
-    files_dropped_callback = None
+    _instance: Optional["NativeDropFilter"] = None
+    files_dropped_callback: Optional[Callable[[List[str]], None]] = None
     
     WM_DROPFILES = 0x0233
     
@@ -1561,6 +1598,7 @@ class NativeDropFilter(QAbstractNativeEventFilter):
     
     def __init__(self):
         super().__init__()
+        self.files_dropped_callback = None
         self._shell32 = ctypes.windll.shell32
         self._registered_hwnds = set()
         self._argtypes_configured = False
@@ -1582,7 +1620,7 @@ class NativeDropFilter(QAbstractNativeEventFilter):
             logger.debug(f"ctypes argtypes 설정 실패: {e}")
         
     @classmethod
-    def get_instance(cls):
+    def get_instance(cls) -> "NativeDropFilter":
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
@@ -1630,11 +1668,14 @@ class NativeDropFilter(QAbstractNativeEventFilter):
             logger.error(f"네이티브 드래그 앤 드롭 등록 실패: {e}")
             return False
     
-    def nativeEventFilter(self, eventType, message):
+    def nativeEventFilter(self, eventType: Any, message: Any) -> Tuple[bool, Any]:
         """네이티브 Windows 이벤트 필터"""
         try:
             # Windows 메시지만 처리
             if eventType != b"windows_generic_MSG":
+                return False, 0
+
+            if message is None:
                 return False, 0
             
             # 클래스 레벨 MSG 구조체 사용 (매번 재생성 방지)
@@ -1647,9 +1688,10 @@ class NativeDropFilter(QAbstractNativeEventFilter):
                     logger.debug("WM_DROPFILES 메시지 수신!")
                 dropped_files = self._get_dropped_files(msg.wParam)
                 
-                if dropped_files and self.files_dropped_callback:
+                callback = self.files_dropped_callback
+                if dropped_files and callback is not None:
                     # 폴더 확장은 여기서 하지 않고 MainWindow 비동기 스캐너에서 처리
-                    accepted_inputs = []
+                    accepted_inputs: List[str] = []
                     for raw_path in dropped_files:
                         path_obj = Path(raw_path)
                         if path_obj.is_dir() or raw_path.lower().endswith(SUPPORTED_EXTENSIONS):
@@ -1657,7 +1699,7 @@ class NativeDropFilter(QAbstractNativeEventFilter):
 
                     if accepted_inputs:
                         logger.debug(f"네이티브 드롭 입력: {len(accepted_inputs)}개 경로")
-                        self.files_dropped_callback(accepted_inputs)
+                        callback(accepted_inputs)
                 
                 # 메시지 처리 완료
                 return True, 0
@@ -1668,9 +1710,9 @@ class NativeDropFilter(QAbstractNativeEventFilter):
         
         return False, 0
     
-    def _get_dropped_files(self, hDrop: int) -> list:
+    def _get_dropped_files(self, hDrop: int) -> List[str]:
         """WM_DROPFILES에서 파일 목록 추출"""
-        files = []
+        files: List[str] = []
         try:
             # 미리 초기화된 shell32 사용 (argtypes도 이미 설정됨)
             # hDrop을 c_void_p로 변환
@@ -1751,9 +1793,9 @@ class DropArea(QFrame):
         self._original_icon = "📂"
         self._original_text = "여기에 파일을 드래그하거나 클릭하여 추가"
     
-    def _get_files_from_urls(self, urls) -> list:
+    def _get_files_from_urls(self, urls) -> List[str]:
         """URL 목록에서 스캔 대상 경로(지원 파일/폴더) 추출"""
-        files = []
+        files: List[str] = []
         for url in urls:
             path = url.toLocalFile()
             if not path:
@@ -1764,7 +1806,7 @@ class DropArea(QFrame):
                 files.append(path)
         return files
     
-    def _has_valid_content(self, mime_data) -> bool:
+    def _has_valid_content(self, mime_data: QMimeData) -> bool:
         """유효한 HWP/HWPX 파일이 있는지 확인"""
         if not mime_data.hasUrls():
             return False
@@ -1782,15 +1824,24 @@ class DropArea(QFrame):
                 return True
         return False
     
-    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+    def dragEnterEvent(self, a0: Optional[QDragEnterEvent]) -> None:
         """드래그 진입 이벤트"""
-        logger.debug(f"dragEnterEvent 호출됨 - hasUrls: {event.mimeData().hasUrls()}")
+        if a0 is None:
+            return
+        event = a0
+        mime_data = event.mimeData()
+        if mime_data is None:
+            logger.debug("dragEnterEvent - mimeData 없음")
+            event.ignore()
+            return
+
+        logger.debug(f"dragEnterEvent 호출됨 - hasUrls: {mime_data.hasUrls()}")
         
-        if event.mimeData().hasUrls():
-            urls = event.mimeData().urls()
+        if mime_data.hasUrls():
+            urls = mime_data.urls()
             logger.debug(f"URL 개수: {len(urls)}, 첫번째: {urls[0].toLocalFile() if urls else 'N/A'}")
             
-            if self._has_valid_content(event.mimeData()):
+            if self._has_valid_content(mime_data):
                 event.acceptProposedAction()
                 self.icon_label.setText("📥")
                 self.text_label.setText("파일을 놓으세요!")
@@ -1804,28 +1855,44 @@ class DropArea(QFrame):
             event.ignore()
             logger.debug("URL 없음 - 무시됨")
     
-    def dragMoveEvent(self, event) -> None:
+    def dragMoveEvent(self, a0: Optional[QDragMoveEvent]) -> None:
         """드래그 이동 이벤트 - 드래그 중 계속 호출됨"""
-        if event.mimeData().hasUrls():
+        if a0 is None:
+            return
+        event = a0
+        mime_data = event.mimeData()
+        if mime_data is not None and mime_data.hasUrls():
             event.acceptProposedAction()
         else:
             event.ignore()
     
-    def dragLeaveEvent(self, event) -> None:
+    def dragLeaveEvent(self, a0: Optional[QDragLeaveEvent]) -> None:
         """드래그 이탈 이벤트"""
+        if a0 is None:
+            return
+        event = a0
+        _ = event
         self._reset_appearance()
     
-    def dropEvent(self, event: QDropEvent) -> None:
+    def dropEvent(self, a0: Optional[QDropEvent]) -> None:
         """드롭 이벤트"""
+        if a0 is None:
+            return
+        event = a0
         logger.debug("dropEvent 호출됨")
         self._reset_appearance()
+        mime_data = event.mimeData()
+        if mime_data is None:
+            logger.debug("dropEvent - mimeData 없음")
+            event.ignore()
+            return
         
-        if not event.mimeData().hasUrls():
+        if not mime_data.hasUrls():
             logger.debug("dropEvent - URL 없음")
             event.ignore()
             return
         
-        files = self._get_files_from_urls(event.mimeData().urls())
+        files = self._get_files_from_urls(mime_data.urls())
         logger.debug(f"dropEvent - 추출된 파일 수: {len(files)}")
         
         if files:
@@ -1848,8 +1915,12 @@ class DropArea(QFrame):
         self.text_label.setText(self._original_text)
         self.setStyleSheet("")
     
-    def mousePressEvent(self, event) -> None:
+    def mousePressEvent(self, a0: Optional[QMouseEvent]) -> None:
         """클릭 시 파일 선택 다이얼로그"""
+        if a0 is None:
+            return
+        event = a0
+        _ = event
         files, _ = QFileDialog.getOpenFileNames(
             self,
             "파일 선택",
@@ -1918,8 +1989,12 @@ class FormatCard(QFrame):
         shadow.setOffset(0, 2)
         self.setGraphicsEffect(shadow)
     
-    def mousePressEvent(self, event) -> None:
+    def mousePressEvent(self, a0: Optional[QMouseEvent]) -> None:
         """클릭 이벤트"""
+        if a0 is None:
+            return
+        event = a0
+        _ = event
         self.clicked.emit(self.format_type)
     
     def setSelected(self, selected: bool) -> None:
@@ -1932,8 +2007,11 @@ class FormatCard(QFrame):
             self.setProperty("formatCard", True)
             self.setProperty("formatCardSelected", False)
         # 스타일 갱신
-        self.style().unpolish(self)
-        self.style().polish(self)
+        style = self.style()
+        if style is None:
+            return
+        style.unpolish(self)
+        style.polish(self)
     
     def isSelected(self) -> bool:
         return self._selected
@@ -1946,14 +2024,21 @@ class FormatCard(QFrame):
 class ResultDialog(QDialog):
     """변환 결과 다이얼로그"""
     
-    def __init__(self, success: int, total: int, failed_tasks: list, output_paths: list = None, parent=None):
+    def __init__(
+        self,
+        success: int,
+        total: int,
+        failed_tasks: List[ConversionTask],
+        output_paths: Optional[List[str]] = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("변환 완료")
         self.setMinimumSize(600, 400)
         self.setModal(True)
         
         # 출력 경로 저장 (폴더 열기용)
-        self.output_paths = output_paths or []
+        self.output_paths: List[str] = list(output_paths or [])
         
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
@@ -1996,7 +2081,7 @@ class ResultDialog(QDialog):
         
         # 실패 목록 내보내기 버튼 (실패한 파일이 있을 때만)
         if failed_tasks:
-            self._failed_tasks = failed_tasks  # 내보내기용 저장
+            self._failed_tasks: List[ConversionTask] = list(failed_tasks)  # 내보내기용 저장
             export_btn = QPushButton("📋 실패 목록 저장")
             export_btn.setProperty("secondary", True)
             export_btn.setToolTip("실패한 파일 목록을 텍스트 파일로 저장합니다")
@@ -2115,8 +2200,11 @@ class MainWindow(QMainWindow):
         logger.info(f"시스템 정보: {platform.system()} {platform.release()} ({platform.version()})")
         logger.info(f"Python 버전: {sys.version}")
     
-    def showEvent(self, event) -> None:
+    def showEvent(self, a0: Optional[QShowEvent]) -> None:
         """윈도우 표시 이벤트 - 네이티브 드래그 앤 드롭 활성화"""
+        if a0 is None:
+            return
+        event = a0
         super().showEvent(event)
         
         # 처음 표시될 때만 실행
@@ -2182,9 +2270,13 @@ class MainWindow(QMainWindow):
     def _init_menu_bar(self) -> None:
         """메뉴바 초기화"""
         menubar = self.menuBar()
+        if menubar is None:
+            raise RuntimeError("메뉴바를 초기화할 수 없습니다")
         
         # 파일 메뉴
         file_menu = menubar.addMenu("파일(&F)")
+        if file_menu is None:
+            raise RuntimeError("파일 메뉴를 초기화할 수 없습니다")
         
         add_files_action = QAction("파일 추가(&A)", self)
         add_files_action.setShortcut("Ctrl+O")
@@ -2205,6 +2297,8 @@ class MainWindow(QMainWindow):
         
         # 편집 메뉴
         edit_menu = menubar.addMenu("편집(&E)")
+        if edit_menu is None:
+            raise RuntimeError("편집 메뉴를 초기화할 수 없습니다")
         
         remove_selected_action = QAction("선택 파일 제거(&R)", self)
         remove_selected_action.setShortcut("Delete")
@@ -2218,6 +2312,8 @@ class MainWindow(QMainWindow):
         
         # 도움말 메뉴
         help_menu = menubar.addMenu("도움말(&H)")
+        if help_menu is None:
+            raise RuntimeError("도움말 메뉴를 초기화할 수 없습니다")
         
         usage_action = QAction("사용법(&U)", self)
         usage_action.triggered.connect(self._show_usage)
@@ -2232,7 +2328,10 @@ class MainWindow(QMainWindow):
     
     def _init_status_bar(self) -> None:
         """상태바 초기화"""
-        self.status_bar = self.statusBar()
+        status_bar = self.statusBar()
+        if status_bar is None:
+            raise RuntimeError("상태바를 초기화할 수 없습니다")
+        self.status_bar: QStatusBar = status_bar
         
         # 버전 정보
         self.version_label = QLabel(f"v{VERSION}")
@@ -2261,7 +2360,13 @@ class MainWindow(QMainWindow):
         self.tray_icon = QSystemTrayIcon(self)
         
         # 기본 아이콘 설정 (앱 아이콘 또는 기본)
-        self.tray_icon.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView))
+        style = self.style()
+        tray_icon = (
+            style.standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView)
+            if style is not None
+            else QIcon()
+        )
+        self.tray_icon.setIcon(tray_icon)
         self.tray_icon.setToolTip(f"HWP 변환기 v{VERSION}")
         
         # 트레이 메뉴
@@ -2510,12 +2615,16 @@ class MainWindow(QMainWindow):
         self.file_table = QTableWidget()
         self.file_table.setColumnCount(2)
         self.file_table.setHorizontalHeaderLabels(["파일명", "경로"])
-        self.file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        horizontal_header = self.file_table.horizontalHeader()
+        if horizontal_header is not None:
+            horizontal_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            horizontal_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.file_table.setAlternatingRowColors(True)
         self.file_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.file_table.setFixedHeight(180)
-        self.file_table.verticalHeader().setVisible(False)
+        vertical_header = self.file_table.verticalHeader()
+        if vertical_header is not None:
+            vertical_header.setVisible(False)
         self.file_table.setSortingEnabled(False)  # 정렬 비활성화 - file_list 동기화 문제 방지
         files_layout.addWidget(self.file_table)
         
@@ -2866,7 +2975,8 @@ class MainWindow(QMainWindow):
 
     def _on_scan_batch_found(self, batch: list) -> None:
         """비동기 스캔 배치 결과 처리"""
-        if self.sender() is not self.file_scan_worker:
+        sender = self.sender()
+        if sender is not self.file_scan_worker or self.file_scan_worker is None:
             return
 
         if self._scan_mode == "add_files":
@@ -2879,7 +2989,8 @@ class MainWindow(QMainWindow):
 
     def _on_scan_progress(self, current: int, total: int) -> None:
         """비동기 스캔 진행률 처리"""
-        if self.sender() is not self.file_scan_worker:
+        sender = self.sender()
+        if sender is not self.file_scan_worker or self.file_scan_worker is None:
             return
 
         if self._scan_mode == "add_files":
@@ -2895,7 +3006,8 @@ class MainWindow(QMainWindow):
 
     def _on_scan_finished(self, total_found: int, canceled: bool) -> None:
         """비동기 스캔 완료 처리"""
-        if self.sender() is not self.file_scan_worker:
+        sender = self.sender()
+        if sender is not self.file_scan_worker or self.file_scan_worker is None:
             return
 
         elapsed = 0.0
@@ -2933,15 +3045,16 @@ class MainWindow(QMainWindow):
 
     def _on_scan_error(self, error_msg: str) -> None:
         """비동기 스캔 오류 처리"""
-        if self.sender() is not self.file_scan_worker:
+        sender = self.sender()
+        if sender is not self.file_scan_worker or self.file_scan_worker is None:
             return
         logger.error(f"파일 스캔 오류: {error_msg}")
         self.status_label.setText("파일 스캔 중 오류가 발생했습니다")
 
     def _on_scan_worker_finished(self) -> None:
         """스캔 워커 종료 처리"""
-        worker = self.sender()
-        if worker is not self.file_scan_worker:
+        worker = self.file_scan_worker
+        if self.sender() is not worker or worker is None:
             return
         worker.deleteLater()
         self.file_scan_worker = None
@@ -3061,7 +3174,7 @@ class MainWindow(QMainWindow):
             if not folder.exists():
                 raise ValueError("폴더가 존재하지 않습니다.")
             
-            allowed_exts = {".hwp"} if format_type == "HWPX" else set(SUPPORTED_EXTENSIONS)
+            allowed_exts: Collection[str] = {".hwp"} if format_type == "HWPX" else set(SUPPORTED_EXTENSIONS)
             input_files = [
                 Path(canonicalize_path(str(p)))
                 for p in iter_supported_files(
@@ -3435,8 +3548,11 @@ class MainWindow(QMainWindow):
         
         self.worker = None
     
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
         """윈도우 닫기 이벤트"""
+        if a0 is None:
+            return
+        event = a0
         if not self._cancel_active_scan(wait_ms=WORKER_WAIT_TIMEOUT):
             self.status_label.setText("파일 스캔 종료 대기 중...")
             event.ignore()

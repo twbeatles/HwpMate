@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-HWP 변환기 v8.4 - PyInstaller 빌드 설정
-경량화 빌드를 위한 최적화 설정 적용
+HWP 변환기 v8.6 - PyInstaller 빌드 설정
+경량화 빌드와 pywin32 hidden import 보존을 위한 최적화 설정
 """
 
 block_cipher = None

@@ -76,6 +76,11 @@ self.hwp.RegisterModule("FilePathCheckDLL", "FilePathCheckerModuleExample")
 - `include_sub` (하위 폴더 포함 여부)
 - `same_location` (저장 위치)
 
+### 3.3. 정적 분석 및 인코딩 기준
+- 저장소는 `pyrightconfig.json`을 기준으로 `pyright` / Pylance를 `basic` 모드에서 관리합니다.
+- 새 코드 추가 시 `Optional` 반환값을 직접 체이닝하지 말고, 지역 변수에 바인딩 후 `None` 가드를 적용하십시오.
+- 텍스트 파일은 `.editorconfig` 기준으로 UTF-8, LF 줄바꿈을 유지합니다.
+
 ---
 
 ## 4. UI/UX 구현 가이드
@@ -109,7 +114,9 @@ self.hwp.RegisterModule("FilePathCheckDLL", "FilePathCheckerModuleExample")
 2. **파일 덮어쓰기 로직**:
    - `overwrite` 옵션이 꺼져있으면, 파일명 뒤에 `(1)`, `(2)` 등을 자동으로 붙여 원본 손실을 방지합니다. (`_adjust_output_paths` 메서드 참고)
 3. **배치 처리 성능**:
-   - 파일 목록 추가 시 `file_table.blockSignals(True)`를 사용하여 대량의 파일 추가 시 UI 멈춤을 방지합니다.
+   - 파일 목록 추가 시 `file_table.setUpdatesEnabled(False)`와 `QSignalBlocker(self.file_table)`를 사용하여 대량 입력 시 UI 멈춤을 방지합니다.
+4. **정적 분석 회귀 방지**:
+   - 변경 후 `pyright`와 `python -m py_compile "hwptopdf-hwpx_v4.py" "hwptopdf-hwpx v3.py"`를 실행해 기준선을 확인하십시오.
 
 ## 6. 버전 관리 및 배포
 - 기능 추가 시 `update_history.md`에 기록하고 코드 상단 `VERSION` 상수를 변경하십시오.

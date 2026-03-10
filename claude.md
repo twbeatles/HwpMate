@@ -52,12 +52,17 @@
   - `EnumChildWindows`를 통해 메인 윈도우의 모든 자식 위젯까지 등록하여 드롭 영역을 확장합니다.
 
 - **UI Event Optimization**:
-  - 파일 목록에 수백 개의 파일을 추가할 때 성능 저하를 막기 위해 `blockSignals(True)` 패턴을 사용합니다.
+  - 파일 목록에 수백 개의 파일을 추가할 때 성능 저하를 막기 위해 `setUpdatesEnabled(False)`와 `QSignalBlocker(self.file_table)`를 함께 사용합니다.
   - `QScrollArea`를 루트 위젯으로 사용하여 낮은 해상도에서도 UI가 잘리지 않도록 설계되었습니다.
 
 - **Configuration Persistency**:
   - 사용자 홈 디렉토리의 `.hwp_converter_config.json` 파일에 마지막 사용 설정을 저장합니다.
   - 저장 항목: 테마, 폴더 경로, 변환 옵션 등.
+
+### 3.3. Static Analysis & Encoding
+- 저장소 루트의 `pyrightconfig.json`을 기준으로 `pyright` / Pylance 진단을 확인합니다.
+- 목표 기준은 `typeCheckingMode = "basic"`이며, 광범위한 rule 비활성화보다 코드 쪽 타입 보강과 `Optional` 가드를 우선합니다.
+- 텍스트 파일은 `.editorconfig` 기준으로 UTF-8, LF, trailing whitespace 정리를 유지합니다.
 
 ---
 
@@ -68,3 +73,6 @@
 3. **PyInstaller 호환성**: 
    - `spec` 파일에 정의된 `hiddenimports`(`win32com.client`, `pythoncom` 등) 의존성을 유의하십시오.
    - 외부 리소스(이미지 등)는 코드 내장 방식을 선호합니다.
+4. **정적 분석 기준 유지**:
+   - PyQt6의 `Optional` 반환값(`menuBar()`, `statusBar()`, `style()`, `mimeData()` 등)은 접근 전에 가드하거나 좁힌 뒤 사용하십시오.
+   - COM 객체는 동적 객체 그대로 두지 말고 최소 `Protocol` 타입을 유지하여 Pylance 오류를 누적시키지 마십시오.
