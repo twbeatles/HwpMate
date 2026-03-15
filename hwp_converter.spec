@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
 HWP 변환기 v8.6 - PyInstaller 빌드 설정
-경량화 빌드와 pywin32 hidden import 보존을 위한 최적화 설정
+현재 GUI 엔트리포인트(hwptopdf-hwpx_v4.py) 기준 경량화 빌드 설정
 """
 
 block_cipher = None
@@ -45,7 +45,7 @@ a = Analysis(
     ['hwptopdf-hwpx_v4.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[],  # 문서/설정 파일은 배포 번들에 포함하지 않음
     hiddenimports=[
         # 필수 pywin32 모듈
         'win32com.client',

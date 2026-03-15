@@ -1,78 +1,80 @@
 # HwpMate 프로젝트 지침서 (Claude)
 
-이 문서는 **HwpMate (v8.6+)** 프로젝트의 구조, 핵심 로직, 그리고 개발 규칙을 설명합니다. AI 어시스턴트로서 본 프로젝트를 수정할 때 이 가이드를 엄격히 준수하십시오.
+이 문서는 Claude 계열 코딩 에이전트가 HwpMate 리포지토리를 수정할 때 따라야 할 기준을 정리합니다. 현재 유지보수 중심은 `hwptopdf-hwpx_v4.py`이며, `hwptopdf-hwpx v3.py`는 레거시 참고용입니다.
 
-## 1. Context & Architecture
+## 1. 프로젝트 개요
 
-### 1.1. 프로젝트 개요
-- **목적**: 한글(HWP/HWPX) 파일을 PDF, DOCX 등으로 일괄 변환
-- **환경**: Windows 10/11, Python 3.9+, 한글 2018 이상
-- **프레임워크**: PyQt6 (GUI), pywin32 (COM Automation)
+- 목적: 한글(HWP/HWPX) 문서를 다양한 형식으로 일괄 변환하는 Windows GUI 도구
+- 핵심 기술: `PyQt6`, `pywin32`, `PyInstaller`
+- 실행 환경: Windows 10/11, Python 3.9+, 한컴오피스 한글 설치
+- 배포 엔트리포인트: `hwptopdf-hwpx_v4.py`
 
-### 1.2. 주요 파일 및 역할
-- `hwptopdf-hwpx_v4.py`: Entry point. `MainWindow`, `ConversionWorker`, `NativeDropFilter` 등 모든 핵심 클래스가 포함됨.
-- `hwp_converter.spec`: PyInstaller 빌드 설정 파일. 용량 최적화를 위한 Exclude 목록과 관리자 권한(`uac_admin=True`) 설정이 포함됨.
-- `ThemeManager`: CSS 기반 테마(Dark/Light) 관리.
+## 2. 절대 깨지면 안 되는 로직
 
----
+### SaveAs 폴백
+- `HWPConverter.convert_file`의 2-인자 `SaveAs` 호출 후 3-인자 `SaveAs(..., "")`로 폴백하는 구조를 유지합니다.
+- 한글 버전에 따라 COM 인자 수가 달라질 수 있으므로, 단순화하거나 합치지 않습니다.
 
-## 2. 🛡️ Critical Logic (변경 주의)
+### COM 초기화
+- 메인 스레드와 워커 스레드에서 COM 초기화/해제를 분리합니다.
+- `ConversionWorker.run()`의 `pythoncom.CoInitialize()` / `CoUninitialize()` 호출을 제거하지 않습니다.
 
-아래 명시된 로직은 프로젝트의 안정성을 보장하는 핵심 코드입니다. **기능 추가 시에도 기존 동작을 파괴하지 않도록 주의하십시오.**
+### 보안 모듈 등록
+- `RegisterModule("FilePathCheckDLL", "FilePathCheckerModuleExample")`는 외부 자동화 경고 완화를 위해 유지합니다.
+- `SetMessageBoxMode(0x00000001)`도 함께 유지합니다.
 
-- **이중 SaveAs 전략 (`HWPConverter`)**:
-  - `SaveAs(path, format)` 실패 시 `SaveAs(path, format, "")`를 호출하는 폴백 메커니즘 필수.
-  - 한글 버전에 따른 인자 개수 차이(`TypeError`)를 해결하기 위함입니다.
+### 네이티브 드래그 앤 드롭
+- 관리자 권한 환경 호환을 위해 `NativeDropFilter`와 `WM_DROPFILES` 흐름을 유지합니다.
+- Qt 기본 드래그 앤 드롭만으로 되돌리지 않습니다.
 
-- **보안 모듈 및 팝업 제어**:
-  - `RegisterModule("FilePathCheckDLL", ...)`: 보안 경고창 억제.
-  - `SetMessageBoxMode(0x00000001)`: 확인 팝업 자동 넘김.
+### 자동 백업
+- 변환 전 `backup/` 폴더에 원본을 복사하는 `_create_backup` 로직은 안전장치입니다.
+- 백업 실패는 기록하되 변환 흐름 전체를 무조건 중단시키지 않는 현재 방향을 유지합니다.
 
-- **스레드 안정성 (`ConversionWorker`)**:
-  - `QThread` run 메서드 진입 시 `pythoncom.CoInitialize()` 필수 호출.
-  - 이를 누락하면 COM 객체 호출이 실패하거나 애플리케이션이 멈춥니다.
+## 3. 코드베이스 구조
 
-- **자동 백업 시스템 (`_create_backup`)**:
-  - 파일 변환 전 원본의 백업본을 `backup` 폴더에 생성합니다.
-  - 이 과정에서 실패하더라도(예: 권한 문제) 변환 작업 자체는 중단되지 않도록 `try-except`로 감싸져 있습니다.
+- `hwptopdf-hwpx_v4.py`
+  - `ThemeManager`: QSS 테마
+  - `FileScanWorker`: 비동기 입력 스캔
+  - `HWPConverter`: HWP COM 래퍼
+  - `ConversionWorker`: 실제 변환 워커
+  - `NativeDropFilter`: 관리자 권한 드롭 처리
+  - `MainWindow`: 전체 UI 오케스트레이션
+- `hwp_converter.spec`
+  - PyInstaller 경량 빌드
+  - `uac_admin=True` 유지
+  - `hiddenimports`와 `EXCLUDES`는 빌드 안정성에 직접 영향
+- `pyrightconfig.json`
+  - 타입 검사 기준
+- `.editorconfig`
+  - 인코딩과 줄바꿈 기준
 
----
+## 4. 수정 원칙
 
-## 3. UI/UX & Implementation Details
+1. 기능 추가보다 기존 자동화 흐름의 호환성을 우선합니다.
+2. COM/Qt 경계에서 `None` 가능성과 타입 불일치를 무시하지 않습니다.
+3. 문자열과 문서는 `utf-8`을 유지하고, 줄바꿈은 `LF`를 기준으로 맞춥니다.
+4. 빌드 관련 변경은 `hwp_converter.spec`와 README를 함께 갱신합니다.
+5. 문서에서 지원 형식이나 단축키를 바꾸면 README와 가이드 문서를 같이 수정합니다.
 
-### 3.1. Design Philosophy
-- **Modern & Premium**: 윈도우 기본 UI 대신 커스텀 스타일(QSS)을 최대한 활용.
-- **Tabbed Interface**: 포맷이 많아짐에 따라 `QTabWidget`을 사용하여 '문서 변환'과 '이미지 변환'으로 카테고리를 분리.
-- **Dark Mode First**: 기본값은 다크 모드(`#1a1a2e`).
+## 5. 검증 기준
 
-### 3.2. Advanced Features
-- **Native Drag & Drop**:
-  - 관리자 권한으로 실행되는 앱은 일반 권한의 탐색기에서 드래그 앤 드롭을 받을 수 없습니다 (Windows 보안 정책).
-  - 이를 해결하기 위해 `NativeDropFilter` 클래스가 `WM_DROPFILES` 메시지를 후킹합니다.
-  - `EnumChildWindows`를 통해 메인 윈도우의 모든 자식 위젯까지 등록하여 드롭 영역을 확장합니다.
+최소한 아래 검증은 통과한 뒤 마무리합니다.
 
-- **UI Event Optimization**:
-  - 파일 목록에 수백 개의 파일을 추가할 때 성능 저하를 막기 위해 `setUpdatesEnabled(False)`와 `QSignalBlocker(self.file_table)`를 함께 사용합니다.
-  - `QScrollArea`를 루트 위젯으로 사용하여 낮은 해상도에서도 UI가 잘리지 않도록 설계되었습니다.
+```bash
+pyright .
+```
 
-- **Configuration Persistency**:
-  - 사용자 홈 디렉토리의 `.hwp_converter_config.json` 파일에 마지막 사용 설정을 저장합니다.
-  - 저장 항목: 테마, 폴더 경로, 변환 옵션 등.
+가능하면 추가로 확인할 것:
 
-### 3.3. Static Analysis & Encoding
-- 저장소 루트의 `pyrightconfig.json`을 기준으로 `pyright` / Pylance 진단을 확인합니다.
-- 목표 기준은 `typeCheckingMode = "basic"`이며, 광범위한 rule 비활성화보다 코드 쪽 타입 보강과 `Optional` 가드를 우선합니다.
-- 텍스트 파일은 `.editorconfig` 기준으로 UTF-8, LF, trailing whitespace 정리를 유지합니다.
+- 관리자 권한에서 앱 실행
+- 파일/폴더 드롭 동작
+- 문서 형식 변환 1건 이상
+- `pyinstaller hwp_converter.spec` 빌드 여부
 
----
+## 6. 문서 동기화 체크리스트
 
-## 4. Development Rules
-
-1. **단일 파일 유지**: 배포 용이성을 위해 가능한 `hwptopdf-hwpx_v4.py` 하나의 파일에 코드를 작성합니다.
-2. **관리자 권한**: 이 프로그램은 **반드시 관리자 권한**으로 실행되어야 합니다. 개발 및 테스트 시에도 이를 준수하십시오.
-3. **PyInstaller 호환성**: 
-   - `spec` 파일에 정의된 `hiddenimports`(`win32com.client`, `pythoncom` 등) 의존성을 유의하십시오.
-   - 외부 리소스(이미지 등)는 코드 내장 방식을 선호합니다.
-4. **정적 분석 기준 유지**:
-   - PyQt6의 `Optional` 반환값(`menuBar()`, `statusBar()`, `style()`, `mimeData()` 등)은 접근 전에 가드하거나 좁힌 뒤 사용하십시오.
-   - COM 객체는 동적 객체 그대로 두지 말고 최소 `Protocol` 타입을 유지하여 Pylance 오류를 누적시키지 마십시오.
+- README의 지원 형식, 실행 방법, 빌드 결과 이름이 현재 코드와 일치하는가
+- `update_history.md`에 유지보수 내역이 반영되었는가
+- `.gitignore`가 `backup/`, 빌드 산출물, 캐시를 충분히 제외하는가
+- 정적 분석 설정이 실제 코드 상태와 맞는가
