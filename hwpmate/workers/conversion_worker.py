@@ -1,127 +1,144 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-import subprocess
+import shutil
+import time
+from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import Callable, Optional, Protocol
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from ..logging_config import get_logger
-from ..models import ConversionTask
+from ..models import ConversionSummary, PlannedConversion
 from ..services.hwp_converter import HWPConverter, pythoncom
 
 logger = get_logger(__name__)
 
+
+class ConverterEngine(Protocol):
+    @property
+    def progid_used(self) -> str | None: ...
+
+    def initialize(self) -> bool: ...
+    def convert_file(self, input_path, output_path, format_type="PDF") -> tuple[bool, str | None]: ...
+    def cleanup(self) -> None: ...
+    def has_owned_processes(self) -> bool: ...
+    def kill_owned_processes(self) -> bool: ...
+
+
 class ConversionWorker(QThread):
     """변환 작업 워커 스레드"""
-    
-    # 시그널 정의
+
     progress_updated = pyqtSignal(int, int, str)  # current, total, filename
     status_updated = pyqtSignal(str)
-    task_completed = pyqtSignal(int, int, list)  # success, total, failed_tasks
+    task_completed = pyqtSignal(object)  # ConversionSummary
     error_occurred = pyqtSignal(str)
-    
-    # 스레드 내 COM 객체를 초기화하기 위한 플래그
+
     _com_initialized = False
-    
-    def __init__(self, tasks: List[ConversionTask], format_type: str):
+
+    def __init__(
+        self,
+        planned_conversion: PlannedConversion,
+        converter_factory: Optional[Callable[[], ConverterEngine]] = None,
+    ) -> None:
         super().__init__()
-        self.tasks = tasks
-        self.format_type = format_type
+        self.planned_conversion = planned_conversion
+        self.tasks = planned_conversion.tasks
+        self.format_type = planned_conversion.format_type
         self.cancel_requested = False
-    
+        self.converter: Optional[ConverterEngine] = None
+        self._converter_factory: Callable[[], ConverterEngine] = converter_factory or HWPConverter
+
     def cancel(self) -> None:
         """취소 요청"""
         self.cancel_requested = True
-    
+
+    def can_force_terminate(self) -> bool:
+        converter = self.converter
+        return bool(converter and converter.has_owned_processes())
+
     def run(self) -> None:
         """변환 작업 수행"""
-        # 별도 스레드에서 COM 초기화 필수
         if pythoncom is not None:
             try:
                 pythoncom.CoInitialize()
                 self._com_initialized = True
             except Exception as e:
                 logger.debug(f"Worker COM 초기화: {e}")
-        
-        converter = HWPConverter()
-        success_count = 0
+
+        start_ts = time.perf_counter()
+        converter = self._converter_factory()
+        self.converter = converter
         total = len(self.tasks)
-        failed_tasks = []
-        
+
         try:
-            # 초기화
             self.status_updated.emit("한글 프로그램 연결 중...")
             converter.initialize()
-            
             self.status_updated.emit(f"연결 성공: {converter.progid_used}")
-            
-            # 변환 실행
+
             for idx, task in enumerate(self.tasks):
                 if self.cancel_requested:
                     self.status_updated.emit("사용자가 취소했습니다.")
                     break
-                
-                # 상태 업데이트
+
                 self.progress_updated.emit(idx, total, task.input_file.name)
-                
-                # 0. 백업 수행 (안전장치)
+
                 try:
                     self._create_backup(task.input_file)
                 except Exception as e:
                     logger.warning(f"백업 실패 (계속 진행): {e}")
-                    # 백업 실패해도 변환은 계속 진행 (선택사항)
-                
-                # 출력 폴더 생성
+
                 try:
                     task.output_file.parent.mkdir(parents=True, exist_ok=True)
                 except Exception as e:
                     task.status = "실패"
                     task.error = f"폴더 생성 실패: {e}"
-                    failed_tasks.append(task)
                     continue
-                
-                # 입력 파일 존재 여부 확인
+
                 if not task.input_file.exists():
                     task.status = "실패"
                     task.error = f"파일을 찾을 수 없음: {task.input_file.name}"
-                    failed_tasks.append(task)
                     logger.warning(f"파일 없음: {task.input_file}")
                     continue
-                
-                # 변환 실행
+
                 task.status = "진행중"
                 success, error = converter.convert_file(
                     task.input_file,
                     task.output_file,
-                    self.format_type
+                    self.format_type,
                 )
-                
+
                 if success:
                     task.status = "성공"
-                    success_count += 1
+                    task.error = None
                 else:
                     task.status = "실패"
                     task.error = error
-                    failed_tasks.append(task)
-            
-            # 완료 (취소된 경우도 부분 결과 표시)
+
+            if self.cancel_requested:
+                for task in self.tasks:
+                    if task.status == "대기":
+                        task.status = "취소됨"
+                        task.error = "사용자 취소"
+
             self.progress_updated.emit(total, total, "완료" if not self.cancel_requested else "취소됨")
-            
-            # 결과 시그널 발생 (취소 시에도 부분 결과 표시)
-            self.task_completed.emit(success_count, total, failed_tasks)
-            
+            summary = ConversionSummary(
+                format_type=self.format_type,
+                tasks=list(self.tasks) + list(self.planned_conversion.skipped_tasks),
+                warnings=list(self.planned_conversion.warnings),
+                elapsed_seconds=time.perf_counter() - start_ts,
+                progid_used=converter.progid_used,
+            )
+            self.task_completed.emit(summary)
         except Exception as e:
             logger.exception("변환 중 오류 발생")
             self.error_occurred.emit(str(e))
-        
         finally:
             try:
                 converter.cleanup()
             except Exception as e:
                 logger.error(f"정리 중 오류: {e}")
-            
-            # COM 해제
+
             if self._com_initialized:
                 if pythoncom is not None:
                     try:
@@ -129,37 +146,31 @@ class ConversionWorker(QThread):
                     except Exception:
                         pass
 
-    def force_terminate(self) -> None:
-        """한글 프로세스 강제 종료 (응답 없음 시)"""
-        try:
-            # HWP 프로세스 찾아서 종료 (taskkill 사용)
-            # HwpCtrl.exe 또는 Hwp.exe
-            subprocess.run(["taskkill", "/F", "/IM", "Hwp.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(["taskkill", "/F", "/IM", "HwpCtrl.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            logger.warning("한글 프로세스를 강제로 종료했습니다.")
-        except Exception as e:
-            logger.error(f"프로세스 강제 종료 실패: {e}")
-
+    def force_terminate(self) -> bool:
+        """앱이 소유한 한글 프로세스만 강제 종료."""
+        converter = self.converter
+        if converter is None:
+            return False
+        return converter.kill_owned_processes()
 
     def _create_backup(self, file_path: Path) -> None:
         """파일 백업 생성"""
         try:
-            # backup 폴더 생성
             backup_dir = file_path.parent / "backup"
             backup_dir.mkdir(exist_ok=True)
-            
-            # 백업 파일명 생성 (원본이름_시간.확장자)
-            # 안전을 위해 덮어쓰지 않고 항상 새 파일 생성
-            import shutil
-            from datetime import datetime
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup_name = f"{file_path.stem}_{timestamp}{file_path.suffix}"
             backup_path = backup_dir / backup_name
-            
+            counter = 1
+
+            while backup_path.exists():
+                backup_name = f"{file_path.stem}_{timestamp}_{counter}{file_path.suffix}"
+                backup_path = backup_dir / backup_name
+                counter += 1
+
             shutil.copy2(file_path, backup_path)
             logger.debug(f"백업 생성 완료: {backup_path}")
-            
         except Exception as e:
             logger.error(f"백업 생성 중 오류: {e}")
-            raise e
+            raise

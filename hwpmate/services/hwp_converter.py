@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import csv
+import io
+import subprocess
 import time
 from typing import Any, Optional, Protocol, Tuple, cast
 
@@ -21,6 +24,8 @@ try:
 except ImportError:
     PYWIN32_AVAILABLE = False
 
+HWP_PROCESS_NAMES = {"hwp.exe", "hwpctrl.exe"}
+
 
 class HwpAutomation(Protocol):
     """한글 COM 자동화 객체에서 사용하는 최소 인터페이스."""
@@ -40,6 +45,38 @@ def require_pywin32() -> Tuple[Any, Any]:
     return pythoncom, win32_client
 
 
+def _snapshot_hwp_pids() -> set[int]:
+    """현재 실행 중인 한글 관련 프로세스 PID 집합 반환."""
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FO", "CSV", "/NH"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            check=False,
+        )
+        if result.returncode != 0:
+            return set()
+
+        reader = csv.reader(io.StringIO(result.stdout))
+        pids: set[int] = set()
+        for row in reader:
+            if len(row) < 2:
+                continue
+            image_name = row[0].strip().lower()
+            if image_name not in HWP_PROCESS_NAMES:
+                continue
+            try:
+                pids.add(int(row[1]))
+            except ValueError:
+                continue
+        return pids
+    except Exception as e:
+        logger.debug(f"한글 프로세스 스냅샷 수집 실패: {e}")
+        return set()
+
+
 class HWPConverter:
     """한글 변환 엔진 - 기존 로직 완전 유지."""
 
@@ -47,6 +84,7 @@ class HWPConverter:
         self.hwp: Optional[HwpAutomation] = None
         self.progid_used: Optional[str] = None
         self.is_initialized = False
+        self.owned_pids: set[int] = set()
 
     def initialize(self) -> bool:
         """COM 초기화 및 한글 객체 생성."""
@@ -62,6 +100,7 @@ class HWPConverter:
 
         errors = []
         for progid in HWP_PROGIDS:
+            before_pids = _snapshot_hwp_pids()
             try:
                 self.hwp = cast(HwpAutomation, win32_client_module.Dispatch(progid))
                 self.progid_used = progid
@@ -73,8 +112,14 @@ class HWPConverter:
                     pass
 
                 hwp.SetMessageBoxMode(0x00000001)
+                time.sleep(0.2)
+                self.owned_pids = _snapshot_hwp_pids() - before_pids
                 self.is_initialized = True
                 logger.info(f"한글 연결 성공: {progid}")
+                if self.owned_pids:
+                    logger.info(f"앱 소유 한글 프로세스 추적: {sorted(self.owned_pids)}")
+                else:
+                    logger.info("새로 생성된 한글 프로세스를 추적하지 못했습니다. 강제 종료는 비활성화됩니다.")
                 return True
 
             except Exception as e:
@@ -136,6 +181,36 @@ class HWPConverter:
 
             return False, error_msg
 
+    def has_owned_processes(self) -> bool:
+        return bool(self.owned_pids)
+
+    def kill_owned_processes(self) -> bool:
+        """앱이 새로 띄운 한글 프로세스만 강제 종료."""
+        if not self.owned_pids:
+            logger.warning("추적된 한글 프로세스가 없어 강제 종료를 수행하지 않습니다.")
+            return False
+
+        killed_any = False
+        for pid in sorted(self.owned_pids):
+            try:
+                result = subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                if result.returncode == 0:
+                    killed_any = True
+                    logger.warning(f"앱 소유 한글 프로세스를 강제 종료했습니다: PID={pid}")
+                else:
+                    logger.debug(f"PID 종료 실패 또는 이미 종료됨: PID={pid}, code={result.returncode}")
+            except Exception as e:
+                logger.error(f"PID 강제 종료 실패: PID={pid}, 오류={e}")
+
+        if killed_any:
+            self.owned_pids.clear()
+        return killed_any
+
     def cleanup(self) -> None:
         """정리."""
         hwp = self.hwp
@@ -152,6 +227,7 @@ class HWPConverter:
 
             self.hwp = None
             self.is_initialized = False
+            self.owned_pids.clear()
 
         if pythoncom is not None:
             try:

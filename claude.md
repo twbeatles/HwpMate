@@ -25,24 +25,35 @@
 
 ### 네이티브 드래그 앤 드롭
 - 관리자 권한 환경 호환을 위해 `NativeDropFilter`와 `WM_DROPFILES` 흐름을 유지합니다.
+- 폴더 모드에서는 "폴더 1개 드롭 -> 폴더 선택/미리보기 스캔" 흐름을 유지합니다.
+- 파일 모드에서만 다중 파일/폴더 스캔 입력을 파일 목록으로 보냅니다.
 - Qt 기본 드래그 앤 드롭만으로 되돌리지 않습니다.
 
 ### 자동 백업
 - 변환 전 `backup/` 폴더에 원본을 복사하는 `_create_backup` 로직은 안전장치입니다.
 - 백업 실패는 기록하되 변환 흐름 전체를 무조건 중단시키지 않는 현재 방향을 유지합니다.
 
+### 동일 형식 건너뜀과 결과 집계
+- `TaskPlanner.build_tasks`는 `PlannedConversion`을 만들고, 동일 형식 입력은 `skipped_tasks`로 분리합니다.
+- `ConversionWorker.task_completed`는 `ConversionSummary`를 전달하며, `성공/실패/건너뜀/취소됨` 집계를 분리합니다.
+- `ResultDialog`와 결과 저장(CSV/JSON/TXT)은 이 집계를 기준으로 동작해야 합니다.
+
+### 강제 종료 안전장치
+- 강제 종료는 `HWPConverter.kill_owned_processes()`를 통해 앱이 직접 띄운 PID에만 적용합니다.
+- 프로세스명 기준 전체 `Hwp.exe` 종료 방식으로 되돌리지 않습니다.
+
 ## 3. 코드베이스 구조
 
 - `hwptopdf-hwpx_v4.py`
   - 패키지 진입용 얇은 래퍼
 - `hwpmate/`
-  - `config_repository.py`, `path_utils.py`, `models.py`: 설정/경로/데이터 모델
+  - `config_repository.py`, `path_utils.py`, `models.py`: 설정/경로/데이터 모델 (`AppConfig`, `ConversionTask`, `PlannedConversion`, `ConversionSummary`)
   - `services/hwp_converter.py`: HWP COM 래퍼
-  - `services/file_selection_store.py`, `services/task_planner.py`: 파일 선택 상태와 작업 계획
+  - `services/file_selection_store.py`, `services/task_planner.py`: 파일 선택 상태와 작업 계획/건너뜀/출력 충돌 계산
   - `workers/file_scan_worker.py`, `workers/conversion_worker.py`: 비동기 스캔/변환 워커
   - `windows_integration.py`: 관리자 권한 드롭 처리
   - `ui/main_window.py`: 전체 UI 오케스트레이션
-  - `ui/theme.py`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs.py`: UI 컴포넌트 분리
+  - `ui/theme.py`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs.py`: UI 컴포넌트 분리 (`PreflightDialog`, `ResultDialog` 포함)
   - `ui/main_window_ui.py`: 메인 윈도우 레이아웃 빌더
 - `hwp_converter.spec`
   - PyInstaller 경량 빌드
@@ -74,11 +85,15 @@ pyright .
 - 관리자 권한에서 앱 실행
 - 파일/폴더 드롭 동작
 - 문서 형식 변환 1건 이상
+- 사전 점검 다이얼로그 표시
+- 결과 CSV/JSON 저장
+- 취소 후 종료/강제 종료 흐름
 - `pyinstaller hwp_converter.spec` 빌드 여부
 
 ## 6. 문서 동기화 체크리스트
 
 - README의 지원 형식, 실행 방법, 빌드 결과 이름이 현재 코드와 일치하는가
+- `PROJECT_STRUCTURE_ANALYSIS.md`의 아키텍처 설명과 스냅샷 정보가 현재 구조와 일치하는가
 - `update_history.md`에 유지보수 내역이 반영되었는가
 - `.gitignore`가 `backup/`, 빌드 산출물, 캐시를 충분히 제외하는가
 - 정적 분석 설정이 실제 코드 상태와 맞는가

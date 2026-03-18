@@ -3,7 +3,8 @@
 ## 1. 분석 범위
 - 분석 일자: 2026-02-27
 - 보강 일자: 2026-03-10
-- 대상 저장소: `d:\twbeatles-repos\HwpMate`
+- 추가 보강 일자: 2026-03-18
+- 대상 저장소: `c:\twbeatles-repos\HwpMate`
 - 분석 목적: "다양한 기능 추가"를 위한 현재 구조, 제약, 확장 포인트 파악
 
 ## 2. 참고한 문서
@@ -20,16 +21,16 @@
 
 | 파일 | 라인 수 | 역할 |
 |---|---:|---|
-| `hwptopdf-hwpx_v4.py` | 4 | 패키지 진입용 얇은 래퍼 |
+| `hwptopdf-hwpx_v4.py` | 3 | 패키지 진입용 얇은 래퍼 |
 | `hwpmate/` | 모듈 분리 | 현재 메인 애플리케이션 (GUI + 변환엔진 + 워커 + DnD + 설정) |
-| `legacy/hwptopdf-hwpx v3.py` | 845 | 레거시 tkinter 기반 버전 |
-| `hwp_converter.spec` | 103 | PyInstaller 빌드 설정 (경량화, `uac_admin=True`) |
-| `pyrightconfig.json` | 17 | Pylance/pyright 공용 정적 분석 설정 |
-| `.editorconfig` | 7 | UTF-8/LF 편집 규칙 |
-| `README.md` | 196 | 사용자 관점 기능/설치/사용법 |
-| `claude.md` | 78 | 핵심 로직 보존 지침(변경 주의사항) |
-| `gemini.md` | 123 | 유지보수/확장 지침(절대 변경 금지 영역 포함) |
-| `update_history.md` | 164 | 버전 이력, 기술적 문제 해결 기록 |
+| `legacy/hwptopdf-hwpx v3.py` | 806 | 레거시 tkinter 기반 버전 |
+| `hwp_converter.spec` | 101 | PyInstaller 빌드 설정 (경량화, `uac_admin=True`) |
+| `pyrightconfig.json` | 15 | Pylance/pyright 공용 정적 분석 설정 |
+| `.editorconfig` | 10 | UTF-8/LF 편집 규칙 |
+| `README.md` | 98 | 사용자 관점 기능/설치/사용법 |
+| `claude.md` | 76 | 핵심 로직 보존 지침(변경 주의사항) |
+| `gemini.md` | 61 | 유지보수/확장 지침(절대 변경 금지 영역 포함) |
+| `update_history.md` | 71 | 버전 이력, 기술적 문제 해결 기록 |
 
 현재 구조는 `hwpmate/` 패키지 기준의 모듈 분리 아키텍처이며, 루트 래퍼와 기존 배포 흐름은 유지됩니다.
 
@@ -49,15 +50,15 @@
 |---|---|
 | `config_repository.py` | 설정 저장/로드와 JSON 손상 백업 처리 |
 | `path_utils.py` | 경로 정규화, 권한 검사, 지원 파일 스캔 |
-| `models.py` | `AppConfig`, `ConversionTask`, `FormatSpec` 데이터 모델 |
+| `models.py` | `AppConfig`, `ConversionTask`, `PlannedConversion`, `ConversionSummary`, `FormatSpec` 데이터 모델 |
 | `services/file_selection_store.py` | 순서 유지 + 대소문자 비민감 중복 제거 |
-| `services/task_planner.py` | 모드별 작업 생성과 출력 충돌 해소 |
+| `services/task_planner.py` | 모드별 작업 생성, 동일 형식 건너뜀 분리, 출력 충돌 해소 |
 | `services/hwp_converter.py` | COM 연결/문서 열기/SaveAs/정리 담당 |
 | `workers/file_scan_worker.py` | 파일/폴더를 비동기 배치 스캔 |
-| `workers/conversion_worker.py` | 작업 리스트 순차 변환, 백업, 진행 이벤트 전송 |
+| `workers/conversion_worker.py` | 작업 리스트 순차 변환, 백업, 취소/요약 집계, 안전한 강제 종료 위임 |
 | `windows_integration.py` | 관리자 권한에서도 동작하는 네이티브 DnD 처리 |
-| `ui/theme.py`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs.py` | 테마/토스트/위젯/결과 다이얼로그 |
-| `ui/main_window.py` | UI 상태 관리와 이벤트 오케스트레이션 |
+| `ui/theme.py`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs.py` | 테마/토스트/위젯/사전 점검/결과 다이얼로그 |
+| `ui/main_window.py` | UI 상태 관리, 모드별 DnD 분기, 종료 제어 오케스트레이션 |
 | `ui/main_window_ui.py` | 메인 윈도우 레이아웃 빌더 |
 
 ### 4.3 데이터/상태 모델
@@ -68,8 +69,8 @@
   - `folder_path`, `output_path`, `last_folder`, `last_output`
 - 런타임 주요 상태:
   - `self.file_list`, `self._file_set`
-  - `self.tasks`, `self.worker`, `self.file_scan_worker`
-  - `self.is_converting`, `self._scan_mode`, `self._force_kill_pending`
+  - `self.plan`, `self.tasks`, `self.last_summary`, `self.worker`, `self.file_scan_worker`
+  - `self.is_converting`, `self._scan_mode`, `self._force_kill_pending`, `self._close_after_worker`
 
 ## 5. 실제 동작 플로우
 
@@ -82,15 +83,19 @@
 
 ### 5.2 변환 플로우
 1. `_start_conversion()`
-2. `_collect_tasks()`로 모드별 작업 생성
-3. 필요 시 `_adjust_output_paths()`로 충돌 회피
-4. `ConversionWorker` 시작
+2. `_collect_tasks()`로 `PlannedConversion` 생성
+3. 필요 시 `_adjust_output_paths()`로 충돌 회피 수 계산
+4. `PreflightDialog`로 실행 대상/건너뜀/경고 확인
+5. `ConversionWorker` 시작
 5. `ConversionWorker.run()` 내부
    - 워커 스레드 `pythoncom.CoInitialize()`
    - `HWPConverter.initialize()`
    - 파일별 `_create_backup()` 후 `convert_file()`
+   - 취소 시 남은 task를 `취소됨`으로 마킹
+   - `ConversionSummary` 생성
 6. `task_completed` 시그널 수신 후 `ResultDialog` 표시
-7. `_on_worker_finished()`에서 UI/시그널/상태 정리
+7. 필요 시 실패 TXT / 결과 CSV·JSON 저장
+8. `_on_worker_finished()`에서 UI/시그널/상태 정리 및 종료 대기 처리
 
 ## 6. 기능 추가 시 반드시 지켜야 할 핵심 제약
 (출처: `claude.md`, `gemini.md`, 코드 본문)
@@ -107,11 +112,20 @@
 
 4. 자동 백업 로직 유지
 - 백업 실패가 전체 변환 실패로 이어지지 않게 현재 방식을 유지.
+- 백업명 충돌 방지를 위한 마이크로초/일련번호 전략 유지.
 
 5. 관리자 권한 + 네이티브 DnD 경로 유지
 - UIPI 우회용 WM_DROPFILES 처리 삭제 금지.
+- 긴 경로 대응용 동적 버퍼 할당 유지.
 
-6. 배포 제약 고려
+6. 동일 형식 건너뜀/결과 요약 유지
+- 동일 형식은 오류가 아니라 `건너뜀`으로 집계.
+- 결과 화면과 결과 저장 파일은 `성공/실패/건너뜀/취소됨` 집계를 일관되게 사용.
+
+7. 강제 종료 범위 제한 유지
+- 시스템 전체 한글 프로세스 종료로 되돌리지 말고, 앱이 추적한 PID만 종료.
+
+8. 배포 제약 고려
 - `hwp_converter.spec`의 `hiddenimports`, `uac_admin=True`, excludes 전략을 손상시키지 말 것.
 
 ## 7. 확장성 평가
@@ -140,13 +154,13 @@
 - 예: 실패 파일 N회 재시도, 대기시간 설정
 - 영향 영역: `ConversionWorker.run()`, 결과 다이얼로그
 
-3. 결과 리포트 확장(CSV/JSON)
-- 현재 txt 실패 목록 외 전체 결과 리포트
-- 영향 영역: `ResultDialog`, `_on_task_completed`
-
-4. 출력 파일명 템플릿
+3. 출력 파일명 템플릿
 - 예: `{name}_{date}` `{name}_{format}`
 - 영향 영역: `_collect_tasks`, `_adjust_output_paths`
+
+4. 사전 점검 상세 목록 확장
+- 현재 요약형 사전 점검을 파일별 경고/건너뜀 이유까지 펼쳐보는 방식으로 확장
+- 영향 영역: `PreflightDialog`, `PlannedConversion`, `_start_conversion`
 
 ### 8.2 중기(중간 리스크)
 5. 작업 큐 저장/복원
@@ -181,8 +195,8 @@
 2. UI 액션 서비스화
 - 폴더 열기, 실패 목록 내보내기, 사용자 알림 정책을 더 작은 서비스로 분리 가능
 
-3. GUI 테스트 보강
-- 파일 선택 스토어와 태스크 플래너 외에 MainWindow 상호작용 테스트를 추가 가능
+3. GUI/COM 검증 보강
+- Qt 상호작용 테스트는 추가됐으므로, 실제 HWP COM이 설치된 환경에서 도는 스모크 테스트/수동 점검 체계를 더 강화할 수 있음
 
 4. 빌드 자동화
 - `pyright`, `pytest`, `pyinstaller`를 묶는 CI 스모크 파이프라인 추가 가능
@@ -198,11 +212,12 @@
 1. 관리자 권한 실행 여부 확인
 2. 파일 모드: 드래그 드롭/추가/제거/전체제거
 3. 폴더 모드: 하위폴더 포함 on/off 파일 수 미리보기
-4. 포맷별 변환 성공/실패 처리
-5. overwrite on/off 파일명 충돌 처리
-6. 취소 후 강제 종료 경로
-7. 결과 다이얼로그(실패 목록 저장/폴더 열기)
-8. 앱 종료 시 트레이/토스트/워커 정리
+4. 동일 형식 입력 건너뜀과 사전 점검 다이얼로그
+5. 포맷별 변환 성공/실패 처리
+6. overwrite on/off 파일명 충돌 처리
+7. 결과 다이얼로그(실패 목록 저장, CSV/JSON 저장, 폴더 열기)
+8. 취소 후 강제 종료 경로
+9. 앱 종료 시 트레이/토스트/워커 정리
 
 ## 12. 결론
 - 이 프로젝트는 "안정화된 COM 자동화 + 고도화된 PyQt UI" 구조이며, 기능 확장 여지는 충분합니다.

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -59,3 +59,112 @@ class ConversionTask:
     def __post_init__(self) -> None:
         self.input_file = Path(self.input_file)
         self.output_file = Path(self.output_file)
+
+    @property
+    def detail(self) -> str:
+        return self.error or ""
+
+    def to_record(self) -> dict[str, str]:
+        return {
+            "input_file": str(self.input_file),
+            "output_file": str(self.output_file),
+            "status": self.status,
+            "detail": self.detail,
+        }
+
+
+@dataclass
+class PlannedConversion:
+    format_type: str
+    same_location: bool
+    output_path: str
+    tasks: list[ConversionTask] = field(default_factory=list)
+    skipped_tasks: list[ConversionTask] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    conflict_renamed_count: int = 0
+
+    @property
+    def runnable_count(self) -> int:
+        return len(self.tasks)
+
+    @property
+    def skipped_count(self) -> int:
+        return len(self.skipped_tasks)
+
+    @property
+    def total_requested(self) -> int:
+        return self.runnable_count + self.skipped_count
+
+    @property
+    def all_tasks(self) -> list[ConversionTask]:
+        return sorted(self.tasks + self.skipped_tasks, key=lambda task: str(task.input_file).lower())
+
+    @property
+    def output_policy_label(self) -> str:
+        if self.same_location:
+            return "입력 파일과 같은 위치"
+        return self.output_path or "사용자 지정 출력 폴더"
+
+
+@dataclass
+class ConversionSummary:
+    format_type: str
+    tasks: list[ConversionTask] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    elapsed_seconds: float | None = None
+    progid_used: str | None = None
+
+    @property
+    def total_requested(self) -> int:
+        return len(self.tasks)
+
+    @property
+    def success_count(self) -> int:
+        return len([task for task in self.tasks if task.status == "성공"])
+
+    @property
+    def failed_count(self) -> int:
+        return len([task for task in self.tasks if task.status == "실패"])
+
+    @property
+    def skipped_count(self) -> int:
+        return len([task for task in self.tasks if task.status == "건너뜀"])
+
+    @property
+    def canceled_count(self) -> int:
+        return len([task for task in self.tasks if task.status == "취소됨"])
+
+    @property
+    def output_paths(self) -> list[str]:
+        return [str(task.output_file) for task in self.tasks if task.status == "성공"]
+
+    @property
+    def failed_tasks(self) -> list[ConversionTask]:
+        return [task for task in self.tasks if task.status == "실패"]
+
+    @property
+    def skipped_tasks(self) -> list[ConversionTask]:
+        return [task for task in self.tasks if task.status == "건너뜀"]
+
+    @property
+    def canceled_tasks(self) -> list[ConversionTask]:
+        return [task for task in self.tasks if task.status == "취소됨"]
+
+    def sorted_tasks(self) -> list[ConversionTask]:
+        return sorted(self.tasks, key=lambda task: str(task.input_file).lower())
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "summary": {
+                "format_type": self.format_type,
+                "total_requested": self.total_requested,
+                "success_count": self.success_count,
+                "failed_count": self.failed_count,
+                "skipped_count": self.skipped_count,
+                "canceled_count": self.canceled_count,
+                "elapsed_seconds": self.elapsed_seconds,
+                "progid_used": self.progid_used,
+                "warnings": list(self.warnings),
+            },
+            "tasks": [task.to_record() for task in self.sorted_tasks()],
+        }

@@ -16,9 +16,13 @@
 
 - 폴더 일괄 변환과 파일 개별 선택을 모두 지원합니다.
 - 관리자 권한 환경에서도 동작하는 네이티브 드래그 앤 드롭을 제공합니다.
+- 변환 시작 전 사전 점검 다이얼로그에서 실행 대상, 건너뜀, 출력 충돌 조정을 확인할 수 있습니다.
 - 변환 전 원본을 `backup` 폴더에 자동 백업합니다.
+- 동일 형식 변환(`HWP->HWP`, `HWPX->HWPX`)은 자동으로 건너뛰고 결과에 별도 집계합니다.
 - 다크/라이트 테마, 상태바, 시스템 트레이, 토스트 알림을 포함한 현대적인 UI를 제공합니다.
 - 중복 파일 감지, 출력 경로 유효성 검사, 덮어쓰기 방지 번호 부여를 지원합니다.
+- 실패 목록 TXT와 전체 결과 CSV/JSON 저장을 지원합니다.
+- 강제 종료는 앱이 직접 띄운 한글 프로세스에만 제한적으로 적용합니다.
 - `pyright` 기준 정적 타입 검사를 통과하도록 관리합니다.
 
 ## 실행 환경
@@ -49,7 +53,7 @@ pyinstaller hwp_converter.spec
 - 실행 파일 이름은 `HWP변환기_v8.6.exe`입니다.
 - `.spec` 파일은 루트 래퍼 `hwptopdf-hwpx_v4.py`를 기준으로 경량 빌드되며, 내부적으로 `hwpmate/` 패키지를 함께 분석합니다.
 - `uac_admin=True`가 설정되어 있어 배포 실행 파일은 관리자 권한 승격을 요청합니다.
-- 현재 분리 구조 기준으로 `pyinstaller hwp_converter.spec` 빌드 검증을 통과했습니다.
+- 2026-03-18 안정화/UX 보강 이후에도 추가 hidden import나 data bundle 변경 없이 `pyinstaller hwp_converter.spec` 빌드 검증을 통과했습니다.
 
 ## 개발 품질 기준
 
@@ -98,6 +102,7 @@ HwpMate/
 ├── pyrightconfig.json
 ├── .editorconfig
 ├── README.md
+├── PROJECT_STRUCTURE_ANALYSIS.md
 ├── update_history.md
 ├── claude.md
 └── gemini.md
@@ -107,11 +112,13 @@ HwpMate/
 
 1. 변환 중에는 한글 프로그램을 직접 조작하지 않는 편이 안전합니다.
 2. 출력 형식에 따라 한글 설치 버전별 COM 호환 차이가 있을 수 있으므로 `SaveAs` 폴백 로직을 유지해야 합니다.
-3. 테스트용 문서를 이 리포지토리 안에서 변환할 경우 `backup/` 폴더가 생성될 수 있으며, 이는 기본적으로 Git 추적 대상이 아닙니다.
+3. 동일 형식 파일은 자동으로 건너뛰며, 결과 창과 결과 리포트에 `건너뜀`으로 표시됩니다.
+4. 테스트용 문서를 이 리포지토리 안에서 변환할 경우 `backup/` 폴더가 생성될 수 있으며, 이는 기본적으로 Git 추적 대상이 아닙니다.
 
 ## 문서 안내
 
 - [update_history.md](update_history.md): 기능 변화와 유지보수 이력
+- [PROJECT_STRUCTURE_ANALYSIS.md](PROJECT_STRUCTURE_ANALYSIS.md): 아키텍처와 확장 포인트 분석
 - [claude.md](claude.md): Claude 계열 협업 가이드
 - [gemini.md](gemini.md): Gemini 계열 협업 가이드
 

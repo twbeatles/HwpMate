@@ -2,17 +2,23 @@ from __future__ import annotations
 
 import datetime
 from pathlib import Path
-from typing import Sequence, Set
+from typing import Iterable, Sequence, Set
 
 from ..constants import FORMAT_TYPES, MAX_FILENAME_COUNTER, SUPPORTED_EXTENSIONS
 from ..logging_config import get_logger
-from ..models import ConversionTask
+from ..models import ConversionTask, PlannedConversion
 from ..path_utils import canonicalize_path, iter_supported_files
 
 logger = get_logger(__name__)
 
 
 class TaskPlanner:
+    def preview_allowed_extensions(self, format_type: str) -> Iterable[str]:
+        output_ext = FORMAT_TYPES[format_type]["ext"].lower()
+        if output_ext in SUPPORTED_EXTENSIONS:
+            return [ext for ext in SUPPORTED_EXTENSIONS if ext != output_ext]
+        return SUPPORTED_EXTENSIONS
+
     def build_tasks(
         self,
         *,
@@ -23,8 +29,10 @@ class TaskPlanner:
         same_location: bool,
         output_path: str,
         file_paths: Sequence[str],
-    ) -> list[ConversionTask]:
+    ) -> PlannedConversion:
         tasks: list[ConversionTask] = []
+        skipped_tasks: list[ConversionTask] = []
+        warnings: list[str] = []
         format_info = FORMAT_TYPES[format_type]
         output_ext = format_info["ext"]
 
@@ -37,7 +45,7 @@ class TaskPlanner:
             if not folder.exists():
                 raise ValueError("폴더가 존재하지 않습니다.")
 
-            allowed_exts: Set[str] = {".hwp"} if format_type == "HWPX" else set(SUPPORTED_EXTENSIONS)
+            allowed_exts: Set[str] = set(SUPPORTED_EXTENSIONS)
             input_files = [
                 Path(canonicalize_path(str(p)))
                 for p in iter_supported_files(
@@ -54,6 +62,17 @@ class TaskPlanner:
             logger.debug(f"폴더 작업 수집: {len(input_files)}개")
 
             for input_file in input_files:
+                if input_file.suffix.lower() == output_ext.lower():
+                    skipped_tasks.append(
+                        ConversionTask(
+                            input_file=input_file,
+                            output_file=input_file,
+                            status="건너뜀",
+                            error=f"이미 {format_type} 형식입니다.",
+                        )
+                    )
+                    continue
+
                 if same_location:
                     output_file = input_file.parent / (input_file.stem + output_ext)
                 else:
@@ -68,17 +87,35 @@ class TaskPlanner:
                     output_file = output_folder / rel_path.parent / (input_file.stem + output_ext)
 
                 tasks.append(ConversionTask(input_file=input_file, output_file=output_file))
-            return tasks
+
+            if skipped_tasks:
+                warnings.append(
+                    f"동일 형식 {len(skipped_tasks)}개는 자동으로 건너뜁니다."
+                )
+
+            return PlannedConversion(
+                format_type=format_type,
+                same_location=same_location,
+                output_path=output_path.strip(),
+                tasks=tasks,
+                skipped_tasks=skipped_tasks,
+                warnings=warnings,
+            )
 
         if not file_paths:
             raise ValueError("파일을 추가하세요.")
 
-        skipped_hwpx = 0
         for file_path in file_paths:
             input_file = Path(file_path)
-            if format_type == "HWPX" and input_file.suffix.lower() == ".hwpx":
-                skipped_hwpx += 1
-                logger.debug(f"HWPX->HWPX 변환 건너뜀: {input_file.name}")
+            if input_file.suffix.lower() == output_ext.lower():
+                skipped_tasks.append(
+                    ConversionTask(
+                        input_file=input_file,
+                        output_file=input_file,
+                        status="건너뜀",
+                        error=f"이미 {format_type} 형식입니다.",
+                    )
+                )
                 continue
 
             if same_location:
@@ -94,21 +131,26 @@ class TaskPlanner:
 
             tasks.append(ConversionTask(input_file=input_file, output_file=output_file))
 
-        if skipped_hwpx > 0 and not tasks:
-            raise ValueError(
-                f"선택한 모든 파일({skipped_hwpx}개)이 이미 HWPX 형식입니다.\n"
-                "HWPX 파일을 다시 HWPX로 변환할 수 없습니다."
+        if skipped_tasks:
+            warnings.append(
+                f"동일 형식 {len(skipped_tasks)}개는 자동으로 건너뜁니다."
             )
-        if skipped_hwpx > 0:
-            logger.debug(f"{skipped_hwpx}개 HWPX 파일을 건너뛰었습니다 (HWPX->HWPX 변환 불가)")
 
-        return tasks
+        return PlannedConversion(
+            format_type=format_type,
+            same_location=same_location,
+            output_path=output_path.strip(),
+            tasks=tasks,
+            skipped_tasks=skipped_tasks,
+            warnings=warnings,
+        )
 
-    def resolve_output_conflicts(self, tasks: list[ConversionTask], overwrite: bool) -> None:
+    def resolve_output_conflicts(self, tasks: list[ConversionTask], overwrite: bool) -> int:
         if overwrite:
-            return
+            return 0
 
         used_paths: set[Path] = set()
+        renamed_count = 0
 
         for task in tasks:
             original_path = task.output_file
@@ -133,6 +175,9 @@ class TaskPlanner:
                     logger.warning(f"파일명 카운터 초과, 타임스탬프 사용: {new_name}")
 
                 if task.output_file != original_path:
+                    renamed_count += 1
                     logger.info(f"출력 경로 조정: {original_path} -> {task.output_file}")
 
             used_paths.add(task.output_file)
+
+        return renamed_count

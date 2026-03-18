@@ -20,14 +20,22 @@
 ### 관리자 권한 드롭 처리
 - 앱은 관리자 권한을 전제로 동작합니다.
 - 드래그 앤 드롭은 `NativeDropFilter`의 Windows 메시지 처리까지 포함해야 완전합니다.
+- 폴더 모드에서는 폴더 1개만 받아 `folder_entry`와 미리보기 스캔으로 연결합니다.
+- 파일 모드에서만 다중 파일/폴더 스캔을 파일 목록에 추가합니다.
 
 ### 워커 분리
 - 파일 스캔과 변환이 UI 스레드를 막지 않도록 `FileScanWorker`, `ConversionWorker`를 유지합니다.
 - 스레드 내부 COM 초기화는 삭제하지 않습니다.
+- `ConversionWorker.task_completed`는 `ConversionSummary`를 전달하며 `성공/실패/건너뜀/취소됨`을 분리 집계합니다.
 
 ### 백업과 덮어쓰기 방지
 - `_create_backup`은 원본 보호를 위한 기본 안전장치입니다.
 - 덮어쓰기 미허용 시 자동 번호 부여 로직을 유지합니다.
+- 백업명은 마이크로초 기반이며 충돌 시 일련번호를 붙여 덮어쓰지 않습니다.
+
+### 동일 형식 건너뜀과 안전한 강제 종료
+- 동일 형식 입력은 오류가 아니라 `건너뜀`으로 처리하며 `PlannedConversion.skipped_tasks`에 담깁니다.
+- 강제 종료는 시스템 전체 한글 프로세스가 아니라 앱이 직접 띄운 PID에만 허용합니다.
 
 ## 3. 현재 리포지토리 품질 기준
 
@@ -42,6 +50,7 @@
 - `hwpmate/`: 운영 코드 전체
 - `hwp_converter.spec`: PyInstaller 빌드 정의
 - `README.md`: 사용자 안내와 실행/빌드 방법
+- `PROJECT_STRUCTURE_ANALYSIS.md`: 현재 구조와 확장 포인트 분석
 - `update_history.md`: 기능/유지보수 이력
 - `claude.md`, `gemini.md`: 협업 에이전트용 개발 가이드
 
@@ -66,4 +75,7 @@ pyinstaller hwp_converter.spec
 - 앱 실행
 - 폴더 변환 1회
 - 파일 드롭 1회
+- 사전 점검 다이얼로그
+- 결과 CSV/JSON 저장
+- 취소 후 종료/강제 종료 흐름
 - 결과 폴더 열기와 실패 목록 저장 기능

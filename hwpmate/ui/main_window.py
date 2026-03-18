@@ -6,23 +6,23 @@ import platform
 import sys
 import time
 from pathlib import Path
-from typing import Iterable, List, Optional, Set
+from typing import Iterable, List, Optional
 
 from PyQt6.QtCore import QSignalBlocker, QTimer
 from PyQt6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut, QShowEvent
-from PyQt6.QtWidgets import QApplication, QFileDialog, QMainWindow, QLabel, QMenu, QMessageBox, QStyle, QSystemTrayIcon, QTableWidgetItem, QCheckBox, QLineEdit, QPushButton, QProgressBar, QRadioButton, QTabWidget, QTableWidget, QWidget
+from PyQt6.QtWidgets import QApplication, QFileDialog, QMainWindow, QLabel, QMenu, QMessageBox, QStyle, QSystemTrayIcon, QTableWidgetItem, QCheckBox, QDialog, QLineEdit, QPushButton, QProgressBar, QRadioButton, QTabWidget, QTableWidget, QWidget
 
 from ..config_repository import load_config, save_config
-from ..constants import FEEDBACK_RESET_DELAY, SCAN_BATCH_SIZE, SCAN_CANCEL_WAIT_MS, SUPPORTED_EXTENSIONS, WORKER_WAIT_TIMEOUT, VERSION
+from ..constants import FEEDBACK_RESET_DELAY, FORMAT_GROUPS, FORMAT_TYPES, SCAN_BATCH_SIZE, SCAN_CANCEL_WAIT_MS, SUPPORTED_EXTENSIONS, WORKER_WAIT_TIMEOUT, VERSION
 from ..logging_config import get_logger
-from ..models import ConversionTask
-from ..path_utils import canonicalize_path, check_write_permission, iter_supported_files, make_path_key
+from ..models import ConversionSummary, ConversionTask, PlannedConversion
+from ..path_utils import canonicalize_path, check_write_permission, is_valid_path_name
 from ..services.file_selection_store import FileSelectionStore
 from ..services.task_planner import TaskPlanner
 from ..windows_integration import NativeDropFilter
 from ..workers.conversion_worker import ConversionWorker
 from ..workers.file_scan_worker import FileScanWorker
-from .dialogs import ResultDialog
+from .dialogs import PreflightDialog, ResultDialog
 from .main_window_ui import MainWindowWidgets, build_main_window_ui
 from .theme import ThemeManager
 from .toast import ToastManager
@@ -68,6 +68,8 @@ class MainWindow(QMainWindow):
         
         # 변수 초기화
         self.tasks: List[ConversionTask] = []
+        self.plan: Optional[PlannedConversion] = None
+        self.last_summary: Optional[ConversionSummary] = None
         self.worker: Optional[ConversionWorker] = None
         self.is_converting = False
         self.file_store = FileSelectionStore()
@@ -80,6 +82,8 @@ class MainWindow(QMainWindow):
         self._scan_new_file_count = 0
         self._scan_preview_count = 0
         self._scan_started_at = None
+        self._force_kill_pending = False
+        self._close_after_worker = False
         
         # 드래그 앤 드롭 초기화 플래그
         self._drag_drop_initialized = False
@@ -156,16 +160,38 @@ class MainWindow(QMainWindow):
     
     def _on_native_files_dropped(self, files: List[str]) -> None:
         """네이티브 드래그 앤 드롭 입력 처리 (파일/폴더 경로)"""
-        if files:
-            self._add_files(files)
-            # 시각적 피드백
-            if hasattr(self, 'drop_area') and self.drop_area:
-                self.drop_area.icon_label.setText("✅")
-                self.drop_area.text_label.setText(f"{len(files)}개 경로 스캔 시작")
-                QTimer.singleShot(FEEDBACK_RESET_DELAY, self.drop_area._reset_appearance)
-            # 토스트 알림
-            if hasattr(self, 'toast'):
-                self.toast.show_message(f"📂 {len(files)}개 경로를 스캔합니다", "✅")
+        if not files:
+            return
+
+        normalized = [canonicalize_path(path) for path in files if str(path).strip()]
+        if not normalized:
+            return
+
+        if self.folder_radio.isChecked():
+            if len(normalized) == 1 and Path(normalized[0]).is_dir():
+                folder = normalized[0]
+                self.folder_entry.setText(folder)
+                self.config["last_folder"] = folder
+                self.config["folder_path"] = folder
+                self._start_folder_preview_scan(folder)
+                if hasattr(self, "toast"):
+                    self.toast.show_message("📁 폴더 드롭을 받아 미리보기 스캔을 시작합니다", "✅")
+                return
+
+            QMessageBox.warning(
+                self,
+                "경고",
+                "폴더 모드에서는 폴더 1개만 드롭할 수 있습니다.\n파일이나 다중 경로 드롭은 지원하지 않습니다.",
+            )
+            return
+
+        self._add_files(normalized)
+        if hasattr(self, "drop_area") and self.drop_area:
+            self.drop_area.icon_label.setText("✅")
+            self.drop_area.text_label.setText(f"{len(normalized)}개 경로 스캔 시작")
+            QTimer.singleShot(FEEDBACK_RESET_DELAY, self.drop_area._reset_appearance)
+        if hasattr(self, "toast"):
+            self.toast.show_message(f"📂 {len(normalized)}개 경로를 스캔합니다", "✅")
     
     def _init_menu_bar(self) -> None:
         """메뉴바 초기화"""
@@ -285,8 +311,7 @@ class MainWindow(QMainWindow):
     
     def _quit_app(self) -> None:
         """애플리케이션 종료"""
-        self.tray_icon.hide()
-        QApplication.quit()
+        self.close()
     
     def _on_tray_activated(self, reason) -> None:
         """트레이 아이콘 클릭 이벤트"""
@@ -303,19 +328,21 @@ class MainWindow(QMainWindow):
     
     def _show_usage(self) -> None:
         """사용법 표시"""
-        usage_text = """<h3>HWP 변환기 사용법</h3>
-        
+        format_html = "".join(
+            f"<li><b>{group}</b>: {', '.join(f'{key} ({FORMAT_TYPES[key].desc})' for key in keys)}</li>"
+            for group, keys in FORMAT_GROUPS.items()
+        )
+        usage_text = f"""<h3>HWP 변환기 사용법</h3>
+
 <p><b>1. 변환 모드 선택</b></p>
 <ul>
-<li>폴더 일괄 변환: 폴더 내 모든 HWP/HWPX 파일 변환</li>
+<li>폴더 일괄 변환: 폴더 내 실제 변환 가능한 파일만 미리보기 후 변환</li>
 <li>파일 개별 선택: 원하는 파일만 선택하여 변환</li>
 </ul>
 
 <p><b>2. 변환 형식 선택</b></p>
 <ul>
-<li>PDF: 문서 공유에 적합</li>
-<li>HWPX: 한글 호환 (XML 기반)</li>
-<li>DOCX: MS Word 호환</li>
+{format_html}
 </ul>
 
 <p><b>3. 단축키</b></p>
@@ -331,15 +358,24 @@ class MainWindow(QMainWindow):
     
     def _show_about(self) -> None:
         """프로그램 정보 표시"""
+        supported_formats = "".join(
+            f"<li><b>{group}</b>: {', '.join(keys)}</li>"
+            for group, keys in FORMAT_GROUPS.items()
+        )
         about_text = f"""<h2>HWP 변환기 v{VERSION}</h2>
-<p>HWP/HWPX 파일을 PDF, HWPX, DOCX로 변환하는 프로그램</p>
+<p>HWP/HWPX 파일을 다양한 문서/이미지 형식으로 변환하는 프로그램</p>
 
 <p><b>주요 기능:</b></p>
 <ul>
 <li>폴더 일괄 변환 / 파일 개별 선택</li>
-<li>드래그 앤 드롭 지원</li>
+<li>모드별 드래그 앤 드롭 지원</li>
 <li>다크/라이트 테마</li>
-<li>변환 진행률 및 예상 시간 표시</li>
+<li>사전 점검, 결과 리포트, 실패 목록 저장</li>
+</ul>
+
+<p><b>지원 형식:</b></p>
+<ul>
+{supported_formats}
 </ul>
 
 <p><b>요구사항:</b></p>
@@ -379,6 +415,8 @@ class MainWindow(QMainWindow):
         """포맷 카드 클릭 이벤트"""
         self._selected_format = format_type
         self._update_format_cards()
+        if self.folder_radio.isChecked() and self.folder_entry.text().strip():
+            self._start_folder_preview_scan(self.folder_entry.text().strip())
     
     def _update_format_cards(self) -> None:
         """포맷 카드 선택 상태 업데이트"""
@@ -474,7 +512,7 @@ class MainWindow(QMainWindow):
             [folder_path],
             mode="folder_preview",
             include_sub=self.include_sub_check.isChecked(),
-            allowed_exts=set(SUPPORTED_EXTENSIONS),
+            allowed_exts=set(self.task_planner.preview_allowed_extensions(self._selected_format)),
         )
 
     def _append_files_batch(self, files: List[str]) -> int:
@@ -567,9 +605,9 @@ class MainWindow(QMainWindow):
             if canceled:
                 self.status_label.setText("폴더 스캔이 취소되었습니다")
             elif self._scan_preview_count == 0:
-                self.status_label.setText("⚠️ 폴더에 HWP/HWPX 파일이 없습니다")
+                self.status_label.setText("⚠️ 현재 포맷으로 변환 가능한 파일이 없습니다")
             else:
-                self.status_label.setText(f"📁 {self._scan_preview_count}개 HWP/HWPX 파일 발견")
+                self.status_label.setText(f"📁 {self._scan_preview_count}개 변환 가능 파일 발견")
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     f"폴더 미리보기 스캔 완료: 발견={self._scan_preview_count}, "
@@ -681,7 +719,7 @@ class MainWindow(QMainWindow):
         count = self.file_store.count
         self.file_count_label.setText(f"📄 파일: {count}개")
     
-    def _collect_tasks(self) -> List[ConversionTask]:
+    def _collect_tasks(self) -> PlannedConversion:
         """변환 작업 목록 생성"""
         return self.task_planner.build_tasks(
             is_folder_mode=self.folder_radio.isChecked(),
@@ -692,11 +730,11 @@ class MainWindow(QMainWindow):
             output_path=self.output_entry.text(),
             file_paths=self.file_store.paths,
         )
-    
-    def _adjust_output_paths(self, tasks: List[ConversionTask]) -> None:
+
+    def _adjust_output_paths(self, plan: PlannedConversion) -> int:
         """출력 경로 조정 (덮어쓰기 방지)"""
-        self.task_planner.resolve_output_conflicts(tasks, overwrite=False)
-    
+        return self.task_planner.resolve_output_conflicts(plan.tasks, overwrite=False)
+
     def _save_settings(self) -> None:
         """설정 저장"""
         self.config["mode"] = "folder" if self.folder_radio.isChecked() else "files"
@@ -705,14 +743,31 @@ class MainWindow(QMainWindow):
         self.config["include_sub"] = self.include_sub_check.isChecked()
         self.config["same_location"] = self.same_location_check.isChecked()
         self.config["overwrite"] = self.overwrite_check.isChecked()
-        
-        # 폴더 및 출력 경로 저장
+
+        self.config["folder_path"] = self.folder_entry.text().strip()
+        self.config["output_path"] = self.output_entry.text().strip()
         if self.folder_entry.text().strip():
-            self.config["folder_path"] = self.folder_entry.text().strip()
+            self.config["last_folder"] = self.folder_entry.text().strip()
         if self.output_entry.text().strip():
-            self.config["output_path"] = self.output_entry.text().strip()
-        
+            self.config["last_output"] = self.output_entry.text().strip()
+
         save_config(self.config)
+
+    def _validate_output_settings(self) -> None:
+        if self.same_location_check.isChecked():
+            return
+
+        output_path = self.output_entry.text().strip()
+        if not output_path:
+            raise ValueError("출력 폴더를 선택하세요.")
+        if not is_valid_path_name(output_path):
+            raise ValueError(f"출력 경로에 사용할 수 없는 문자가 있습니다:\n{output_path}")
+
+        output_folder = Path(output_path)
+        if not output_folder.exists():
+            raise ValueError(f"출력 폴더가 존재하지 않습니다:\n{output_folder}")
+        if not check_write_permission(output_folder):
+            raise ValueError(f"출력 폴더에 쓰기 권한이 없습니다:\n{output_folder}")
     
     def _start_conversion(self) -> None:
         """변환 시작"""
@@ -725,125 +780,132 @@ class MainWindow(QMainWindow):
                     QMessageBox.warning(self, "경고", "폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요.")
                     return
 
-            # 출력 폴더 쓰기 권한 사전 검사
-            if not self.same_location_check.isChecked():
-                output_path = self.output_entry.text().strip()
-                if output_path:
-                    output_folder = Path(output_path)
-                    if output_folder.exists() and not check_write_permission(output_folder):
-                        raise ValueError(f"출력 폴더에 쓰기 권한이 없습니다:\n{output_folder}")
-            
-            # 작업 목록 생성
+            self._validate_output_settings()
+
             task_collect_start = time.perf_counter()
-            self.tasks = self._collect_tasks()
+            plan = self._collect_tasks()
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
-                    f"작업 목록 생성 완료: {len(self.tasks)}개, "
+                    f"작업 목록 생성 완료: 실행={plan.runnable_count}개, 건너뜀={plan.skipped_count}개, "
                     f"소요={time.perf_counter() - task_collect_start:.3f}s"
                 )
-            
-            # 덮어쓰기 확인
+
             if not self.overwrite_check.isChecked():
-                self._adjust_output_paths(self.tasks)
-            
-            # 설정 저장
+                plan.conflict_renamed_count = self._adjust_output_paths(plan)
+                if plan.conflict_renamed_count:
+                    plan.warnings.append(
+                        f"출력 경로 충돌 {plan.conflict_renamed_count}개는 자동으로 새 이름으로 저장됩니다."
+                    )
+
+            if not plan.tasks:
+                message = "실행할 변환 대상이 없습니다."
+                if plan.skipped_count:
+                    message += f"\n동일 형식 {plan.skipped_count}개는 자동으로 건너뜁니다."
+                raise ValueError(message)
+
+            preflight = PreflightDialog(plan, self)
+            if preflight.exec() != QDialog.DialogCode.Accepted:
+                self.status_label.setText("변환 시작이 취소되었습니다")
+                return
+
+            self.plan = plan
+            self.tasks = plan.tasks
             self._save_settings()
-            
-            # UI 업데이트
+
             self._set_converting_state(True)
-            
-            # 진행률 초기화
-            self.progress_bar.setMaximum(len(self.tasks))
+            self.progress_bar.setMaximum(plan.runnable_count)
             self.progress_bar.setValue(0)
-            
-            # 변환 시작 시간 기록
             self.conversion_start_time = time.time()
-            
-            # 워커 시작 - 선택된 형식 사용 (FormatCard)
-            format_type = self._selected_format
-            
-            self.worker = ConversionWorker(self.tasks, format_type)
+            self.worker = ConversionWorker(plan)
             self.worker.progress_updated.connect(self._on_progress_updated)
             self.worker.status_updated.connect(self._on_status_updated)
             self.worker.task_completed.connect(self._on_task_completed)
             self.worker.error_occurred.connect(self._on_error_occurred)
             self.worker.finished.connect(self._on_worker_finished)
             self.worker.start()
-            
-            # 상태바 업데이트
             self.hwp_status_label.setText("🟡 한글 연결 중...")
-            
-            self.toast.show_message(f"{len(self.tasks)}개 파일 변환 시작", "🚀")
-            
+
+            start_message = f"{plan.runnable_count}개 파일 변환 시작"
+            if plan.skipped_count:
+                start_message += f" (건너뜀 {plan.skipped_count}개)"
+            self.toast.show_message(start_message, "🚀")
         except ValueError as e:
             QMessageBox.warning(self, "경고", str(e))
         except Exception as e:
             logger.exception("변환 시작 오류")
             QMessageBox.critical(self, "오류", f"오류 발생: {e}")
-    
+
+    def _request_worker_stop(self, waiting_text: str) -> bool:
+        worker = self.worker
+        if worker is None:
+            return True
+
+        self.status_label.setText(waiting_text)
+        worker.cancel()
+        if worker.wait(WORKER_WAIT_TIMEOUT):
+            return True
+
+        if worker.can_force_terminate():
+            self._force_kill_pending = True
+            self.cancel_btn.setText("🛑 강제 종료")
+            self.status_label.setText("취소 요청됨 (응답 대기)")
+        else:
+            self._force_kill_pending = False
+            self.cancel_btn.setText("⏹️ 취소")
+            self.status_label.setText("안전하게 강제 종료할 대상 프로세스를 확인하지 못했습니다. 종료를 기다리는 중입니다.")
+        return False
+
+    def _perform_force_terminate(self) -> bool:
+        worker = self.worker
+        if worker is None:
+            return False
+
+        self.status_label.setText("강제 종료 중...")
+        QApplication.processEvents()
+        killed = worker.force_terminate()
+        if not killed:
+            self._force_kill_pending = False
+            self.cancel_btn.setText("⏹️ 취소")
+            QMessageBox.warning(
+                self,
+                "강제 종료 불가",
+                "안전하게 종료할 대상 프로세스를 확인하지 못해 강제 종료를 수행하지 않았습니다.",
+            )
+            self.status_label.setText("안전한 강제 종료 대상이 없어 종료를 기다리는 중입니다.")
+            return False
+
+        worker.wait(1000)
+        self._force_kill_pending = False
+        self.cancel_btn.setText("⏹️ 취소")
+        return True
+
     def _cancel_conversion(self) -> None:
         """변환 취소"""
         if not self.worker:
             return
 
-        # 취소 요청 후 무응답 상태라면, 재클릭 시 강제 종료 확인으로 바로 진입
-        if getattr(self, "_force_kill_pending", False):
+        if self._force_kill_pending:
             reply = QMessageBox.question(
-                self, "강제 종료 경고",
-                "한글(Hwp.exe/HwpCtrl.exe)을 강제 종료합니다.\n"
-                "열려 있는 문서가 저장되지 않을 수 있습니다.\n\n"
-                "계속할까요?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                self,
+                "강제 종료 경고",
+                "앱이 소유한 한글 프로세스만 강제 종료합니다.\n열려 있는 문서가 저장되지 않을 수 있습니다.\n\n계속할까요?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
-
             if reply == QMessageBox.StandardButton.Yes:
-                self.status_label.setText("강제 종료 중...")
-                QApplication.processEvents()
-                self.worker.force_terminate()
-                self.worker.wait(1000)  # 강제 종료 후 잠시 대기
-                self.status_label.setText("취소됨")
-                self._force_kill_pending = False
-                self.cancel_btn.setText("⏹️ 취소")
-            else:
-                self.status_label.setText("취소 요청됨 (응답 대기)")
+                if self._perform_force_terminate():
+                    self.status_label.setText("강제 종료 요청 완료")
             return
 
         reply = QMessageBox.question(
-            self, "확인",
-            "변환을 취소하시겠습니까?\n(응답이 없으면 '강제 종료' 여부를 다시 확인합니다)",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            self,
+            "확인",
+            "변환을 취소하시겠습니까?\n응답이 없으면 앱이 소유한 한글 프로세스만 강제 종료할 수 있습니다.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        self.status_label.setText("취소 요청 중...")
-        self.worker.cancel()
-
-        # 3초 내에 종료되지 않으면 강제 종료 여부를 추가 확인
-        if not self.worker.wait(3000):
-            reply2 = QMessageBox.question(
-                self, "강제 종료 경고",
-                "한글(Hwp.exe/HwpCtrl.exe)을 강제 종료합니다.\n"
-                "열려 있는 문서가 저장되지 않을 수 있습니다.\n\n"
-                "계속할까요?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-
-            if reply2 == QMessageBox.StandardButton.Yes:
-                self.status_label.setText("강제 종료 중...")
-                QApplication.processEvents()
-                self.worker.force_terminate()
-                self.worker.wait(1000)  # 강제 종료 후 잠시 대기
-                self.status_label.setText("취소됨")
-                self._force_kill_pending = False
-                self.cancel_btn.setText("⏹️ 취소")
-            else:
-                # 계속 대기: converting 상태는 유지하고, 버튼을 강제 종료 재진입용으로 변경
-                self.status_label.setText("취소 요청됨 (응답 대기)")
-                self._force_kill_pending = True
-                self.cancel_btn.setText("🛑 강제 종료")
-        else:
+        if self._request_worker_stop("취소 요청 중..."):
             self.status_label.setText("취소됨")
     
     def _set_converting_state(self, converting: bool) -> None:
@@ -909,28 +971,30 @@ class MainWindow(QMainWindow):
         """상태 텍스트 업데이트"""
         self.status_label.setText(text)
     
-    def _on_task_completed(self, success: int, total: int, failed_tasks: list) -> None:
+    def _on_task_completed(self, summary_obj: object) -> None:
         """작업 완료"""
-        # 변환 시간 계산
-        if self.conversion_start_time:
-            elapsed = time.time() - self.conversion_start_time
-            elapsed_str = f"{elapsed:.1f}초"
+        if not isinstance(summary_obj, ConversionSummary):
+            return
+
+        summary = summary_obj
+        self.last_summary = summary
+        elapsed_str = f"{summary.elapsed_seconds:.1f}초" if summary.elapsed_seconds is not None else "알 수 없음"
+
+        if summary.failed_count == 0 and summary.canceled_count == 0:
+            self.toast.show_message(
+                f"✅ 성공 {summary.success_count}개, 건너뜀 {summary.skipped_count}개 ({elapsed_str})",
+                "🎉",
+            )
         else:
-            elapsed_str = "알 수 없음"
-        
-        # 토스트 알림
-        if success == total:
-            self.toast.show_message(f"✅ {success}개 파일 변환 완료! ({elapsed_str})", "🎉")
-        else:
-            self.toast.show_message(f"⚠️ {success}/{total}개 성공 ({elapsed_str})", "⚠️")
-        
-        # 성공한 파일들의 출력 경로 수집
-        output_paths = [str(task.output_file) for task in self.tasks if task.status == "성공"]
-        
-        # 상태바 한글 상태 업데이트
+            self.toast.show_message(
+                f"⚠️ 성공 {summary.success_count} / 실패 {summary.failed_count} / 취소 {summary.canceled_count} ({elapsed_str})",
+                "⚠️",
+            )
+
         self.hwp_status_label.setText("🟢 한글 연결됨")
-        
-        dialog = ResultDialog(success, total, failed_tasks, output_paths, self)
+        if self._close_after_worker:
+            return
+        dialog = ResultDialog(summary, self)
         dialog.exec()
     
     def _on_error_occurred(self, error_msg: str) -> None:
@@ -942,14 +1006,11 @@ class MainWindow(QMainWindow):
     def _on_worker_finished(self) -> None:
         """워커 종료"""
         self._set_converting_state(False)
-        
-        # UI 상태 초기화 (취소 후에도 깔끔한 UI)
         self.progress_bar.setValue(0)
         self.progress_label.setText("0 / 0")
         self.status_label.setText("대기 중")
         self.hwp_status_label.setText("🟢 한글 대기중")
-        
-        # 시그널 연결 해제 (메모리 누수 방지)
+
         if self.worker:
             try:
                 self.worker.progress_updated.disconnect()
@@ -958,9 +1019,12 @@ class MainWindow(QMainWindow):
                 self.worker.error_occurred.disconnect()
                 self.worker.finished.disconnect()
             except (TypeError, RuntimeError):
-                pass  # 이미 연결 해제된 경우
-        
+                pass
+
         self.worker = None
+        self.plan = None
+        if self._close_after_worker:
+            QTimer.singleShot(0, self.close)
     
     def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
         """윈도우 닫기 이벤트"""
@@ -972,6 +1036,11 @@ class MainWindow(QMainWindow):
             return
 
         if self.is_converting:
+            if self._close_after_worker:
+                self.status_label.setText("종료 대기 중...")
+                a0.ignore()
+                return
+
             reply = QMessageBox.question(
                 self, "확인",
                 "변환 작업이 진행 중입니다. 종료하시겠습니까?",
@@ -981,19 +1050,29 @@ class MainWindow(QMainWindow):
             if reply == QMessageBox.StandardButton.No:
                 a0.ignore()
                 return
-            
-            if self.worker:
-                self.worker.cancel()
-                if not self.worker.wait(WORKER_WAIT_TIMEOUT):
-                    logger.warning(f"워커 스레드가 {WORKER_WAIT_TIMEOUT}ms 내에 종료되지 않았습니다")
-        
-        # 토스트 매니저 정리
+
+            self._close_after_worker = True
+            if not self._request_worker_stop("종료 대기 중..."):
+                if self.worker and self.worker.can_force_terminate():
+                    reply2 = QMessageBox.question(
+                        self,
+                        "강제 종료 경고",
+                        "앱이 소유한 한글 프로세스만 강제 종료합니다.\n열려 있는 문서가 저장되지 않을 수 있습니다.\n\n계속할까요?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    )
+                    if reply2 == QMessageBox.StandardButton.Yes:
+                        self._perform_force_terminate()
+
+                if self.worker and self.worker.isRunning():
+                    self.status_label.setText("종료 대기 중...")
+                    a0.ignore()
+                    return
+
         if hasattr(self, 'toast') and self.toast:
             self.toast.clear_all()
-        
-        # 트레이 아이콘 숨김
+
         if hasattr(self, 'tray_icon'):
             self.tray_icon.hide()
-        
-        save_config(self.config)
+
+        self._save_settings()
         a0.accept()

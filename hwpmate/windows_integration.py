@@ -211,11 +211,8 @@ class NativeDropFilter(QAbstractNativeEventFilter):
     def _get_dropped_files(self, hDrop: int) -> List[str]:
         """WM_DROPFILES에서 파일 목록 추출"""
         files: List[str] = []
+        hDrop_ptr = ctypes.c_void_p(hDrop)
         try:
-            # 미리 초기화된 shell32 사용 (argtypes도 이미 설정됨)
-            # hDrop을 c_void_p로 변환
-            hDrop_ptr = ctypes.c_void_p(hDrop)
-            
             # 드롭된 파일 수 확인 (0xFFFFFFFF = -1 = 파일 수 반환)
             file_count = self._shell32.DragQueryFileW(hDrop_ptr, 0xFFFFFFFF, None, 0)
             
@@ -223,20 +220,22 @@ class NativeDropFilter(QAbstractNativeEventFilter):
                 logger.debug(f"드롭된 파일 수: {file_count}")
             
             # 각 파일 경로 추출
-            buffer = ctypes.create_unicode_buffer(260)  # MAX_PATH
             for i in range(file_count):
-                length = self._shell32.DragQueryFileW(hDrop_ptr, i, buffer, 260)
+                length = self._shell32.DragQueryFileW(hDrop_ptr, i, None, 0)
                 if length > 0:
+                    buffer = ctypes.create_unicode_buffer(length + 1)
+                    self._shell32.DragQueryFileW(hDrop_ptr, i, buffer, length + 1)
                     files.append(buffer.value)
                     if logger.isEnabledFor(logging.DEBUG):
                         logger.debug(f"드롭된 파일 {i}: {buffer.value}")
-            
-            # 드롭 핸들 해제
-            self._shell32.DragFinish(hDrop_ptr)
-            
         except Exception as e:
             logger.error(f"드롭 파일 추출 실패: {e}")
             import traceback
             traceback.print_exc()
+        finally:
+            try:
+                self._shell32.DragFinish(hDrop_ptr)
+            except Exception:
+                pass
         
         return files

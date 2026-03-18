@@ -3,6 +3,8 @@
 HWP 변환기 v8.6 - PyInstaller 빌드 설정
 루트 래퍼 엔트리포인트(hwptopdf-hwpx_v4.py) 기준 경량화 빌드 설정
 실제 애플리케이션 로직은 hwpmate/ 패키지에서 정적으로 import 됩니다.
+2026-03-18 안정화/UX 보강(사전 점검, 결과 리포트, 안전한 강제 종료) 이후에도
+추가 data 번들 없이 동일 빌드 구성이 동작함을 확인했습니다.
 """
 
 block_cipher = None
@@ -46,9 +48,10 @@ a = Analysis(
     ['hwptopdf-hwpx_v4.py'],
     pathex=[],
     binaries=[],
-    datas=[],  # 문서/설정 파일은 배포 번들에 포함하지 않음
+    datas=[],  # 문서/설정/리포트 템플릿은 런타임 생성하므로 배포 번들에 포함하지 않음
     hiddenimports=[
         # 필수 pywin32 모듈
+        # 2026-03-18 기준 추가 hidden import 없이 빌드 검증 통과
         'win32com.client',
         'win32api',
         'pythoncom',
