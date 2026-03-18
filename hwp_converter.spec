@@ -1,7 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
 HWP 변환기 v8.6 - PyInstaller 빌드 설정
-현재 GUI 엔트리포인트(hwptopdf-hwpx_v4.py) 기준 경량화 빌드 설정
+루트 래퍼 엔트리포인트(hwptopdf-hwpx_v4.py) 기준 경량화 빌드 설정
+실제 애플리케이션 로직은 hwpmate/ 패키지에서 정적으로 import 됩니다.
 """
 
 block_cipher = None

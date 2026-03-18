@@ -1,6 +1,6 @@
 # HwpMate 프로젝트 지침서 (Claude)
 
-이 문서는 Claude 계열 코딩 에이전트가 HwpMate 리포지토리를 수정할 때 따라야 할 기준을 정리합니다. 현재 유지보수 중심은 `hwptopdf-hwpx_v4.py`이며, `hwptopdf-hwpx v3.py`는 레거시 참고용입니다.
+이 문서는 Claude 계열 코딩 에이전트가 HwpMate 리포지토리를 수정할 때 따라야 할 기준을 정리합니다. 현재 유지보수 중심은 `hwptopdf-hwpx_v4.py`가 호출하는 `hwpmate/` 패키지이며, `legacy/hwptopdf-hwpx v3.py`는 레거시 참고용입니다.
 
 ## 1. 프로젝트 개요
 
@@ -34,12 +34,16 @@
 ## 3. 코드베이스 구조
 
 - `hwptopdf-hwpx_v4.py`
-  - `ThemeManager`: QSS 테마
-  - `FileScanWorker`: 비동기 입력 스캔
-  - `HWPConverter`: HWP COM 래퍼
-  - `ConversionWorker`: 실제 변환 워커
-  - `NativeDropFilter`: 관리자 권한 드롭 처리
-  - `MainWindow`: 전체 UI 오케스트레이션
+  - 패키지 진입용 얇은 래퍼
+- `hwpmate/`
+  - `config_repository.py`, `path_utils.py`, `models.py`: 설정/경로/데이터 모델
+  - `services/hwp_converter.py`: HWP COM 래퍼
+  - `services/file_selection_store.py`, `services/task_planner.py`: 파일 선택 상태와 작업 계획
+  - `workers/file_scan_worker.py`, `workers/conversion_worker.py`: 비동기 스캔/변환 워커
+  - `windows_integration.py`: 관리자 권한 드롭 처리
+  - `ui/main_window.py`: 전체 UI 오케스트레이션
+  - `ui/theme.py`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs.py`: UI 컴포넌트 분리
+  - `ui/main_window_ui.py`: 메인 윈도우 레이아웃 빌더
 - `hwp_converter.spec`
   - PyInstaller 경량 빌드
   - `uac_admin=True` 유지

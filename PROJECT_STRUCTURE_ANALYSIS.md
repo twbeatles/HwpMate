@@ -12,15 +12,17 @@
 - `gemini.md`
 - `update_history.md`
 - `hwp_converter.spec`
-- `hwptopdf-hwpx_v4.py` (메인 코드)
-- `hwptopdf-hwpx v3.py` (레거시 참고)
+- `hwptopdf-hwpx_v4.py` (루트 엔트리포인트 래퍼)
+- `hwpmate/` (현행 메인 코드)
+- `legacy/hwptopdf-hwpx v3.py` (레거시 참고)
 
 ## 3. 저장소 구조 스냅샷
 
 | 파일 | 라인 수 | 역할 |
 |---|---:|---|
-| `hwptopdf-hwpx_v4.py` | 3659 | 현재 메인 애플리케이션 (GUI + 변환엔진 + 워커 + DnD + 설정) |
-| `hwptopdf-hwpx v3.py` | 845 | 레거시 tkinter 기반 버전 |
+| `hwptopdf-hwpx_v4.py` | 4 | 패키지 진입용 얇은 래퍼 |
+| `hwpmate/` | 모듈 분리 | 현재 메인 애플리케이션 (GUI + 변환엔진 + 워커 + DnD + 설정) |
+| `legacy/hwptopdf-hwpx v3.py` | 845 | 레거시 tkinter 기반 버전 |
 | `hwp_converter.spec` | 103 | PyInstaller 빌드 설정 (경량화, `uac_admin=True`) |
 | `pyrightconfig.json` | 17 | Pylance/pyright 공용 정적 분석 설정 |
 | `.editorconfig` | 7 | UTF-8/LF 편집 규칙 |
@@ -29,7 +31,7 @@
 | `gemini.md` | 123 | 유지보수/확장 지침(절대 변경 금지 영역 포함) |
 | `update_history.md` | 164 | 버전 이력, 기술적 문제 해결 기록 |
 
-현재 구조는 "단일 대형 파일 중심" 아키텍처이며, 배포 편의성에 최적화되어 있습니다.
+현재 구조는 `hwpmate/` 패키지 기준의 모듈 분리 아키텍처이며, 루트 래퍼와 기존 배포 흐름은 유지됩니다.
 
 ## 4. 아키텍처 개요
 
@@ -45,18 +47,18 @@
 
 | 구성요소 | 핵심 역할 |
 |---|---|
-| `ThemeManager` | 다크/라이트 QSS 전체 스타일 제공 |
-| `ToastWidget`, `ToastManager` | 우하단 스택형 알림 (최대 3개) |
-| 유틸 함수 (`load_config`, `iter_supported_files` 등) | 설정 저장/로드, 경로 정규화, 파일 스캔, 권한 체크 |
-| `FileScanWorker` (`QThread`) | 파일/폴더를 비동기 배치 스캔 |
-| `HWPConverter` | COM 연결/문서 열기/SaveAs/정리 담당 |
-| `ConversionTask` | 입력/출력/상태/오류를 담는 작업 단위 |
-| `ConversionWorker` (`QThread`) | 작업 리스트 순차 변환, 백업, 진행 이벤트 전송 |
-| `NativeDropFilter` | 관리자 권한에서도 동작하는 네이티브 DnD 처리 |
-| `DropArea` | 파일 모드 입력 UI 컴포넌트 |
-| `FormatCard` | 변환 포맷 카드 UI 컴포넌트 |
-| `ResultDialog` | 완료 결과/실패 목록/폴더 열기 |
-| `MainWindow` | 전체 UI 구성, 상태 관리, 워커 제어, 이벤트 오케스트레이션 |
+| `config_repository.py` | 설정 저장/로드와 JSON 손상 백업 처리 |
+| `path_utils.py` | 경로 정규화, 권한 검사, 지원 파일 스캔 |
+| `models.py` | `AppConfig`, `ConversionTask`, `FormatSpec` 데이터 모델 |
+| `services/file_selection_store.py` | 순서 유지 + 대소문자 비민감 중복 제거 |
+| `services/task_planner.py` | 모드별 작업 생성과 출력 충돌 해소 |
+| `services/hwp_converter.py` | COM 연결/문서 열기/SaveAs/정리 담당 |
+| `workers/file_scan_worker.py` | 파일/폴더를 비동기 배치 스캔 |
+| `workers/conversion_worker.py` | 작업 리스트 순차 변환, 백업, 진행 이벤트 전송 |
+| `windows_integration.py` | 관리자 권한에서도 동작하는 네이티브 DnD 처리 |
+| `ui/theme.py`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs.py` | 테마/토스트/위젯/결과 다이얼로그 |
+| `ui/main_window.py` | UI 상태 관리와 이벤트 오케스트레이션 |
+| `ui/main_window_ui.py` | 메인 윈도우 레이아웃 빌더 |
 
 ### 4.3 데이터/상태 모델
 - 설정 파일: `%USERPROFILE%\.hwp_converter_config.json`
@@ -121,9 +123,9 @@
 - 변환 안정성 관련 폴백/예외 처리 경험치가 코드에 축적됨.
 
 ### 7.2 한계
-- 단일 파일 3659라인으로 변경 영향 범위가 큼.
-- UI 로직과 도메인 로직이 `MainWindow`에 집중됨.
-- 자동 테스트 코드 부재.
+- `MainWindow`가 여전히 가장 큰 조정 지점이라 UI 상태 전이가 이곳에 비교적 많이 남아 있습니다.
+- PyQt 위젯 생성은 분리됐지만, 런타임 오케스트레이션은 단일 클래스 중심입니다.
+- 자동 테스트는 순수 로직 계층 위주이며, GUI/COM 경로는 여전히 수동 검증 비중이 높습니다.
 - 설정 스키마 마이그레이션은 단순 병합 방식(복잡한 호환 로직 없음).
 - 워커/스캐너 상태 관리가 객체 필드 기반이라 기능이 늘수록 복잡도 상승 가능.
 
@@ -171,19 +173,19 @@
 - HWP COM 특성상 프로세스 안정성/라이선스/충돌 검증 선행 필요.
 
 ## 9. 안전한 구조 개선 제안
-`claude.md`의 "단일 파일 유지" 원칙을 깨지 않고도 아래 개선은 가능:
+현재 패키지 분리 이후에도 아래 개선 여지는 남아 있습니다:
 
-1. 파일 내부 섹션화 강화
-- `# region` 스타일 주석으로 UI/Worker/Converter 경계 명확화
+1. `MainWindow` 상태 전이 축소
+- 변환 상태, 스캔 상태, 토스트/트레이 상태를 별도 상태 객체로 더 분리 가능
 
-2. 데이터 클래스 도입
-- `ConversionTask`를 `@dataclass`로 전환해 필드 명시성 강화
+2. UI 액션 서비스화
+- 폴더 열기, 실패 목록 내보내기, 사용자 알림 정책을 더 작은 서비스로 분리 가능
 
-3. 설정 접근 래퍼 함수 추가
-- `get_config_*`, `set_config_*` 함수로 키 분산 접근 축소
+3. GUI 테스트 보강
+- 파일 선택 스토어와 태스크 플래너 외에 MainWindow 상호작용 테스트를 추가 가능
 
-4. 상태 전이 명시화
-- `is_converting`, `_scan_mode`, `_force_kill_pending` 전이를 표로 문서화 및 가드 함수 통일
+4. 빌드 자동화
+- `pyright`, `pytest`, `pyinstaller`를 묶는 CI 스모크 파이프라인 추가 가능
 
 ## 10. 기능 추가 작업 시 권장 순서
 1. `update_history.md`에 변경 목표/버전 초안 기록

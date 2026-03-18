@@ -32,6 +32,7 @@ pip-wheel-metadata/
 # ===== PyInstaller extras =====
 # (spec 파일은 추적할 것이므로 *.spec 는 ignore 하지 않음)
 *.manifest
+*.pkg
 
 # ===== Logs / local artifacts =====
 *.log

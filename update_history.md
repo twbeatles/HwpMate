@@ -9,6 +9,18 @@
 - 빌드 설정: `hwp_converter.spec`
 - 정적 검사 기준: `pyrightconfig.json`
 
+## 2026-03-18 구조 리팩토링
+
+### 코드 분할
+- 루트 엔트리포인트 `hwptopdf-hwpx_v4.py`를 얇은 래퍼로 전환하고 실제 구현을 `hwpmate/` 패키지로 분리했습니다.
+- 설정, 경로 유틸, 변환 엔진, 워커, Windows 통합, UI 컴포넌트, 메인 윈도우를 전용 모듈로 분리했습니다.
+- `hwptopdf-hwpx v3.py`는 `legacy/hwptopdf-hwpx v3.py`로 이동했습니다.
+
+### 테스트 및 품질
+- `tests/` 아래에 설정 저장소, 경로 유틸, 파일 선택 스토어, 태스크 플래너 테스트를 추가했습니다.
+- `pyrightconfig.json`의 검사 대상을 `hwpmate/`와 `tests/`까지 확장했습니다.
+- `pyinstaller hwp_converter.spec` 빌드 검증을 통과해 래퍼 엔트리포인트와 패키지 구조의 배포 정합성을 확인했습니다.
+
 ## 2026-03-15 리포지토리 유지보수
 
 ### 정적 분석 및 타입 안정화
@@ -59,5 +71,5 @@
 
 ## 이전 세대 참고
 
-- `hwptopdf-hwpx v3.py`는 tkinter 기반 레거시 구현으로 남아 있습니다.
+- `legacy/hwptopdf-hwpx v3.py`는 tkinter 기반 레거시 구현으로 남아 있습니다.
 - 유지보수와 배포, 문서 기준은 `v4` 계열을 우선합니다.

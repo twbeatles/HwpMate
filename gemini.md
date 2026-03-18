@@ -1,6 +1,6 @@
 # HwpMate 프로젝트 지침서 (Gemini)
 
-이 문서는 Gemini 계열 에이전트가 HwpMate를 유지보수할 때 필요한 핵심 맥락을 요약합니다. 현재 기준 구현은 `hwptopdf-hwpx_v4.py`이며, 모든 문서와 빌드는 이 파일을 우선 기준으로 봅니다.
+이 문서는 Gemini 계열 에이전트가 HwpMate를 유지보수할 때 필요한 핵심 맥락을 요약합니다. 현재 기준 구현은 루트 래퍼 `hwptopdf-hwpx_v4.py`와 그가 호출하는 `hwpmate/` 패키지이며, 모든 문서와 빌드는 이 구조를 우선 기준으로 봅니다.
 
 ## 1. 핵심 사실
 
@@ -9,7 +9,7 @@
 - GUI: `PyQt6`
 - 자동화: `pywin32` 기반 HWP COM
 - 빌드: `PyInstaller` + `hwp_converter.spec`
-- 레거시 참고 파일: `hwptopdf-hwpx v3.py`
+- 레거시 참고 파일: `legacy/hwptopdf-hwpx v3.py`
 
 ## 2. 꼭 유지해야 하는 동작
 
@@ -38,7 +38,8 @@
 
 ## 4. 파일별 역할
 
-- `hwptopdf-hwpx_v4.py`: 운영 코드 전체
+- `hwptopdf-hwpx_v4.py`: 실행 래퍼 엔트리포인트
+- `hwpmate/`: 운영 코드 전체
 - `hwp_converter.spec`: PyInstaller 빌드 정의
 - `README.md`: 사용자 안내와 실행/빌드 방법
 - `update_history.md`: 기능/유지보수 이력
@@ -56,6 +57,7 @@
 
 ```bash
 pyright .
+pytest
 pyinstaller hwp_converter.spec
 ```
 

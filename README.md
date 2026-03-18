@@ -1,6 +1,6 @@
 # HwpMate
 
-한컴오피스 한글(HWP/HWPX) 문서를 PDF, HWPX, DOCX, ODT, HTML, RTF, TXT와 이미지 형식으로 일괄 변환하는 Windows 전용 GUI 도구입니다. 현재 배포 대상 엔트리포인트는 `hwptopdf-hwpx_v4.py`이며, PyQt6 UI와 pywin32 기반 HWP COM 자동화를 사용합니다.
+한컴오피스 한글(HWP/HWPX) 문서를 PDF, HWPX, DOCX, ODT, HTML, RTF, TXT와 이미지 형식으로 일괄 변환하는 Windows 전용 GUI 도구입니다. 현재 배포 대상 엔트리포인트는 루트의 얇은 래퍼 `hwptopdf-hwpx_v4.py`이며, 실제 구현은 `hwpmate/` 패키지 아래의 PyQt6 UI와 pywin32 기반 HWP COM 자동화 모듈로 분리되어 있습니다.
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![PyQt6](https://img.shields.io/badge/PyQt6-6.x-green.svg)
@@ -38,7 +38,7 @@ python hwptopdf-hwpx_v4.py
 ```
 
 - Windows에서 관리자 권한으로 실행해야 HWP COM 자동화와 드래그 앤 드롭이 안정적으로 동작합니다.
-- 레거시 tkinter 구현은 `hwptopdf-hwpx v3.py`에 남아 있지만, 현재 유지보수와 빌드는 `v4` 기준으로 진행합니다.
+- 레거시 tkinter 구현은 `legacy/hwptopdf-hwpx v3.py`에 보관되며, 현재 유지보수와 빌드는 `v4` 기준으로 진행합니다.
 
 ## 빌드
 
@@ -47,13 +47,15 @@ pyinstaller hwp_converter.spec
 ```
 
 - 실행 파일 이름은 `HWP변환기_v8.6.exe`입니다.
-- `.spec` 파일은 `hwptopdf-hwpx_v4.py`를 기준으로 경량 빌드되도록 설정되어 있습니다.
+- `.spec` 파일은 루트 래퍼 `hwptopdf-hwpx_v4.py`를 기준으로 경량 빌드되며, 내부적으로 `hwpmate/` 패키지를 함께 분석합니다.
 - `uac_admin=True`가 설정되어 있어 배포 실행 파일은 관리자 권한 승격을 요청합니다.
+- 현재 분리 구조 기준으로 `pyinstaller hwp_converter.spec` 빌드 검증을 통과했습니다.
 
 ## 개발 품질 기준
 
 ```bash
 pyright .
+pytest
 ```
 
 - `pyrightconfig.json`을 리포지토리 기준 타입체크 설정으로 사용합니다.
@@ -77,7 +79,21 @@ pyright .
 ```text
 HwpMate/
 ├── hwptopdf-hwpx_v4.py
-├── hwptopdf-hwpx v3.py
+├── legacy/
+│   └── hwptopdf-hwpx v3.py
+├── hwpmate/
+│   ├── app.py
+│   ├── bootstrap.py
+│   ├── constants.py
+│   ├── config_repository.py
+│   ├── logging_config.py
+│   ├── models.py
+│   ├── path_utils.py
+│   ├── windows_integration.py
+│   ├── services/
+│   ├── workers/
+│   └── ui/
+├── tests/
 ├── hwp_converter.spec
 ├── pyrightconfig.json
 ├── .editorconfig
