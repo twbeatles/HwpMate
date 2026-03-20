@@ -19,7 +19,7 @@ from ..models import ConversionSummary, ConversionTask, PlannedConversion
 from ..path_utils import canonicalize_path, check_write_permission, is_valid_path_name
 from ..services.file_selection_store import FileSelectionStore
 from ..services.task_planner import TaskPlanner
-from ..windows_integration import NativeDropFilter
+from ..windows_integration import NativeDropFilter, get_native_admin_drag_drop_policy
 from ..workers.conversion_worker import ConversionWorker
 from ..workers.file_scan_worker import FileScanWorker
 from .dialogs import PreflightDialog, ResultDialog
@@ -116,6 +116,11 @@ class MainWindow(QMainWindow):
             self._drag_drop_initialized = True
             
             try:
+                native_dnd_enabled, native_dnd_reason = get_native_admin_drag_drop_policy()
+                if not native_dnd_enabled:
+                    logger.warning(f"네이티브 드래그 앤 드롭 초기화 건너뜀: {native_dnd_reason}")
+                    return
+
                 # 네이티브 드래그 앤 드롭 필터 설정
                 drop_filter = NativeDropFilter.get_instance()
                 
@@ -1030,6 +1035,7 @@ class MainWindow(QMainWindow):
         """윈도우 닫기 이벤트"""
         if a0 is None:
             return
+        logger.info("메인 윈도우 종료 이벤트 수신")
         if not self._cancel_active_scan(wait_ms=WORKER_WAIT_TIMEOUT):
             self.status_label.setText("파일 스캔 종료 대기 중...")
             a0.ignore()
@@ -1075,4 +1081,5 @@ class MainWindow(QMainWindow):
             self.tray_icon.hide()
 
         self._save_settings()
+        logger.info("메인 윈도우 종료 허용")
         a0.accept()

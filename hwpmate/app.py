@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox, QStyleFactory
 from .logging_config import get_logger
 from .services.hwp_converter import PYWIN32_AVAILABLE
 from .ui.main_window import MainWindow
-from .windows_integration import enable_drag_drop_for_admin, is_admin
+from .windows_integration import enable_drag_drop_for_admin, get_native_admin_drag_drop_policy, is_admin
 
 logger = get_logger(__name__)
 
@@ -59,7 +59,11 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        enable_drag_drop_for_admin()
+        native_dnd_enabled, native_dnd_reason = get_native_admin_drag_drop_policy()
+        if native_dnd_enabled:
+            enable_drag_drop_for_admin()
+        else:
+            logger.warning(f"관리자용 네이티브 드래그 앤 드롭 비활성화: {native_dnd_reason}")
 
         app = QApplication(sys.argv)
         app.setStyle(QStyleFactory.create("Fusion"))
@@ -67,7 +71,9 @@ def main() -> None:
         window = MainWindow()
         window.show()
 
-        sys.exit(app.exec())
+        exit_code = app.exec()
+        logger.info(f"애플리케이션 이벤트 루프 종료: code={exit_code}")
+        sys.exit(exit_code)
     except Exception as e:
         logger.critical(f"애플리케이션 실행 오류: {e}")
         raise

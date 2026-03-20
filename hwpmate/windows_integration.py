@@ -2,6 +2,9 @@
 
 import ctypes
 import logging
+import os
+import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, ClassVar, List, Optional, Set, Tuple
 
@@ -11,6 +14,43 @@ from .constants import SUPPORTED_EXTENSIONS
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
+
+NATIVE_DND_DISABLE_ENV = "HWPMATE_DISABLE_NATIVE_DND"
+NATIVE_DND_FORCE_ENV = "HWPMATE_FORCE_NATIVE_DND"
+
+
+def _env_flag(name: str) -> bool:
+    value = os.environ.get(name, "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def is_running_under_idle() -> bool:
+    """IDLE 실행 여부 추정."""
+    stdin_module = getattr(getattr(sys, "stdin", None), "__class__", type("", (), {})).__module__
+    return "idlelib" in sys.modules or stdin_module.startswith("idlelib")
+
+
+@lru_cache(maxsize=1)
+def get_native_admin_drag_drop_policy() -> tuple[bool, str]:
+    """
+    관리자용 네이티브 드래그 앤 드롭 활성화 여부와 사유를 반환.
+
+    Python 3.14 계열에서 PyQt6 네이티브 이벤트 필터가 일부 환경에서
+    프로세스를 즉시 종료시키는 문제가 있어 기본 비활성화한다.
+    """
+    if _env_flag(NATIVE_DND_FORCE_ENV):
+        return True, f"{NATIVE_DND_FORCE_ENV}=1"
+
+    if _env_flag(NATIVE_DND_DISABLE_ENV):
+        return False, f"{NATIVE_DND_DISABLE_ENV}=1"
+
+    if sys.version_info >= (3, 14):
+        return False, "Python 3.14+에서는 시작 직후 크래시 회피를 위해 기본 비활성화"
+
+    if is_running_under_idle():
+        return False, "IDLE 환경에서는 셸 재시작/종료 오인 방지를 위해 비활성화"
+
+    return True, "default"
 
 def is_admin() -> bool:
     """관리자 권한 확인"""
