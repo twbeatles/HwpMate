@@ -42,18 +42,30 @@ def test_get_dropped_files_handles_paths_longer_than_max_path() -> None:
 def test_native_admin_drag_drop_policy_disabled_by_default_on_python_314(monkeypatch) -> None:
     monkeypatch.delenv(windows_integration.NATIVE_DND_DISABLE_ENV, raising=False)
     monkeypatch.delenv(windows_integration.NATIVE_DND_FORCE_ENV, raising=False)
-    monkeypatch.setattr(windows_integration.sys, "version_info", (3, 14, 0))
+    monkeypatch.setattr(windows_integration, "is_running_under_idle", lambda: False)
+    windows_integration.get_native_admin_drag_drop_policy.cache_clear()
+
+    enabled, reason = windows_integration.get_native_admin_drag_drop_policy()
+
+    assert enabled is True
+    assert reason == "default"
+
+
+def test_native_admin_drag_drop_policy_disabled_under_idle(monkeypatch) -> None:
+    monkeypatch.delenv(windows_integration.NATIVE_DND_DISABLE_ENV, raising=False)
+    monkeypatch.delenv(windows_integration.NATIVE_DND_FORCE_ENV, raising=False)
+    monkeypatch.setattr(windows_integration, "is_running_under_idle", lambda: True)
     windows_integration.get_native_admin_drag_drop_policy.cache_clear()
 
     enabled, reason = windows_integration.get_native_admin_drag_drop_policy()
 
     assert enabled is False
-    assert "Python 3.14+" in reason
+    assert "IDLE 환경" in reason
 
 
 def test_native_admin_drag_drop_policy_force_env_overrides_default(monkeypatch) -> None:
     monkeypatch.setenv(windows_integration.NATIVE_DND_FORCE_ENV, "1")
-    monkeypatch.setattr(windows_integration.sys, "version_info", (3, 14, 0))
+    monkeypatch.setattr(windows_integration, "is_running_under_idle", lambda: True)
     windows_integration.get_native_admin_drag_drop_policy.cache_clear()
 
     enabled, reason = windows_integration.get_native_admin_drag_drop_policy()
