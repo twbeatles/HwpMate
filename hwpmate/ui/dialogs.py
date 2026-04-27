@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 from ..logging_config import get_logger
 from ..models import ConversionSummary, ConversionTask, PlannedConversion
+from ..services.hwp_converter import get_registered_hwp_progids
 
 logger = get_logger(__name__)
 
@@ -38,7 +39,18 @@ def write_failed_list(path: Path, failed_tasks: list[ConversionTask]) -> None:
 
 def write_results_csv(path: Path, summary: ConversionSummary) -> None:
     with path.open("w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["input_file", "output_file", "status", "detail"])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "input_file",
+                "output_file",
+                "status",
+                "detail",
+                "retry_count",
+                "backup_file",
+                "backup_error",
+            ],
+        )
         writer.writeheader()
         for task in summary.sorted_tasks():
             writer.writerow(task.to_record())
@@ -73,6 +85,11 @@ class PreflightDialog(QDialog):
         info_layout.addWidget(QLabel(f"덮어쓰기 회피로 이름 변경: {plan.conflict_renamed_count}개"))
         info_layout.addWidget(QLabel(f"선택 형식: {plan.format_type}"))
         info_layout.addWidget(QLabel(f"저장 위치 정책: {plan.output_policy_label}"))
+        info_layout.addWidget(QLabel(f"원본 백업: {'사용' if plan.backup_enabled else '사용 안 함'}"))
+        info_layout.addWidget(QLabel(f"실패 시 재시도: {plan.retry_count}회"))
+        registered_progids = get_registered_hwp_progids()
+        hwp_state = ", ".join(registered_progids) if registered_progids else "레지스트리에서 감지되지 않음"
+        info_layout.addWidget(QLabel(f"한글 COM ProgID: {hwp_state}"))
         layout.addWidget(info_group)
 
         warnings = list(plan.warnings)
@@ -87,6 +104,14 @@ class PreflightDialog(QDialog):
         warning_layout.addWidget(warning_text)
         layout.addWidget(warning_group)
 
+        detail_group = QGroupBox("대상 상세")
+        detail_layout = QVBoxLayout(detail_group)
+        detail_text = QTextEdit()
+        detail_text.setReadOnly(True)
+        detail_text.setPlainText(self._build_detail_text(plan))
+        detail_layout.addWidget(detail_text)
+        layout.addWidget(detail_group)
+
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
@@ -100,6 +125,39 @@ class PreflightDialog(QDialog):
         btn_layout.addWidget(start_btn)
 
         layout.addLayout(btn_layout)
+
+    def _build_detail_text(self, plan: PlannedConversion) -> str:
+        lines: list[str] = []
+        for index, task in enumerate(plan.all_tasks, start=1):
+            exists = task.input_file.exists()
+            readable = self._is_readable(task.input_file)
+            if task.status == "건너뜀":
+                action = "건너뜀"
+            else:
+                action = "변환 예정"
+
+            lines.append(f"{index}. {task.input_file.name}")
+            lines.append(f"   상태: {action}")
+            lines.append(f"   입력: {'존재' if exists else '없음'} / {'읽기 가능' if readable else '읽기 불가'}")
+            lines.append(f"   출력: {task.output_file}")
+            if task.conflict_original_output_file is not None:
+                lines.append(f"   충돌 조정: {task.conflict_original_output_file} -> {task.output_file}")
+            if task.status == "건너뜀":
+                lines.append(f"   사유: {task.detail}")
+            else:
+                lines.append(f"   백업: {'사용' if plan.backup_enabled else '사용 안 함'}")
+            lines.append("")
+        return "\n".join(lines).strip() or "대상 없음"
+
+    def _is_readable(self, path: Path) -> bool:
+        try:
+            if not path.is_file():
+                return False
+            with path.open("rb") as f:
+                f.read(1)
+            return True
+        except OSError:
+            return False
 
 
 class ResultDialog(QDialog):

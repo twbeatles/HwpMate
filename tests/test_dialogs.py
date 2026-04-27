@@ -9,7 +9,15 @@ from hwpmate.ui.dialogs import write_failed_list, write_results_csv, write_resul
 
 def build_summary(tmp_path: Path) -> ConversionSummary:
     success = ConversionTask(tmp_path / "a.hwp", tmp_path / "a.pdf", status="성공")
-    failed = ConversionTask(tmp_path / "b.hwp", tmp_path / "b.pdf", status="실패", error="save failed")
+    failed = ConversionTask(
+        tmp_path / "b.hwp",
+        tmp_path / "b.pdf",
+        status="실패",
+        error="save failed",
+        retry_count=1,
+        backup_file=tmp_path / "backup" / "b.hwp",
+        backup_error="",
+    )
     skipped = ConversionTask(tmp_path / "c.hwpx", tmp_path / "c.hwpx", status="건너뜀", error="이미 HWPX 형식입니다.")
     canceled = ConversionTask(tmp_path / "d.hwp", tmp_path / "d.pdf", status="취소됨", error="사용자 취소")
     return ConversionSummary(
@@ -40,11 +48,12 @@ def test_write_results_csv_contains_all_statuses(tmp_path: Path) -> None:
     write_results_csv(output, summary)
     text = output.read_text(encoding="utf-8-sig")
 
-    assert "input_file,output_file,status,detail" in text
+    assert "input_file,output_file,status,detail,retry_count,backup_file,backup_error" in text
     assert "성공" in text
     assert "실패" in text
     assert "건너뜀" in text
     assert "취소됨" in text
+    assert "backup/b.hwp" in text.replace("\\", "/")
 
 
 def test_write_results_json_contains_summary_and_tasks(tmp_path: Path) -> None:
@@ -59,3 +68,6 @@ def test_write_results_json_contains_summary_and_tasks(tmp_path: Path) -> None:
     assert data["summary"]["skipped_count"] == 1
     assert data["summary"]["canceled_count"] == 1
     assert {task["status"] for task in data["tasks"]} == {"성공", "실패", "건너뜀", "취소됨"}
+    failed = next(task for task in data["tasks"] if task["status"] == "실패")
+    assert failed["retry_count"] == 1
+    assert failed["backup_file"]

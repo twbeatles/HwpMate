@@ -10,7 +10,7 @@ from typing import Iterable, List, Optional
 
 from PyQt6.QtCore import QSignalBlocker, QTimer
 from PyQt6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut, QShowEvent
-from PyQt6.QtWidgets import QApplication, QFileDialog, QMainWindow, QLabel, QMenu, QMessageBox, QStyle, QSystemTrayIcon, QTableWidgetItem, QCheckBox, QDialog, QLineEdit, QPushButton, QProgressBar, QRadioButton, QTabWidget, QTableWidget, QWidget
+from PyQt6.QtWidgets import QApplication, QFileDialog, QMainWindow, QLabel, QMenu, QMessageBox, QStyle, QSystemTrayIcon, QTableWidgetItem, QCheckBox, QDialog, QLineEdit, QPushButton, QProgressBar, QRadioButton, QSpinBox, QTabWidget, QTableWidget, QWidget
 
 from ..config_repository import load_config, save_config
 from ..constants import FEEDBACK_RESET_DELAY, FORMAT_GROUPS, FORMAT_TYPES, SCAN_BATCH_SIZE, SCAN_CANCEL_WAIT_MS, SUPPORTED_EXTENSIONS, WORKER_WAIT_TIMEOUT, VERSION
@@ -53,6 +53,8 @@ class MainWindow(QMainWindow):
     format_tabs: QTabWidget
     format_cards: dict[str, FormatCard]
     overwrite_check: QCheckBox
+    backup_check: QCheckBox
+    retry_spin: QSpinBox
     start_btn: QPushButton
     cancel_btn: QPushButton
     status_label: QLabel
@@ -349,6 +351,7 @@ class MainWindow(QMainWindow):
 <ul>
 {format_html}
 </ul>
+<p>이미지 변환은 한글 설치 버전에 따라 저장 방식이 다를 수 있으며, 기본 출력 파일 생성 여부와 파일 크기로 성공을 판단합니다.</p>
 
 <p><b>3. 단축키</b></p>
 <ul>
@@ -376,12 +379,14 @@ class MainWindow(QMainWindow):
 <li>모드별 드래그 앤 드롭 지원</li>
 <li>다크/라이트 테마</li>
 <li>사전 점검, 결과 리포트, 실패 목록 저장</li>
+<li>원본 백업 옵션과 실패 자동 재시도</li>
 </ul>
 
 <p><b>지원 형식:</b></p>
 <ul>
 {supported_formats}
 </ul>
+<p>이미지 변환 결과는 한글 설치 버전에 따라 차이가 있을 수 있으며, 앱은 기본 출력 파일의 존재와 0바이트 초과 크기를 성공 기준으로 사용합니다.</p>
 
 <p><b>요구사항:</b></p>
 <ul>
@@ -438,8 +443,9 @@ class MainWindow(QMainWindow):
     def _update_output_ui(self) -> None:
         """출력 폴더 UI 상태 업데이트"""
         same_location = self.same_location_check.isChecked()
-        self.output_entry.setEnabled(not same_location)
-        self.output_btn.setEnabled(not same_location)
+        can_select_output = (not same_location) and (not self.is_converting)
+        self.output_entry.setEnabled(can_select_output)
+        self.output_btn.setEnabled(can_select_output)
 
     def _on_include_sub_toggled(self, _: bool) -> None:
         """하위 폴더 옵션 변경 시 폴더 미리보기 재스캔"""
@@ -734,6 +740,8 @@ class MainWindow(QMainWindow):
             same_location=self.same_location_check.isChecked(),
             output_path=self.output_entry.text(),
             file_paths=self.file_store.paths,
+            backup_enabled=self.backup_check.isChecked(),
+            retry_count=self.retry_spin.value(),
         )
 
     def _adjust_output_paths(self, plan: PlannedConversion) -> int:
@@ -748,6 +756,8 @@ class MainWindow(QMainWindow):
         self.config["include_sub"] = self.include_sub_check.isChecked()
         self.config["same_location"] = self.same_location_check.isChecked()
         self.config["overwrite"] = self.overwrite_check.isChecked()
+        self.config["backup_enabled"] = self.backup_check.isChecked()
+        self.config["retry_count"] = self.retry_spin.value()
 
         self.config["folder_path"] = self.folder_entry.text().strip()
         self.config["output_path"] = self.output_entry.text().strip()
@@ -802,6 +812,12 @@ class MainWindow(QMainWindow):
                         f"출력 경로 충돌 {plan.conflict_renamed_count}개는 자동으로 새 이름으로 저장됩니다."
                     )
 
+            if not plan.tasks and plan.skipped_count:
+                self.plan = plan
+                self._save_settings()
+                self._show_skipped_only_result(plan)
+                return
+
             if not plan.tasks:
                 message = "실행할 변환 대상이 없습니다."
                 if plan.skipped_count:
@@ -839,6 +855,21 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.exception("변환 시작 오류")
             QMessageBox.critical(self, "오류", f"오류 발생: {e}")
+
+    def _show_skipped_only_result(self, plan: PlannedConversion) -> None:
+        """실행 대상 없이 건너뜀만 있는 경우 결과를 즉시 표시."""
+        summary = ConversionSummary(
+            format_type=plan.format_type,
+            tasks=list(plan.skipped_tasks),
+            warnings=list(plan.warnings),
+            elapsed_seconds=0.0,
+        )
+        self.last_summary = summary
+        self.status_label.setText("동일 형식 파일만 있어 변환 없이 건너뜀 처리했습니다")
+        self.toast.show_message(f"건너뜀 {summary.skipped_count}개", "⏭️")
+        dialog = ResultDialog(summary, self)
+        dialog.exec()
+        self.plan = None
 
     def _request_worker_stop(self, waiting_text: str) -> bool:
         worker = self.worker
@@ -938,6 +969,8 @@ class MainWindow(QMainWindow):
             
         self.same_location_check.setEnabled(not converting)
         self.overwrite_check.setEnabled(not converting)
+        self.backup_check.setEnabled(not converting)
+        self.retry_spin.setEnabled(not converting)
         self.include_sub_check.setEnabled(not converting)
         
         # 파일 목록 변경 방지 - 변환 중 파일 추가/제거 차단
@@ -953,8 +986,7 @@ class MainWindow(QMainWindow):
         # 폴더 모드 버튼도 비활성화
         if hasattr(self, 'folder_btn'):
             self.folder_btn.setEnabled(not converting)
-        if hasattr(self, 'output_btn'):
-            self.output_btn.setEnabled(not converting)
+        self._update_output_ui()
     
     def _on_progress_updated(self, current: int, total: int, filename: str) -> None:
         """진행률 업데이트"""
@@ -996,7 +1028,12 @@ class MainWindow(QMainWindow):
                 "⚠️",
             )
 
-        self.hwp_status_label.setText("🟢 한글 연결됨")
+        if summary.progid_used:
+            self.hwp_status_label.setText("🟢 한글 연결됨")
+        elif summary.failed_count:
+            self.hwp_status_label.setText("🔴 한글 연결 오류")
+        else:
+            self.hwp_status_label.setText("🟢 한글 대기중")
         if self._close_after_worker:
             return
         dialog = ResultDialog(summary, self)

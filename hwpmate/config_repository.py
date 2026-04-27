@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +40,10 @@ class ConfigRepository:
         except json.JSONDecodeError as e:
             logger.error(f"설정 파일 JSON 파싱 오류: {e}")
             try:
-                backup_path = self.config_file.with_suffix(".json.bak")
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                backup_path = self.config_file.with_name(
+                    f"{self.config_file.stem}_{timestamp}{self.config_file.suffix}.bak"
+                )
                 self.config_file.rename(backup_path)
                 logger.info(f"손상된 설정 파일을 {backup_path}로 백업했습니다")
             except Exception:
@@ -48,12 +53,29 @@ class ConfigRepository:
         return default_config
 
     def save(self, config: AppConfig | dict[str, Any]) -> None:
+        temp_path: Path | None = None
         try:
             config_data = config.to_dict() if isinstance(config, AppConfig) else AppConfig.from_mapping(config).to_dict()
-            with self.config_file.open("w", encoding="utf-8") as f:
+            self.config_file.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=self.config_file.parent,
+                prefix=f".{self.config_file.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as f:
+                temp_path = Path(f.name)
                 json.dump(config_data, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+            temp_path.replace(self.config_file)
         except Exception as e:
             logger.error(f"설정 저장 실패: {e}")
+            if temp_path is not None:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
 
 _DEFAULT_REPOSITORY = ConfigRepository()

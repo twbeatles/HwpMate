@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hwpmate.path_utils import canonicalize_path, iter_supported_files, make_path_key
+from hwpmate.path_utils import canonicalize_path, check_write_permission, iter_supported_files, make_path_key
 
 
 def test_canonicalize_and_make_path_key_normalize_windows_paths() -> None:
@@ -48,3 +48,26 @@ def test_iter_supported_files_honors_cancel_checker(tmp_path: Path) -> None:
     files = list(iter_supported_files(tmp_path, include_sub=False, cancel_checker=cancel))
 
     assert len(files) <= 1
+
+
+def test_iter_supported_files_excludes_nested_backup_dirs_but_allows_backup_root(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    root_file = source / "a.hwp"
+    root_file.write_text("x", encoding="utf-8")
+    backup = source / "backup"
+    backup.mkdir()
+    backup_file = backup / "a_backup.hwp"
+    backup_file.write_text("x", encoding="utf-8")
+
+    recursive = list(iter_supported_files(source, include_sub=True))
+    direct_backup = list(iter_supported_files(backup, include_sub=True))
+
+    assert root_file in recursive
+    assert backup_file not in recursive
+    assert direct_backup == [backup_file]
+
+
+def test_check_write_permission_uses_temporary_file(tmp_path: Path) -> None:
+    assert check_write_permission(tmp_path) is True
+    assert not list(tmp_path.glob(".hwpmate_write_test_*"))

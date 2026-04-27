@@ -18,13 +18,15 @@ class FormatSpec:
 
 @dataclass
 class AppConfig:
-    config_version: int = 1
+    config_version: int = 2
     theme: str = "dark"
     mode: str = "folder"
     format: str = "PDF"
     include_sub: bool = True
     same_location: bool = True
     overwrite: bool = False
+    backup_enabled: bool = True
+    retry_count: int = 1
     folder_path: str = ""
     output_path: str = ""
     last_folder: str = ""
@@ -55,21 +57,32 @@ class ConversionTask:
     output_file: Path
     status: str = "대기"
     error: str | None = None
+    retry_count: int = 0
+    backup_file: Path | None = None
+    backup_error: str | None = None
+    conflict_original_output_file: Path | None = None
 
     def __post_init__(self) -> None:
         self.input_file = Path(self.input_file)
         self.output_file = Path(self.output_file)
+        if self.backup_file is not None:
+            self.backup_file = Path(self.backup_file)
+        if self.conflict_original_output_file is not None:
+            self.conflict_original_output_file = Path(self.conflict_original_output_file)
 
     @property
     def detail(self) -> str:
         return self.error or ""
 
-    def to_record(self) -> dict[str, str]:
+    def to_record(self) -> dict[str, Any]:
         return {
             "input_file": str(self.input_file),
             "output_file": str(self.output_file),
             "status": self.status,
             "detail": self.detail,
+            "retry_count": self.retry_count,
+            "backup_file": str(self.backup_file) if self.backup_file is not None else "",
+            "backup_error": self.backup_error or "",
         }
 
 
@@ -78,6 +91,8 @@ class PlannedConversion:
     format_type: str
     same_location: bool
     output_path: str
+    backup_enabled: bool = True
+    retry_count: int = 1
     tasks: list[ConversionTask] = field(default_factory=list)
     skipped_tasks: list[ConversionTask] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)

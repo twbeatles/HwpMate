@@ -4,6 +4,7 @@ import csv
 import io
 import subprocess
 import time
+from pathlib import Path
 from typing import Any, Optional, Protocol, Tuple, cast
 
 from ..constants import DOCUMENT_LOAD_DELAY, FORMAT_TYPES, HWP_PROGIDS
@@ -77,6 +78,23 @@ def _snapshot_hwp_pids() -> set[int]:
         return set()
 
 
+def get_registered_hwp_progids() -> list[str]:
+    """레지스트리에서 확인 가능한 한글 COM ProgID 목록을 반환."""
+    try:
+        import winreg
+    except ImportError:
+        return []
+
+    registered: list[str] = []
+    for progid in HWP_PROGIDS:
+        try:
+            with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, progid):
+                registered.append(progid)
+        except OSError:
+            continue
+    return registered
+
+
 class HWPConverter:
     """한글 변환 엔진 - 기존 로직 완전 유지."""
 
@@ -139,7 +157,9 @@ class HWPConverter:
             input_str = str(input_path)
             output_str = str(output_path)
 
-            hwp.Open(input_str, "", "forceopen:true")
+            open_result = hwp.Open(input_str, "", "forceopen:true")
+            if open_result is False:
+                return False, "문서 열기 실패: HWP Open이 False를 반환했습니다"
             time.sleep(DOCUMENT_LOAD_DELAY)
 
             format_info = FORMAT_TYPES.get(format_type, FORMAT_TYPES["PDF"])
@@ -148,13 +168,17 @@ class HWPConverter:
             save_error = None
 
             try:
-                hwp.SaveAs(output_str, save_format)
+                save_result = hwp.SaveAs(output_str, save_format)
+                if save_result is False:
+                    raise RuntimeError("SaveAs 2-param returned False")
                 logger.debug(f"SaveAs 2-param 성공: {output_str}")
             except Exception as e1:
                 logger.debug(f"SaveAs 2-param 실패: {e1}")
 
                 try:
-                    hwp.SaveAs(output_str, save_format, "")
+                    save_result = hwp.SaveAs(output_str, save_format, "")
+                    if save_result is False:
+                        raise RuntimeError("SaveAs 3-param returned False")
                     logger.debug(f"SaveAs 3-param 성공: {output_str}")
                 except Exception as e2:
                     save_error = f"2-param: {e1}, 3-param: {e2}"
@@ -165,6 +189,27 @@ class HWPConverter:
                     except Exception:
                         pass
                     return False, save_error
+
+            output_file = Path(output_str)
+            if not output_file.exists():
+                try:
+                    hwp.Clear(option=1)
+                except Exception:
+                    pass
+                return False, f"출력 파일이 생성되지 않았습니다: {output_file.name}"
+            try:
+                if output_file.stat().st_size <= 0:
+                    try:
+                        hwp.Clear(option=1)
+                    except Exception:
+                        pass
+                    return False, f"출력 파일이 비어 있습니다: {output_file.name}"
+            except OSError as e:
+                try:
+                    hwp.Clear(option=1)
+                except Exception:
+                    pass
+                return False, f"출력 파일 확인 실패: {e}"
 
             hwp.Clear(option=1)
 

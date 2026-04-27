@@ -29,6 +29,8 @@ class TaskPlanner:
         same_location: bool,
         output_path: str,
         file_paths: Sequence[str],
+        backup_enabled: bool = True,
+        retry_count: int = 1,
     ) -> PlannedConversion:
         tasks: list[ConversionTask] = []
         skipped_tasks: list[ConversionTask] = []
@@ -44,6 +46,8 @@ class TaskPlanner:
             folder = Path(canonicalize_path(collect_start_path))
             if not folder.exists():
                 raise ValueError("폴더가 존재하지 않습니다.")
+            if not folder.is_dir():
+                raise ValueError("폴더 경로가 올바르지 않습니다.")
 
             allowed_exts: Set[str] = set(SUPPORTED_EXTENSIONS)
             input_files = [
@@ -97,6 +101,8 @@ class TaskPlanner:
                 format_type=format_type,
                 same_location=same_location,
                 output_path=output_path.strip(),
+                backup_enabled=backup_enabled,
+                retry_count=retry_count,
                 tasks=tasks,
                 skipped_tasks=skipped_tasks,
                 warnings=warnings,
@@ -140,6 +146,8 @@ class TaskPlanner:
             format_type=format_type,
             same_location=same_location,
             output_path=output_path.strip(),
+            backup_enabled=backup_enabled,
+            retry_count=retry_count,
             tasks=tasks,
             skipped_tasks=skipped_tasks,
             warnings=warnings,
@@ -169,12 +177,20 @@ class TaskPlanner:
                         break
                     counter += 1
                 else:
-                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    new_name = f"{stem}_{timestamp}{ext}"
-                    task.output_file = parent / new_name
-                    logger.warning(f"파일명 카운터 초과, 타임스탬프 사용: {new_name}")
+                    fallback_counter = 1
+                    while True:
+                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                        suffix = "" if fallback_counter == 1 else f"_{fallback_counter}"
+                        new_name = f"{stem}_{timestamp}{suffix}{ext}"
+                        new_path = parent / new_name
+                        if (not new_path.exists()) and (new_path not in used_paths):
+                            task.output_file = new_path
+                            logger.warning(f"파일명 카운터 초과, 타임스탬프 사용: {new_name}")
+                            break
+                        fallback_counter += 1
 
                 if task.output_file != original_path:
+                    task.conflict_original_output_file = original_path
                     renamed_count += 1
                     logger.info(f"출력 경로 조정: {original_path} -> {task.output_file}")
 

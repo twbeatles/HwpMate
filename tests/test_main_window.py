@@ -56,6 +56,8 @@ def test_close_event_saves_current_ui_settings(monkeypatch, qapp, tmp_path: Path
     window.files_radio.setChecked(True)
     window.same_location_check.setChecked(False)
     window.overwrite_check.setChecked(True)
+    window.backup_check.setChecked(False)
+    window.retry_spin.setValue(2)
     window.include_sub_check.setChecked(False)
     window.output_entry.setText(str(tmp_path))
 
@@ -68,6 +70,8 @@ def test_close_event_saves_current_ui_settings(monkeypatch, qapp, tmp_path: Path
     assert latest["mode"] == "files"
     assert latest["same_location"] is False
     assert latest["overwrite"] is True
+    assert latest["backup_enabled"] is False
+    assert latest["retry_count"] == 2
     assert latest["include_sub"] is False
     assert latest["output_path"] == str(tmp_path)
 
@@ -120,3 +124,42 @@ def test_close_event_waits_for_running_worker(monkeypatch, qapp) -> None:
     assert not event.isAccepted()
     assert window._close_after_worker is True
     assert window.worker.cancel_called is True  # type: ignore[union-attr]
+
+
+def test_set_converting_state_keeps_output_button_disabled_for_same_location(monkeypatch, qapp) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    window.same_location_check.setChecked(True)
+
+    window._set_converting_state(True)
+    window._set_converting_state(False)
+
+    assert window.output_btn.isEnabled() is False
+    assert window.output_entry.isEnabled() is False
+
+
+def test_start_conversion_shows_result_for_skipped_only_plan(monkeypatch, qapp, tmp_path: Path) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    skipped = tmp_path / "same.hwpx"
+    skipped.write_text("x", encoding="utf-8")
+    window.files_radio.setChecked(True)
+    window._selected_format = "HWPX"
+    window.file_store.add_paths([str(skipped)])
+    shown = []
+
+    class FakeResultDialog:
+        def __init__(self, summary, parent=None):
+            del parent
+            shown.append(summary)
+
+        def exec(self):
+            return None
+
+    import hwpmate.ui.main_window as main_window_module
+
+    monkeypatch.setattr(main_window_module, "ResultDialog", FakeResultDialog)
+
+    window._start_conversion()
+
+    assert len(shown) == 1
+    assert shown[0].skipped_count == 1
+    assert window.worker is None

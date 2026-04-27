@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-HWP 변환기 v8.6 - PyInstaller 빌드 설정
+HWP 변환기 v8.7 - PyInstaller 빌드 설정
 루트 래퍼 엔트리포인트(hwptopdf-hwpx_v4.py) 기준 경량화 빌드 설정
 실제 애플리케이션 로직은 hwpmate/ 패키지에서 정적으로 import 됩니다.
 2026-03-18 안정화/UX 보강(사전 점검, 결과 리포트, 안전한 강제 종료) 이후에도
@@ -89,7 +89,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='HWP변환기_v8.6',
+    name='HWP변환기_v8.7',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,  # Windows에서는 strip 효과 제한적

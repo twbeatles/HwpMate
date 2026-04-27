@@ -12,6 +12,7 @@ env/
 # ===== Test/Lint caches (있을 수 있으니 선제 대응) =====
 .pytest_cache/
 .mypy_cache/
+.pyrightcache/
 .ruff_cache/
 .pyre/
 .pytype/
@@ -33,6 +34,7 @@ pip-wheel-metadata/
 # (spec 파일은 추적할 것이므로 *.spec 는 ignore 하지 않음)
 *.manifest
 *.pkg
+*.toc
 
 # ===== Logs / local artifacts =====
 *.log

@@ -27,7 +27,9 @@ def test_load_backs_up_invalid_json(tmp_path: Path) -> None:
     config = repo.load()
 
     assert config.theme == "dark"
-    assert (tmp_path / "config.json.bak").exists()
+    backups = list(tmp_path.glob("config_*.json.bak"))
+    assert len(backups) == 1
+    assert not config_file.exists()
 
 
 def test_save_and_reload_preserves_known_keys(tmp_path: Path) -> None:
@@ -41,3 +43,18 @@ def test_save_and_reload_preserves_known_keys(tmp_path: Path) -> None:
     assert reloaded.theme == "light"
     assert reloaded.format == "DOCX"
     assert reloaded.folder_path == "C:/work"
+    assert reloaded.backup_enabled is True
+    assert reloaded.retry_count == 1
+
+
+def test_save_replaces_config_atomically_without_leaving_temp_files(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.json"
+    repo = ConfigRepository(config_file)
+
+    repo.save(AppConfig(theme="light", backup_enabled=False, retry_count=2))
+
+    assert config_file.exists()
+    assert not list(tmp_path.glob(".config.json.*.tmp"))
+    reloaded = repo.load()
+    assert reloaded.backup_enabled is False
+    assert reloaded.retry_count == 2

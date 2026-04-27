@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from .models import FormatSpec
 
-VERSION = "8.6"
+VERSION = "8.7"
 SUPPORTED_EXTENSIONS = (".hwp", ".hwpx")
+BACKUP_DIR_NAME = "backup"
 
 FORMAT_TYPES: dict[str, FormatSpec] = {
     "HWP": FormatSpec(ext=".hwp", save_format="HWP", icon="📝", desc="한글 문서"),
@@ -36,9 +37,11 @@ FEEDBACK_RESET_DELAY = 1500
 WORKER_WAIT_TIMEOUT = 3000
 
 DOCUMENT_LOAD_DELAY = 1.0
+RETRY_DELAY_SECONDS = 1.0
 
 MAX_FILENAME_COUNTER = 1000
-CONFIG_VERSION = 1
+MAX_RETRY_COUNT = 3
+CONFIG_VERSION = 2
 SCAN_BATCH_SIZE = 100
 SCAN_CANCEL_WAIT_MS = 200
 

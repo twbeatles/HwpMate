@@ -1,10 +1,11 @@
 ﻿from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from typing import Callable, Iterable, Optional
 
-from .constants import SUPPORTED_EXTENSIONS
+from .constants import BACKUP_DIR_NAME, SUPPORTED_EXTENSIONS
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -20,9 +21,12 @@ def is_valid_path_name(path: str) -> bool:
 def check_write_permission(folder_path: Path) -> bool:
     """폴더에 쓰기 권한이 있는지 확인"""
     try:
-        test_file = folder_path / f".write_test_{os.getpid()}"
-        test_file.touch()
-        test_file.unlink()
+        with tempfile.NamedTemporaryFile(
+            dir=folder_path,
+            prefix=".hwpmate_write_test_",
+            delete=True,
+        ):
+            pass
         return True
     except (PermissionError, OSError):
         return False
@@ -43,9 +47,11 @@ def iter_supported_files(
     include_sub: bool = True,
     allowed_exts: Optional[Iterable[str]] = None,
     cancel_checker: Optional[Callable[[], bool]] = None,
+    excluded_dir_names: Optional[Iterable[str]] = None,
 ) -> Iterable[Path]:
     """단일 패스로 지원 확장자 파일을 순회"""
     allowed = {ext.lower() for ext in (allowed_exts or SUPPORTED_EXTENSIONS)}
+    excluded_dirs = {name.lower() for name in (excluded_dir_names or (BACKUP_DIR_NAME,))}
 
     try:
         if root_path.is_file():
@@ -60,9 +66,14 @@ def iter_supported_files(
 
     if include_sub:
         try:
-            for dirpath, _, filenames in os.walk(root_path):
+            for dirpath, dirnames, filenames in os.walk(root_path):
                 if cancel_checker and cancel_checker():
                     return
+                dirnames[:] = [
+                    dirname
+                    for dirname in dirnames
+                    if dirname.lower() not in excluded_dirs
+                ]
                 for filename in filenames:
                     if cancel_checker and cancel_checker():
                         return

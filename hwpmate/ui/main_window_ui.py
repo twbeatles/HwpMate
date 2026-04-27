@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSpinBox,
     QTableWidget,
     QTabWidget,
     QVBoxLayout,
@@ -49,6 +50,8 @@ class MainWindowWidgets:
     format_tabs: QTabWidget
     format_cards: dict[str, FormatCard]
     overwrite_check: QCheckBox
+    backup_check: QCheckBox
+    retry_spin: QSpinBox
     start_btn: QPushButton
     cancel_btn: QPushButton
     status_label: QLabel
@@ -341,6 +344,27 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
     window.overwrite_check.setChecked(window.config.get("overwrite", False))
     options_layout.addWidget(window.overwrite_check)
 
+    window.backup_check = QCheckBox("변환 전 원본 백업")
+    window.backup_check.setToolTip("원본 파일을 각 폴더의 backup 폴더에 복사한 뒤 변환합니다")
+    window.backup_check.setChecked(window.config.get("backup_enabled", True))
+    options_layout.addWidget(window.backup_check)
+
+    retry_row = QHBoxLayout()
+    retry_row.setSpacing(10)
+    retry_label = QLabel("실패 시 재시도:")
+    retry_label.setFixedWidth(100)
+    retry_row.addWidget(retry_label)
+
+    window.retry_spin = QSpinBox()
+    window.retry_spin.setRange(0, 3)
+    window.retry_spin.setValue(int(window.config.get("retry_count", 1)))
+    window.retry_spin.setToolTip("파일별 변환 실패 시 재시도 횟수입니다")
+    window.retry_spin.setFixedWidth(80)
+    retry_row.addWidget(window.retry_spin)
+    retry_row.addWidget(QLabel("회"))
+    retry_row.addStretch()
+    options_layout.addLayout(retry_row)
+
     main_layout.addWidget(options_group)
 
     # === 실행 버튼 ===
@@ -417,6 +441,8 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
         format_tabs=window.format_tabs,
         format_cards=window.format_cards,
         overwrite_check=window.overwrite_check,
+        backup_check=window.backup_check,
+        retry_spin=window.retry_spin,
         start_btn=window.start_btn,
         cancel_btn=window.cancel_btn,
         status_label=window.status_label,

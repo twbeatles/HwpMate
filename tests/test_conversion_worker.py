@@ -35,7 +35,25 @@ class StubConverter:
         return self.owned
 
 
-def test_conversion_worker_builds_summary_with_success_failure_and_skip(tmp_path: Path) -> None:
+class FailingInitConverter(StubConverter):
+    def initialize(self) -> bool:
+        raise RuntimeError("init failed")
+
+
+class SequenceConverter(StubConverter):
+    def __init__(self, *, sequence: list[tuple[bool, str | None]]) -> None:
+        super().__init__(results={})
+        self.sequence = sequence
+
+    def convert_file(self, input_path, output_path, format_type="PDF"):
+        del input_path, output_path, format_type
+        return self.sequence.pop(0)
+
+
+def test_conversion_worker_builds_summary_with_success_failure_and_skip(tmp_path: Path, monkeypatch) -> None:
+    import hwpmate.workers.conversion_worker as worker_module
+
+    monkeypatch.setattr(worker_module.time, "sleep", lambda _: None)
     first = tmp_path / "a.hwp"
     second = tmp_path / "b.hwp"
     skipped = tmp_path / "c.hwpx"
@@ -75,6 +93,8 @@ def test_conversion_worker_builds_summary_with_success_failure_and_skip(tmp_path
     assert summary.skipped_count == 1
     assert summary.canceled_count == 0
     assert summary.output_paths == [str(first.with_suffix(".pdf"))]
+    failed = next(task for task in summary.tasks if task.status == "실패")
+    assert failed.retry_count == 1
 
 
 def test_conversion_worker_marks_remaining_tasks_as_canceled(tmp_path: Path) -> None:
@@ -115,6 +135,64 @@ def test_conversion_worker_marks_remaining_tasks_as_canceled(tmp_path: Path) -> 
     assert summary.canceled_count == 1
     assert summary.skipped_count == 1
     assert any(task.status == "취소됨" for task in summary.tasks)
+
+
+def test_conversion_worker_emits_failed_summary_when_initialize_fails(tmp_path: Path) -> None:
+    input_file = tmp_path / "a.hwp"
+    input_file.write_text("x", encoding="utf-8")
+    skipped = tmp_path / "b.hwpx"
+    skipped.write_text("x", encoding="utf-8")
+    plan = PlannedConversion(
+        format_type="PDF",
+        same_location=True,
+        output_path="",
+        tasks=[ConversionTask(input_file, input_file.with_suffix(".pdf"))],
+        skipped_tasks=[ConversionTask(skipped, skipped, status="건너뜀", error="이미 HWPX 형식입니다.")],
+    )
+    summaries = []
+    errors = []
+    worker = ConversionWorker(
+        plan,
+        converter_factory=lambda: FailingInitConverter(results={"a.hwp": (True, None)}),
+    )
+    worker.task_completed.connect(lambda summary: summaries.append(summary))
+    worker.error_occurred.connect(lambda error: errors.append(error))
+
+    worker.run()
+
+    assert errors == []
+    assert len(summaries) == 1
+    summary = summaries[0]
+    assert summary.failed_count == 1
+    assert summary.skipped_count == 1
+    assert "한글 초기화 실패" in summary.failed_tasks[0].detail
+
+
+def test_conversion_worker_retries_failed_conversion(tmp_path: Path, monkeypatch) -> None:
+    import hwpmate.workers.conversion_worker as worker_module
+
+    monkeypatch.setattr(worker_module.time, "sleep", lambda _: None)
+    input_file = tmp_path / "a.hwp"
+    input_file.write_text("x", encoding="utf-8")
+    plan = PlannedConversion(
+        format_type="PDF",
+        same_location=True,
+        output_path="",
+        retry_count=1,
+        tasks=[ConversionTask(input_file, input_file.with_suffix(".pdf"))],
+    )
+    summaries = []
+    worker = ConversionWorker(
+        plan,
+        converter_factory=lambda: SequenceConverter(sequence=[(False, "temporary"), (True, None)]),
+    )
+    worker.task_completed.connect(lambda summary: summaries.append(summary))
+
+    worker.run()
+
+    task = summaries[0].tasks[0]
+    assert task.status == "성공"
+    assert task.retry_count == 1
 
 
 def test_force_terminate_uses_owned_processes_only(tmp_path: Path) -> None:

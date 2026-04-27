@@ -9,6 +9,7 @@ from typing import Callable, Optional, Protocol
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from ..logging_config import get_logger
+from ..constants import MAX_RETRY_COUNT, RETRY_DELAY_SECONDS
 from ..models import ConversionSummary, PlannedConversion
 from ..services.hwp_converter import HWPConverter, pythoncom
 
@@ -45,6 +46,8 @@ class ConversionWorker(QThread):
         self.planned_conversion = planned_conversion
         self.tasks = planned_conversion.tasks
         self.format_type = planned_conversion.format_type
+        self.backup_enabled = planned_conversion.backup_enabled
+        self.retry_count = max(0, min(MAX_RETRY_COUNT, planned_conversion.retry_count))
         self.cancel_requested = False
         self.converter: Optional[ConverterEngine] = None
         self._converter_factory: Callable[[], ConverterEngine] = converter_factory or HWPConverter
@@ -73,7 +76,23 @@ class ConversionWorker(QThread):
 
         try:
             self.status_updated.emit("한글 프로그램 연결 중...")
-            converter.initialize()
+            try:
+                converter.initialize()
+            except Exception as e:
+                logger.exception("한글 초기화 실패")
+                for task in self.tasks:
+                    if task.status in {"대기", "진행중"}:
+                        task.status = "실패"
+                        task.error = f"한글 초기화 실패: {e}"
+                summary = ConversionSummary(
+                    format_type=self.format_type,
+                    tasks=list(self.tasks) + list(self.planned_conversion.skipped_tasks),
+                    warnings=list(self.planned_conversion.warnings),
+                    elapsed_seconds=time.perf_counter() - start_ts,
+                    progid_used=converter.progid_used,
+                )
+                self.task_completed.emit(summary)
+                return
             self.status_updated.emit(f"연결 성공: {converter.progid_used}")
 
             for idx, task in enumerate(self.tasks):
@@ -83,10 +102,12 @@ class ConversionWorker(QThread):
 
                 self.progress_updated.emit(idx, total, task.input_file.name)
 
-                try:
-                    self._create_backup(task.input_file)
-                except Exception as e:
-                    logger.warning(f"백업 실패 (계속 진행): {e}")
+                if self.backup_enabled:
+                    try:
+                        task.backup_file = self._create_backup(task.input_file)
+                    except Exception as e:
+                        task.backup_error = str(e)
+                        logger.warning(f"백업 실패 (계속 진행): {e}")
 
                 try:
                     task.output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -102,13 +123,31 @@ class ConversionWorker(QThread):
                     continue
 
                 task.status = "진행중"
-                success, error = converter.convert_file(
-                    task.input_file,
-                    task.output_file,
-                    self.format_type,
-                )
+                success = False
+                error: str | None = None
+                for attempt in range(self.retry_count + 1):
+                    if self.cancel_requested:
+                        break
 
-                if success:
+                    success, error = converter.convert_file(
+                        task.input_file,
+                        task.output_file,
+                        self.format_type,
+                    )
+                    if success:
+                        break
+
+                    if attempt < self.retry_count:
+                        task.retry_count += 1
+                        self.status_updated.emit(
+                            f"재시도 중: {task.input_file.name} ({task.retry_count}/{self.retry_count})"
+                        )
+                        time.sleep(RETRY_DELAY_SECONDS)
+
+                if self.cancel_requested and not success and error is None:
+                    task.status = "취소됨"
+                    task.error = "사용자 취소"
+                elif success:
                     task.status = "성공"
                     task.error = None
                 else:
@@ -153,7 +192,7 @@ class ConversionWorker(QThread):
             return False
         return converter.kill_owned_processes()
 
-    def _create_backup(self, file_path: Path) -> None:
+    def _create_backup(self, file_path: Path) -> Path:
         """파일 백업 생성"""
         try:
             backup_dir = file_path.parent / "backup"
@@ -171,6 +210,7 @@ class ConversionWorker(QThread):
 
             shutil.copy2(file_path, backup_path)
             logger.debug(f"백업 생성 완료: {backup_path}")
+            return backup_path
         except Exception as e:
             logger.error(f"백업 생성 중 오류: {e}")
             raise

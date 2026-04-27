@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,23 @@ def test_build_tasks_in_folder_mode_uses_relative_output_paths(tmp_path: Path) -
     assert plan.tasks[0].output_file == output / "nested" / "a.pdf"
 
 
+def test_build_tasks_in_folder_mode_rejects_file_path(tmp_path: Path) -> None:
+    source_file = tmp_path / "source.hwp"
+    source_file.write_text("x", encoding="utf-8")
+
+    planner = TaskPlanner()
+    with pytest.raises(ValueError, match="폴더 경로"):
+        planner.build_tasks(
+            is_folder_mode=True,
+            format_type="PDF",
+            folder_path=str(source_file),
+            include_sub=True,
+            same_location=True,
+            output_path="",
+            file_paths=[],
+        )
+
+
 def test_preview_allowed_extensions_match_runnable_files() -> None:
     planner = TaskPlanner()
 
@@ -104,3 +122,34 @@ def test_resolve_output_conflicts_numbers_and_falls_back_to_timestamp(tmp_path: 
     tasks = [ConversionTask(input_file=tmp_path / "c.hwp", output_file=existing)]
     planner.resolve_output_conflicts(tasks, overwrite=False)
     assert tasks[0].output_file.name.startswith("doc_")
+
+
+def test_resolve_output_conflicts_timestamp_fallback_avoids_duplicates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    planner = TaskPlanner()
+    existing = tmp_path / "doc.pdf"
+    existing.write_text("x", encoding="utf-8")
+
+    import hwpmate.services.task_planner as planner_module
+
+    class FrozenDateTime:
+        @classmethod
+        def now(cls):
+            return datetime.datetime(2026, 4, 27, 12, 0, 0, 123456)
+
+    class FrozenDateModule:
+        datetime = FrozenDateTime
+
+    monkeypatch.setattr(planner_module, "MAX_FILENAME_COUNTER", 0)
+    monkeypatch.setattr(planner_module, "datetime", FrozenDateModule)
+
+    tasks = [
+        ConversionTask(input_file=tmp_path / "a.hwp", output_file=existing),
+        ConversionTask(input_file=tmp_path / "b.hwp", output_file=existing),
+    ]
+
+    renamed_count = planner.resolve_output_conflicts(tasks, overwrite=False)
+
+    assert renamed_count == 2
+    assert tasks[0].output_file != tasks[1].output_file
+    assert tasks[0].conflict_original_output_file == existing
+    assert tasks[1].conflict_original_output_file == existing
