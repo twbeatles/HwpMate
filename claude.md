@@ -22,6 +22,7 @@
 ### 보안 모듈 등록
 - `RegisterModule("FilePathCheckDLL", "FilePathCheckerModuleExample")`는 외부 자동화 경고 완화를 위해 유지합니다.
 - `SetMessageBoxMode(0x00000001)`도 함께 유지합니다.
+- 보안 모듈 등록 실패는 조용히 숨기지 말고 결과 경고와 로그에 남깁니다.
 
 ### 네이티브 드래그 앤 드롭
 - 관리자 권한 환경 호환을 위해 `NativeDropFilter`와 `WM_DROPFILES` 흐름을 유지합니다.
@@ -37,14 +38,15 @@
 
 ### 성공 판정과 재시도
 - `Open()` 또는 `SaveAs()`가 명시적으로 `False`를 반환하면 실패로 처리합니다.
-- 2-인자/3-인자 `SaveAs` 폴백 후 기본 출력 파일이 존재하고 0바이트보다 클 때만 성공으로 집계합니다.
+- 2-인자/3-인자 `SaveAs` 폴백 후 출력 산출물이 새로 생성되거나 갱신되고 0바이트보다 클 때만 성공으로 집계합니다.
+- 이미지/HTML 계열은 기본 출력 파일 외에도 같은 stem 기반 보조 산출물을 함께 수집해 성공 판정과 결과 저장에 반영합니다.
 - 실패 자동 재시도는 설정값 `retry_count`를 따르며 기본 1회, 최대 3회입니다.
 
 ### 동일 형식 건너뜀과 결과 집계
 - `TaskPlanner.build_tasks`는 `PlannedConversion`을 만들고, 동일 형식 입력은 `skipped_tasks`로 분리합니다.
 - `ConversionWorker.task_completed`는 `ConversionSummary`를 전달하며, `성공/실패/건너뜀/취소됨` 집계를 분리합니다.
 - 동일 형식만 선택된 경우에도 변환 워커를 시작하지 않고 `건너뜀` 전용 결과 다이얼로그를 표시합니다.
-- `ResultDialog`와 결과 저장(CSV/JSON/TXT)은 이 집계를 기준으로 동작해야 하며, CSV/JSON에는 `retry_count`, `backup_file`, `backup_error`가 포함됩니다.
+- `ResultDialog`와 결과 저장(CSV/JSON/TXT)은 이 집계를 기준으로 동작해야 하며, CSV/JSON에는 `retry_count`, `backup_file`, `backup_error`, `created_files`, `output_size`, `output_mtime`, `save_format`, `progid_used`가 포함됩니다.
 
 ### 강제 종료 안전장치
 - 강제 종료는 `HWPConverter.kill_owned_processes()`를 통해 앱이 직접 띄운 PID에만 적용합니다.
@@ -95,9 +97,11 @@ pyright .
 - 문서 형식 변환 1건 이상
 - 사전 점검 다이얼로그 표시
 - 결과 CSV/JSON 저장
+- 결과 CSV/JSON의 산출 파일/크기/수정 시각/COM 형식 감사 필드
 - 백업 옵션 및 재시도 횟수 저장/복원
 - 동일 형식만 있는 경우의 건너뜀 전용 결과
 - 취소 후 종료/강제 종료 흐름
+- `python tools/hwp_com_smoke.py --input <샘플.hwp> --format PDF --output-dir <출력폴더>` 관리자 권한 스모크
 - `pyinstaller hwp_converter.spec` 빌드 여부
 
 ## 6. 문서 동기화 체크리스트
@@ -105,6 +109,6 @@ pyright .
 - README의 지원 형식, 실행 방법, 빌드 결과 이름이 현재 코드와 일치하는가
 - `PROJECT_STRUCTURE_ANALYSIS.md`의 아키텍처 설명과 스냅샷 정보가 현재 구조와 일치하는가
 - `update_history.md`에 유지보수 내역이 반영되었는가
-- `IMPLEMENTATION_RISK_REVIEW.md`와 `HWP_COM_SMOKE_TEST_CHECKLIST.md`가 현재 구현/검증 기준과 일치하는가
+- `FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md`와 `HWP_COM_SMOKE_TEST_CHECKLIST.md`가 현재 구현/검증 기준과 일치하는가
 - `.gitignore`가 `backup/`, 빌드 산출물, 캐시를 충분히 제외하는가
 - 정적 분석 설정이 실제 코드 상태와 맞는가

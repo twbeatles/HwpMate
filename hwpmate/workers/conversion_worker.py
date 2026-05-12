@@ -10,7 +10,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from ..logging_config import get_logger
 from ..constants import MAX_RETRY_COUNT, RETRY_DELAY_SECONDS
-from ..models import ConversionSummary, PlannedConversion
+from ..models import ConversionSummary, ConversionTask, PlannedConversion
 from ..services.hwp_converter import HWPConverter, pythoncom
 
 logger = get_logger(__name__)
@@ -70,14 +70,17 @@ class ConversionWorker(QThread):
                 logger.debug(f"Worker COM 초기화: {e}")
 
         start_ts = time.perf_counter()
-        converter = self._converter_factory()
-        self.converter = converter
         total = len(self.tasks)
+        converter: ConverterEngine | None = None
+        runtime_warnings: list[str] = []
 
         try:
+            converter = self._converter_factory()
+            self.converter = converter
             self.status_updated.emit("한글 프로그램 연결 중...")
             try:
                 converter.initialize()
+                runtime_warnings = self._collect_converter_warnings(converter)
             except Exception as e:
                 logger.exception("한글 초기화 실패")
                 for task in self.tasks:
@@ -87,7 +90,7 @@ class ConversionWorker(QThread):
                 summary = ConversionSummary(
                     format_type=self.format_type,
                     tasks=list(self.tasks) + list(self.planned_conversion.skipped_tasks),
-                    warnings=list(self.planned_conversion.warnings),
+                    warnings=list(self.planned_conversion.warnings) + self._collect_converter_warnings(converter),
                     elapsed_seconds=time.perf_counter() - start_ts,
                     progid_used=converter.progid_used,
                 )
@@ -135,6 +138,7 @@ class ConversionWorker(QThread):
                         self.format_type,
                     )
                     if success:
+                        self._apply_converter_artifacts(task, converter)
                         break
 
                     if attempt < self.retry_count:
@@ -164,19 +168,31 @@ class ConversionWorker(QThread):
             summary = ConversionSummary(
                 format_type=self.format_type,
                 tasks=list(self.tasks) + list(self.planned_conversion.skipped_tasks),
-                warnings=list(self.planned_conversion.warnings),
+                warnings=list(self.planned_conversion.warnings) + runtime_warnings,
                 elapsed_seconds=time.perf_counter() - start_ts,
                 progid_used=converter.progid_used,
             )
             self.task_completed.emit(summary)
         except Exception as e:
             logger.exception("변환 중 오류 발생")
-            self.error_occurred.emit(str(e))
+            for task in self.tasks:
+                if task.status in {"대기", "진행중"}:
+                    task.status = "취소됨" if self.cancel_requested else "실패"
+                    task.error = "사용자 취소" if self.cancel_requested else f"변환 워커 오류: {e}"
+            summary = ConversionSummary(
+                format_type=self.format_type,
+                tasks=list(self.tasks) + list(self.planned_conversion.skipped_tasks),
+                warnings=list(self.planned_conversion.warnings) + runtime_warnings + [f"변환 워커 오류: {e}"],
+                elapsed_seconds=time.perf_counter() - start_ts,
+                progid_used=converter.progid_used if converter is not None else None,
+            )
+            self.task_completed.emit(summary)
         finally:
-            try:
-                converter.cleanup()
-            except Exception as e:
-                logger.error(f"정리 중 오류: {e}")
+            if converter is not None:
+                try:
+                    converter.cleanup()
+                except Exception as e:
+                    logger.error(f"정리 중 오류: {e}")
 
             if self._com_initialized:
                 if pythoncom is not None:
@@ -214,3 +230,25 @@ class ConversionWorker(QThread):
         except Exception as e:
             logger.error(f"백업 생성 중 오류: {e}")
             raise
+
+    def _apply_converter_artifacts(self, task: ConversionTask, converter: ConverterEngine) -> None:
+        created_files = getattr(converter, "last_created_files", [])
+        task.created_files = [Path(path) for path in created_files]
+        task.output_size = getattr(converter, "last_output_size", None)
+        task.output_mtime = getattr(converter, "last_output_mtime", None)
+        task.save_format = getattr(converter, "last_save_format", None)
+        task.progid_used = converter.progid_used
+
+    def _collect_converter_warnings(self, converter: ConverterEngine) -> list[str]:
+        warnings: list[str] = []
+        if getattr(converter, "security_module_registered", None) is False:
+            detail = getattr(converter, "security_module_error", None)
+            message = "한글 보안 모듈 등록에 실패했습니다."
+            if detail:
+                message += f" 상세: {detail}"
+            warnings.append(message)
+
+        process_warning = getattr(converter, "process_tracking_warning", None)
+        if process_warning:
+            warnings.append(str(process_warning))
+        return warnings

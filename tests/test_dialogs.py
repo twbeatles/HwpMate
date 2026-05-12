@@ -8,7 +8,16 @@ from hwpmate.ui.dialogs import write_failed_list, write_results_csv, write_resul
 
 
 def build_summary(tmp_path: Path) -> ConversionSummary:
-    success = ConversionTask(tmp_path / "a.hwp", tmp_path / "a.pdf", status="성공")
+    success = ConversionTask(
+        tmp_path / "a.hwp",
+        tmp_path / "a.pdf",
+        status="성공",
+        created_files=[tmp_path / "a.pdf"],
+        output_size=123,
+        output_mtime=1777777777.0,
+        save_format="PDF",
+        progid_used="Stub.Hwp",
+    )
     failed = ConversionTask(
         tmp_path / "b.hwp",
         tmp_path / "b.pdf",
@@ -48,7 +57,7 @@ def test_write_results_csv_contains_all_statuses(tmp_path: Path) -> None:
     write_results_csv(output, summary)
     text = output.read_text(encoding="utf-8-sig")
 
-    assert "input_file,output_file,status,detail,retry_count,backup_file,backup_error" in text
+    assert "input_file,output_file,status,detail,retry_count,backup_file,backup_error,created_files,output_size,output_mtime,save_format,progid_used" in text
     assert "성공" in text
     assert "실패" in text
     assert "건너뜀" in text
@@ -71,3 +80,7 @@ def test_write_results_json_contains_summary_and_tasks(tmp_path: Path) -> None:
     failed = next(task for task in data["tasks"] if task["status"] == "실패")
     assert failed["retry_count"] == 1
     assert failed["backup_file"]
+    success = next(task for task in data["tasks"] if task["status"] == "성공")
+    assert success["created_files"] == [str(tmp_path / "a.pdf")]
+    assert success["output_size"] == 123
+    assert success["save_format"] == "PDF"

@@ -16,7 +16,8 @@
 
 ### 변환 엔진 호환성
 - `Open` 이후 짧은 대기와 `SaveAs` 폴백은 실제 한글 버전 차이를 흡수하기 위한 장치입니다.
-- `Open()`/`SaveAs()`가 명시적으로 `False`를 반환하면 실패로 처리하며, 최종 출력 파일이 존재하고 0바이트보다 커야 성공입니다.
+- `Open()`/`SaveAs()`가 명시적으로 `False`를 반환하면 실패로 처리하며, 출력 산출물이 새로 생성되거나 갱신되고 0바이트보다 커야 성공입니다.
+- 이미지/HTML 계열은 기본 출력 파일 외에도 같은 stem 기반 보조 산출물을 함께 수집해 결과에 기록합니다.
 - 실패 자동 재시도는 기본 1회, 최대 3회입니다.
 - 출력 형식 정보는 `FORMAT_TYPES`를 기준으로 관리합니다.
 
@@ -36,6 +37,7 @@
 - 백업은 기본 활성화이며 UI 설정으로 끌 수 있습니다.
 - 하위 `backup/` 폴더는 폴더 재귀 스캔에서 기본 제외됩니다.
 - 덮어쓰기 미허용 시 자동 번호 부여 로직을 유지합니다.
+- 덮어쓰기 허용 시에도 같은 실행 배치 내부 출력 경로 충돌은 자동 번호 부여로 분리합니다.
 - 백업명은 마이크로초 기반이며 충돌 시 일련번호를 붙여 덮어쓰지 않습니다.
 
 ### 동일 형식 건너뜀과 안전한 강제 종료
@@ -67,7 +69,7 @@
 3. 타입 관련 수정 후에는 반드시 `pyright .`를 다시 실행합니다.
 4. 변환 중 생성되는 `backup/` 폴더 같은 산출물은 Git 추적 대상이 아니어야 합니다.
 5. 관리자 권한 요구사항을 약화시키는 변경은 신중하게 검토합니다.
-6. CSV/JSON 결과 필드(`retry_count`, `backup_file`, `backup_error`)를 바꾸면 테스트와 README/히스토리를 함께 갱신합니다.
+6. CSV/JSON 결과 필드(`retry_count`, `backup_file`, `backup_error`, `created_files`, `output_size`, `output_mtime`, `save_format`, `progid_used`)를 바꾸면 테스트와 README/히스토리를 함께 갱신합니다.
 
 ## 6. 권장 검증 명령
 
@@ -75,6 +77,7 @@
 pyright .
 pytest
 pyinstaller hwp_converter.spec
+python tools/hwp_com_smoke.py --input <샘플.hwp> --format PDF --output-dir <출력폴더>
 ```
 
 가능하면 추가로 수동 확인할 것:

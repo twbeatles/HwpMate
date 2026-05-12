@@ -50,6 +50,22 @@ class SequenceConverter(StubConverter):
         return self.sequence.pop(0)
 
 
+class RaisingConverter(StubConverter):
+    def convert_file(self, input_path, output_path, format_type="PDF"):
+        del input_path, output_path, format_type
+        raise RuntimeError("worker boom")
+
+
+class ArtifactConverter(StubConverter):
+    def convert_file(self, input_path, output_path, format_type="PDF"):
+        result = super().convert_file(input_path, output_path, format_type)
+        self.last_created_files = [Path(output_path)]
+        self.last_output_size = 123
+        self.last_output_mtime = 1777777777.0
+        self.last_save_format = format_type
+        return result
+
+
 def test_conversion_worker_builds_summary_with_success_failure_and_skip(tmp_path: Path, monkeypatch) -> None:
     import hwpmate.workers.conversion_worker as worker_module
 
@@ -193,6 +209,57 @@ def test_conversion_worker_retries_failed_conversion(tmp_path: Path, monkeypatch
     task = summaries[0].tasks[0]
     assert task.status == "성공"
     assert task.retry_count == 1
+
+
+def test_conversion_worker_attaches_converter_artifacts(tmp_path: Path) -> None:
+    input_file = tmp_path / "a.hwp"
+    input_file.write_text("x", encoding="utf-8")
+    output = input_file.with_suffix(".pdf")
+    plan = PlannedConversion(
+        format_type="PDF",
+        same_location=True,
+        output_path="",
+        tasks=[ConversionTask(input_file, output)],
+    )
+    summaries = []
+    worker = ConversionWorker(
+        plan,
+        converter_factory=lambda: ArtifactConverter(results={"a.hwp": (True, None)}),
+    )
+    worker.task_completed.connect(lambda summary: summaries.append(summary))
+
+    worker.run()
+
+    task = summaries[0].tasks[0]
+    assert task.created_files == [output]
+    assert task.output_size == 123
+    assert task.save_format == "PDF"
+    assert task.progid_used == "Stub.Hwp"
+
+
+def test_conversion_worker_emits_summary_for_unexpected_worker_errors(tmp_path: Path) -> None:
+    input_file = tmp_path / "a.hwp"
+    input_file.write_text("x", encoding="utf-8")
+    plan = PlannedConversion(
+        format_type="PDF",
+        same_location=True,
+        output_path="",
+        tasks=[ConversionTask(input_file, input_file.with_suffix(".pdf"))],
+    )
+    summaries = []
+    errors = []
+    worker = ConversionWorker(
+        plan,
+        converter_factory=lambda: RaisingConverter(results={"a.hwp": (True, None)}),
+    )
+    worker.task_completed.connect(lambda summary: summaries.append(summary))
+    worker.error_occurred.connect(lambda error: errors.append(error))
+
+    worker.run()
+
+    assert errors == []
+    assert summaries[0].failed_count == 1
+    assert "변환 워커 오류" in summaries[0].failed_tasks[0].detail
 
 
 def test_force_terminate_uses_owned_processes_only(tmp_path: Path) -> None:

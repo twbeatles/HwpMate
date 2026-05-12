@@ -9,6 +9,24 @@
 - 빌드 설정: `hwp_converter.spec`
 - 정적 검사 기준: `pyrightconfig.json`
 
+## 2026-05-12 기능 구현 리스크 보강
+
+### 출력/산출물 안전성
+- `기존 파일 덮어쓰기`가 켜져 있어도 같은 실행 배치 내부의 중복 출력 경로는 자동 이름 변경으로 분리합니다.
+- 기존 출력 파일이 있을 때는 단순 존재/0바이트 검사 대신 저장 전후 산출물의 크기와 수정 시각 변화를 확인해 새로 생성 또는 갱신된 경우만 성공으로 집계합니다.
+- 이미지/HTML 계열은 기본 출력 파일 외에도 같은 stem 기반 보조 산출물을 수집해 결과에 기록합니다.
+
+### 결과 리포트와 COM 상태
+- `ConversionTask`와 CSV/JSON 결과에 `created_files`, `output_size`, `output_mtime`, `save_format`, `progid_used` 감사 필드를 추가했습니다.
+- 보안 모듈 등록 실패와 앱 소유 한글 PID 추적 실패를 경고로 남겨 COM 환경 문제를 결과에서 확인할 수 있게 했습니다.
+- 변환 워커의 예상 밖 예외도 구조화된 `ConversionSummary`로 남겨 결과 저장 흐름이 끊기지 않도록 보강했습니다.
+
+### 설정/검증/문서
+- 설정 JSON의 타입과 범위를 로드 시 정규화해 `retry_count="abc"`, `same_location="false"` 같은 값으로 앱 시작이 깨지지 않도록 했습니다.
+- 실제 HWP COM 검증 보조 스크립트 `tools/hwp_com_smoke.py`를 추가했습니다.
+- `.gitignore`에 COM 스모크 JSON, 결과 CSV/JSON, 실패 TXT 같은 로컬 검증 산출물을 추가했습니다.
+- `FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md`, README, 구조 분석 문서, COM 수동 체크리스트, 협업 가이드를 현재 구현 기준으로 동기화했습니다.
+
 ## 2026-04-27 v8.7 안정성/검증 보강
 
 ### 런타임 및 배포 기준

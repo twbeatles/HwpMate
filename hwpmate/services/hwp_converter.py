@@ -4,6 +4,7 @@ import csv
 import io
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, Protocol, Tuple, cast
 
@@ -26,6 +27,14 @@ except ImportError:
     PYWIN32_AVAILABLE = False
 
 HWP_PROCESS_NAMES = {"hwp.exe", "hwpctrl.exe"}
+AUXILIARY_ARTIFACT_FORMATS = {"HTML", "PNG", "JPG", "BMP", "GIF"}
+
+
+@dataclass(frozen=True)
+class _FileSnapshot:
+    size: int
+    mtime_ns: int
+    ctime_ns: int
 
 
 class HwpAutomation(Protocol):
@@ -95,6 +104,70 @@ def get_registered_hwp_progids() -> list[str]:
     return registered
 
 
+def _snapshot_file(path: Path) -> _FileSnapshot | None:
+    try:
+        stat = path.stat()
+        if not path.is_file():
+            return None
+        return _FileSnapshot(
+            size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+            ctime_ns=stat.st_ctime_ns,
+        )
+    except OSError:
+        return None
+
+
+def _iter_candidate_artifact_files(output_file: Path, format_type: str) -> list[Path]:
+    candidates: dict[str, Path] = {str(output_file): output_file}
+    if format_type not in AUXILIARY_ARTIFACT_FORMATS:
+        return list(candidates.values())
+
+    parent = output_file.parent
+    if not parent.exists():
+        return list(candidates.values())
+
+    stem_key = output_file.stem.lower()
+    try:
+        for child in parent.iterdir():
+            if child.name.lower().startswith(stem_key):
+                if child.is_file():
+                    candidates[str(child)] = child
+                elif child.is_dir():
+                    try:
+                        for nested in child.rglob("*"):
+                            if nested.is_file():
+                                candidates[str(nested)] = nested
+                    except OSError:
+                        continue
+    except OSError:
+        return list(candidates.values())
+
+    return list(candidates.values())
+
+
+def _snapshot_artifacts(output_file: Path, format_type: str) -> dict[Path, _FileSnapshot]:
+    snapshots: dict[Path, _FileSnapshot] = {}
+    for path in _iter_candidate_artifact_files(output_file, format_type):
+        snapshot = _snapshot_file(path)
+        if snapshot is not None:
+            snapshots[path] = snapshot
+    return snapshots
+
+
+def _changed_artifacts(
+    before: dict[Path, _FileSnapshot],
+    after: dict[Path, _FileSnapshot],
+) -> list[Path]:
+    changed: list[Path] = []
+    for path, snapshot in after.items():
+        if snapshot.size <= 0:
+            continue
+        if before.get(path) != snapshot:
+            changed.append(path)
+    return sorted(changed, key=lambda p: str(p).lower())
+
+
 class HWPConverter:
     """한글 변환 엔진 - 기존 로직 완전 유지."""
 
@@ -103,6 +176,13 @@ class HWPConverter:
         self.progid_used: Optional[str] = None
         self.is_initialized = False
         self.owned_pids: set[int] = set()
+        self.security_module_registered: bool | None = None
+        self.security_module_error: str | None = None
+        self.process_tracking_warning: str | None = None
+        self.last_created_files: list[Path] = []
+        self.last_output_size: int | None = None
+        self.last_output_mtime: float | None = None
+        self.last_save_format: str | None = None
 
     def initialize(self) -> bool:
         """COM 초기화 및 한글 객체 생성."""
@@ -126,8 +206,12 @@ class HWPConverter:
 
                 try:
                     hwp.RegisterModule("FilePathCheckDLL", "FilePathCheckerModuleExample")
-                except Exception:
-                    pass
+                    self.security_module_registered = True
+                    self.security_module_error = None
+                except Exception as module_error:
+                    self.security_module_registered = False
+                    self.security_module_error = str(module_error)
+                    logger.warning(f"한글 보안 모듈 등록 실패: {module_error}")
 
                 hwp.SetMessageBoxMode(0x00000001)
                 time.sleep(0.2)
@@ -135,9 +219,11 @@ class HWPConverter:
                 self.is_initialized = True
                 logger.info(f"한글 연결 성공: {progid}")
                 if self.owned_pids:
+                    self.process_tracking_warning = None
                     logger.info(f"앱 소유 한글 프로세스 추적: {sorted(self.owned_pids)}")
                 else:
-                    logger.info("새로 생성된 한글 프로세스를 추적하지 못했습니다. 강제 종료는 비활성화됩니다.")
+                    self.process_tracking_warning = "새로 생성된 한글 프로세스를 추적하지 못했습니다. 강제 종료는 비활성화됩니다."
+                    logger.info(self.process_tracking_warning)
                 return True
 
             except Exception as e:
@@ -156,6 +242,11 @@ class HWPConverter:
         try:
             input_str = str(input_path)
             output_str = str(output_path)
+            output_file = Path(output_str)
+            self.last_created_files = []
+            self.last_output_size = None
+            self.last_output_mtime = None
+            self.last_save_format = None
 
             open_result = hwp.Open(input_str, "", "forceopen:true")
             if open_result is False:
@@ -164,8 +255,10 @@ class HWPConverter:
 
             format_info = FORMAT_TYPES.get(format_type, FORMAT_TYPES["PDF"])
             save_format = format_info["save_format"]
+            self.last_save_format = save_format
 
             save_error = None
+            before_artifacts = _snapshot_artifacts(output_file, format_type)
 
             try:
                 save_result = hwp.SaveAs(output_str, save_format)
@@ -190,26 +283,39 @@ class HWPConverter:
                         pass
                     return False, save_error
 
-            output_file = Path(output_str)
-            if not output_file.exists():
+            after_artifacts = _snapshot_artifacts(output_file, format_type)
+            primary_snapshot = after_artifacts.get(output_file)
+
+            if not after_artifacts:
                 try:
                     hwp.Clear(option=1)
                 except Exception:
                     pass
                 return False, f"출력 파일이 생성되지 않았습니다: {output_file.name}"
-            try:
-                if output_file.stat().st_size <= 0:
-                    try:
-                        hwp.Clear(option=1)
-                    except Exception:
-                        pass
-                    return False, f"출력 파일이 비어 있습니다: {output_file.name}"
-            except OSError as e:
+
+            if primary_snapshot is not None and primary_snapshot.size <= 0:
                 try:
                     hwp.Clear(option=1)
                 except Exception:
                     pass
-                return False, f"출력 파일 확인 실패: {e}"
+                return False, f"출력 파일이 비어 있습니다: {output_file.name}"
+
+            changed_files = _changed_artifacts(before_artifacts, after_artifacts)
+            if not changed_files:
+                try:
+                    hwp.Clear(option=1)
+                except Exception:
+                    pass
+                return False, f"출력 파일이 새로 생성되거나 갱신되지 않았습니다: {output_file.name}"
+
+            representative = output_file if output_file in changed_files else changed_files[0]
+            representative_snapshot = after_artifacts[representative]
+            self.last_created_files = changed_files
+            self.last_output_size = representative_snapshot.size
+            try:
+                self.last_output_mtime = representative.stat().st_mtime
+            except OSError:
+                self.last_output_mtime = representative_snapshot.mtime_ns / 1_000_000_000
 
             hwp.Clear(option=1)
 
@@ -273,6 +379,7 @@ class HWPConverter:
             self.hwp = None
             self.is_initialized = False
             self.owned_pids.clear()
+            self.process_tracking_warning = None
 
         if pythoncom is not None:
             try:

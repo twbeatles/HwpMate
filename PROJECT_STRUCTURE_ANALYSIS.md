@@ -5,6 +5,7 @@
 - 보강 일자: 2026-03-10
 - 추가 보강 일자: 2026-03-18
 - v8.7 반영 일자: 2026-04-27
+- 기능 리스크 보강 일자: 2026-05-12
 - 대상 저장소: `c:\twbeatles-repos\HwpMate`
 - 분석 목적: "다양한 기능 추가"를 위한 현재 구조, 제약, 확장 포인트 파악
 
@@ -13,7 +14,7 @@
 - `claude.md`
 - `gemini.md`
 - `update_history.md`
-- `IMPLEMENTATION_RISK_REVIEW.md`
+- `FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md`
 - `HWP_COM_SMOKE_TEST_CHECKLIST.md`
 - `hwp_converter.spec`
 - `hwptopdf-hwpx_v4.py` (루트 엔트리포인트 래퍼)
@@ -22,20 +23,21 @@
 
 ## 3. 저장소 구조 스냅샷
 
-| 파일 | 라인 수 | 역할 |
-|---|---:|---|
-| `hwptopdf-hwpx_v4.py` | 5 | 패키지 진입용 얇은 래퍼 |
+| 파일 | 상태 | 역할 |
+|---|---|---|
+| `hwptopdf-hwpx_v4.py` | 유지 | 패키지 진입용 얇은 래퍼 |
 | `hwpmate/` | 모듈 분리 | 현재 메인 애플리케이션 (GUI + 변환엔진 + 워커 + DnD + 설정) |
-| `legacy/hwptopdf-hwpx v3.py` | 828 | 레거시 tkinter 기반 버전 |
-| `hwp_converter.spec` | 107 | PyInstaller 빌드 설정 (경량화, `uac_admin=True`) |
-| `pyrightconfig.json` | 15 | Pylance/pyright 공용 정적 분석 설정 |
-| `.editorconfig` | 13 | UTF-8/LF 편집 규칙 |
-| `README.md` | 131 | 사용자 관점 기능/설치/사용법 |
-| `IMPLEMENTATION_RISK_REVIEW.md` | 46 | v8.7 구현 리스크 개선 완료 보고서 |
-| `HWP_COM_SMOKE_TEST_CHECKLIST.md` | 48 | 실제 한글 COM 수동 검증 체크리스트 |
-| `claude.md` | 110 | 핵심 로직 보존 지침(변경 주의사항) |
-| `gemini.md` | 91 | 유지보수/확장 지침(절대 변경 금지 영역 포함) |
-| `update_history.md` | 123 | 버전 이력, 기술적 문제 해결 기록 |
+| `legacy/hwptopdf-hwpx v3.py` | 참고용 | 레거시 tkinter 기반 버전 |
+| `hwp_converter.spec` | 추적 | PyInstaller 빌드 설정 (경량화, `uac_admin=True`) |
+| `tools/hwp_com_smoke.py` | 스크립트 | 실제 HWP COM 변환 보조 스모크 |
+| `pyrightconfig.json` | 추적 | Pylance/pyright 공용 정적 분석 설정 |
+| `.editorconfig` | 추적 | UTF-8/LF 편집 규칙 |
+| `README.md` | 추적 | 사용자 관점 기능/설치/사용법 |
+| `FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md` | 문서 | 기능 구현 리스크 점검 및 개선 결과 |
+| `HWP_COM_SMOKE_TEST_CHECKLIST.md` | 추적 | 실제 한글 COM 수동 검증 체크리스트 |
+| `claude.md` | 추적 | 핵심 로직 보존 지침(변경 주의사항) |
+| `gemini.md` | 추적 | 유지보수/확장 지침(절대 변경 금지 영역 포함) |
+| `update_history.md` | 추적 | 버전 이력, 기술적 문제 해결 기록 |
 
 현재 구조는 `hwpmate/` 패키지 기준의 모듈 분리 아키텍처이며, 루트 래퍼와 기존 배포 흐름은 유지됩니다.
 
@@ -91,16 +93,16 @@
 1. `_start_conversion()`
 2. `_collect_tasks()`로 `PlannedConversion` 생성
 3. 필요 시 `_adjust_output_paths()`로 충돌 회피 수 계산
-4. `PreflightDialog`로 실행 대상/건너뜀/경고 확인
+4. `PreflightDialog`로 실행 대상/건너뜀/경고/입력·출력 차단 오류 확인
 5. 실행 대상 없이 동일 형식 건너뜀만 있으면 즉시 `ResultDialog` 표시
 6. 실행 대상이 있으면 `ConversionWorker` 시작
 7. `ConversionWorker.run()` 내부
    - 워커 스레드 `pythoncom.CoInitialize()`
-   - `HWPConverter.initialize()`
+   - `HWPConverter.initialize()` 및 보안 모듈/PID 추적 경고 수집
    - 파일별 선택적 `_create_backup()` 후 `convert_file()`
    - 실패 시 설정된 횟수만큼 재시도
    - 취소 시 남은 task를 `취소됨`으로 마킹
-   - `ConversionSummary` 생성
+   - 산출 파일/크기/수정 시각/COM 형식을 기록한 `ConversionSummary` 생성
 8. `task_completed` 시그널 수신 후 `ResultDialog` 표시
 9. 필요 시 실패 TXT / 결과 CSV·JSON 저장
 10. `_on_worker_finished()`에서 UI/시그널/상태 정리 및 종료 대기 처리
@@ -111,7 +113,8 @@
 1. SaveAs 이중 전략 유지
 - 2-파라미터 실패 시 3-파라미터(`""`) 재시도 로직 필수.
 - `Open()`/`SaveAs()`가 명시적으로 `False`를 반환하면 실패로 처리.
-- 출력 파일 존재 및 0바이트 초과 검증 유지.
+- 출력 산출물이 새로 생성/갱신됐고 0바이트 초과인지 검증 유지.
+- 이미지/HTML 계열은 같은 stem 기반 보조 산출물도 함께 수집.
 
 2. 보안/팝업 제어 유지
 - `RegisterModule("FilePathCheckDLL", ...)`
@@ -134,6 +137,7 @@
 - 동일 형식은 오류가 아니라 `건너뜀`으로 집계.
 - 결과 화면과 결과 저장 파일은 `성공/실패/건너뜀/취소됨` 집계를 일관되게 사용.
 - 동일 형식만 선택된 경우도 결과 저장 가능해야 함.
+- 결과 CSV/JSON에는 `created_files`, `output_size`, `output_mtime`, `save_format`, `progid_used` 감사 필드를 유지.
 
 7. 강제 종료 범위 제한 유지
 - 시스템 전체 한글 프로세스 종료로 되돌리지 말고, 앱이 추적한 PID만 종료.
@@ -153,7 +157,7 @@
 - `MainWindow`가 여전히 가장 큰 조정 지점이라 UI 상태 전이가 이곳에 비교적 많이 남아 있습니다.
 - PyQt 위젯 생성은 분리됐지만, 런타임 오케스트레이션은 단일 클래스 중심입니다.
 - 자동 테스트는 순수 로직 계층 위주이며, GUI/COM 경로는 여전히 수동 검증 비중이 높습니다.
-- 설정 스키마 마이그레이션은 기본값 병합 방식이며, v8.7에서 `config_version=2`입니다.
+- 설정 스키마 마이그레이션은 기본값 병합 후 타입/범위 정규화를 수행하며, v8.7에서 `config_version=2`입니다.
 - 워커/스캐너 상태 관리가 객체 필드 기반이라 기능이 늘수록 복잡도 상승 가능.
 
 ## 8. 추천 기능 추가 항목 (우선순위)
@@ -205,7 +209,7 @@
 - 폴더 열기, 실패 목록 내보내기, 사용자 알림 정책을 더 작은 서비스로 분리 가능
 
 3. GUI/COM 검증 보강
-- Qt 상호작용 테스트는 추가됐으므로, 실제 HWP COM이 설치된 환경에서 도는 스모크 테스트/수동 점검 체계를 더 강화할 수 있음
+- Qt 상호작용 테스트와 `tools/hwp_com_smoke.py`는 추가됐으므로, 실제 HWP COM 설치 환경에서는 스크립트와 수동 점검을 함께 사용할 수 있음
 
 4. 빌드 자동화
 - `pyright`, `pytest`, `pyinstaller`를 묶는 CI 스모크 파이프라인 추가 가능
@@ -224,7 +228,7 @@
 4. 동일 형식 입력 건너뜀과 사전 점검 다이얼로그
 5. 포맷별 변환 성공/실패 처리
 6. overwrite on/off 파일명 충돌 처리
-7. 결과 다이얼로그(실패 목록 저장, CSV/JSON 저장, 폴더 열기)
+7. 결과 다이얼로그(실패 목록 저장, 산출물 감사 필드가 포함된 CSV/JSON 저장, 폴더 열기)
 8. 취소 후 강제 종료 경로
 9. 백업 옵션 on/off와 실패 자동 재시도
 10. 앱 종료 시 트레이/토스트/워커 정리
@@ -243,6 +247,6 @@
 ## 14. v8.7 동기화 기준 (2026-04-27)
 - 공식 지원 Python 버전은 3.10 이상입니다.
 - 앱 버전과 PyInstaller 산출물 이름은 `8.7` / `HWP변환기_v8.7.exe`입니다.
-- `.gitignore`는 `build/`, `dist/`, PyInstaller 중간 산출물, 캐시, `backup/` 폴더를 제외합니다.
+- `.gitignore`는 `build/`, `dist/`, PyInstaller 중간 산출물, 캐시, `backup/`, COM 스모크/결과 리포트 산출물을 제외합니다.
 - 실제 한글 COM 동작은 자동 테스트와 별도로 `HWP_COM_SMOKE_TEST_CHECKLIST.md` 기준 수동 검증이 필요합니다.
-- `IMPLEMENTATION_RISK_REVIEW.md`는 v8.7에서 반영된 리스크 개선 내역을 요약합니다.
+- `FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md`는 기능 구현 리스크와 2026-05-12 보강 내역을 요약합니다.

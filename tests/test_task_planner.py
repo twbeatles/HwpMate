@@ -124,6 +124,23 @@ def test_resolve_output_conflicts_numbers_and_falls_back_to_timestamp(tmp_path: 
     assert tasks[0].output_file.name.startswith("doc_")
 
 
+def test_resolve_output_conflicts_allows_existing_overwrite_but_renames_batch_duplicates(tmp_path: Path) -> None:
+    planner = TaskPlanner()
+    existing = tmp_path / "doc.pdf"
+    existing.write_text("old", encoding="utf-8")
+    tasks = [
+        ConversionTask(input_file=tmp_path / "a.hwp", output_file=existing),
+        ConversionTask(input_file=tmp_path / "b.hwpx", output_file=existing),
+    ]
+
+    renamed_count = planner.resolve_output_conflicts(tasks, overwrite=True)
+
+    assert renamed_count == 1
+    assert tasks[0].output_file == existing
+    assert tasks[1].output_file == tmp_path / "doc (1).pdf"
+    assert tasks[1].conflict_original_output_file == existing
+
+
 def test_resolve_output_conflicts_timestamp_fallback_avoids_duplicates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     planner = TaskPlanner()
     existing = tmp_path / "doc.pdf"

@@ -744,9 +744,9 @@ class MainWindow(QMainWindow):
             retry_count=self.retry_spin.value(),
         )
 
-    def _adjust_output_paths(self, plan: PlannedConversion) -> int:
+    def _adjust_output_paths(self, plan: PlannedConversion, *, overwrite: bool) -> int:
         """출력 경로 조정 (덮어쓰기 방지)"""
-        return self.task_planner.resolve_output_conflicts(plan.tasks, overwrite=False)
+        return self.task_planner.resolve_output_conflicts(plan.tasks, overwrite=overwrite)
 
     def _save_settings(self) -> None:
         """설정 저장"""
@@ -805,9 +805,14 @@ class MainWindow(QMainWindow):
                     f"소요={time.perf_counter() - task_collect_start:.3f}s"
                 )
 
-            if not self.overwrite_check.isChecked():
-                plan.conflict_renamed_count = self._adjust_output_paths(plan)
-                if plan.conflict_renamed_count:
+            overwrite = self.overwrite_check.isChecked()
+            plan.conflict_renamed_count = self._adjust_output_paths(plan, overwrite=overwrite)
+            if plan.conflict_renamed_count:
+                if overwrite:
+                    plan.warnings.append(
+                        f"실행 배치 내부 출력 경로 충돌 {plan.conflict_renamed_count}개는 자동으로 새 이름으로 저장됩니다."
+                    )
+                else:
                     plan.warnings.append(
                         f"출력 경로 충돌 {plan.conflict_renamed_count}개는 자동으로 새 이름으로 저장됩니다."
                     )

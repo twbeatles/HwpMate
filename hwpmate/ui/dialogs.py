@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 from ..logging_config import get_logger
 from ..models import ConversionSummary, ConversionTask, PlannedConversion
+from ..path_utils import check_write_permission
 from ..services.hwp_converter import get_registered_hwp_progids
 
 logger = get_logger(__name__)
@@ -49,6 +50,11 @@ def write_results_csv(path: Path, summary: ConversionSummary) -> None:
                 "retry_count",
                 "backup_file",
                 "backup_error",
+                "created_files",
+                "output_size",
+                "output_mtime",
+                "save_format",
+                "progid_used",
             ],
         )
         writer.writeheader()
@@ -92,7 +98,10 @@ class PreflightDialog(QDialog):
         info_layout.addWidget(QLabel(f"한글 COM ProgID: {hwp_state}"))
         layout.addWidget(info_group)
 
+        blocking_errors = self._blocking_errors(plan)
         warnings = list(plan.warnings)
+        if blocking_errors:
+            warnings.extend(f"변환 시작 차단: {error}" for error in blocking_errors)
         if not warnings:
             warnings = ["추가 경고 없음"]
 
@@ -122,6 +131,9 @@ class PreflightDialog(QDialog):
 
         start_btn = QPushButton("변환 시작")
         start_btn.clicked.connect(self.accept)
+        if blocking_errors:
+            start_btn.setEnabled(False)
+            start_btn.setToolTip("입력 파일 또는 출력 폴더의 확정 오류를 먼저 해결해야 합니다")
         btn_layout.addWidget(start_btn)
 
         layout.addLayout(btn_layout)
@@ -158,6 +170,26 @@ class PreflightDialog(QDialog):
             return True
         except OSError:
             return False
+
+    def _blocking_errors(self, plan: PlannedConversion) -> list[str]:
+        errors: list[str] = []
+        checked_output_dirs: set[str] = set()
+
+        for task in plan.tasks:
+            if not task.input_file.is_file():
+                errors.append(f"입력 파일 없음: {task.input_file}")
+            elif not self._is_readable(task.input_file):
+                errors.append(f"입력 파일 읽기 불가: {task.input_file}")
+
+            output_dir = task.output_file.parent
+            output_key = str(output_dir).lower()
+            if output_key in checked_output_dirs:
+                continue
+            checked_output_dirs.add(output_key)
+            if output_dir.exists() and not check_write_permission(output_dir):
+                errors.append(f"출력 폴더 쓰기 불가: {output_dir}")
+
+        return errors
 
 
 class ResultDialog(QDialog):

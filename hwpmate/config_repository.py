@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .constants import CONFIG_VERSION
+from .constants import CONFIG_VERSION, FORMAT_TYPES, MAX_RETRY_COUNT
 from .logging_config import get_logger
 from .models import AppConfig
 
@@ -22,6 +22,52 @@ class ConfigRepository:
     def default_config(self) -> AppConfig:
         return AppConfig(config_version=CONFIG_VERSION)
 
+    def _normalize_mapping(self, data: dict[str, Any], default_config: AppConfig) -> tuple[AppConfig, list[str]]:
+        merged = {**default_config.to_dict(), **data}
+        repairs: list[str] = []
+
+        def repair(key: str, value: Any) -> None:
+            merged[key] = value
+            repairs.append(key)
+
+        string_keys = {"theme", "mode", "format", "folder_path", "output_path", "last_folder", "last_output"}
+        for key in string_keys:
+            if not isinstance(merged.get(key), str):
+                repair(key, getattr(default_config, key))
+
+        if merged["theme"] not in {"dark", "light"}:
+            repair("theme", default_config.theme)
+        if merged["mode"] not in {"folder", "files"}:
+            repair("mode", default_config.mode)
+        if merged["format"] not in FORMAT_TYPES:
+            repair("format", default_config.format)
+
+        bool_keys = {"include_sub", "same_location", "overwrite", "backup_enabled"}
+        for key in bool_keys:
+            value = merged.get(key)
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, str):
+                normalized = value.strip().lower()
+                if normalized in {"1", "true", "yes", "on"}:
+                    repair(key, True)
+                    continue
+                if normalized in {"0", "false", "no", "off"}:
+                    repair(key, False)
+                    continue
+            repair(key, getattr(default_config, key))
+
+        try:
+            retry_count = int(merged.get("retry_count", default_config.retry_count))
+            if retry_count < 0 or retry_count > MAX_RETRY_COUNT:
+                raise ValueError
+            merged["retry_count"] = retry_count
+        except (TypeError, ValueError):
+            repair("retry_count", default_config.retry_count)
+
+        merged["config_version"] = CONFIG_VERSION
+        return AppConfig.from_mapping(merged), repairs
+
     def load(self) -> AppConfig:
         default_config = self.default_config()
 
@@ -30,12 +76,16 @@ class ConfigRepository:
                 with self.config_file.open("r", encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, dict):
-                        saved_version = data.get("config_version", 0)
+                        try:
+                            saved_version = int(data.get("config_version", 0))
+                        except (TypeError, ValueError):
+                            saved_version = 0
                         if saved_version < CONFIG_VERSION:
                             logger.info(f"설정 파일 버전 업그레이드: {saved_version} -> {CONFIG_VERSION}")
-                        merged = {**default_config.to_dict(), **data}
-                        merged["config_version"] = CONFIG_VERSION
-                        return AppConfig.from_mapping(merged)
+                        config, repairs = self._normalize_mapping(data, default_config)
+                        if repairs:
+                            logger.warning(f"설정 값 타입/범위 복구: {', '.join(sorted(set(repairs)))}")
+                        return config
                     logger.warning("설정 파일 형식이 올바르지 않습니다. 기본값 사용")
         except json.JSONDecodeError as e:
             logger.error(f"설정 파일 JSON 파싱 오류: {e}")
@@ -55,7 +105,13 @@ class ConfigRepository:
     def save(self, config: AppConfig | dict[str, Any]) -> None:
         temp_path: Path | None = None
         try:
-            config_data = config.to_dict() if isinstance(config, AppConfig) else AppConfig.from_mapping(config).to_dict()
+            if isinstance(config, AppConfig):
+                config_data = config.to_dict()
+            else:
+                normalized, repairs = self._normalize_mapping(config, self.default_config())
+                if repairs:
+                    logger.warning(f"저장 전 설정 값 타입/범위 복구: {', '.join(sorted(set(repairs)))}")
+                config_data = normalized.to_dict()
             self.config_file.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(
                 "w",

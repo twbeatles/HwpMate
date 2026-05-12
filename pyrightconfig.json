@@ -2,6 +2,7 @@
   "include": [
     "*.py",
     "hwpmate",
+    "tools",
     "tests"
   ],
   "pythonPlatform": "Windows",

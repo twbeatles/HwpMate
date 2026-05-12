@@ -7,7 +7,7 @@ from typing import Iterable, Sequence, Set
 from ..constants import FORMAT_TYPES, MAX_FILENAME_COUNTER, SUPPORTED_EXTENSIONS
 from ..logging_config import get_logger
 from ..models import ConversionTask, PlannedConversion
-from ..path_utils import canonicalize_path, iter_supported_files
+from ..path_utils import canonicalize_path, check_write_permission, iter_supported_files
 
 logger = get_logger(__name__)
 
@@ -96,6 +96,7 @@ class TaskPlanner:
                 warnings.append(
                     f"동일 형식 {len(skipped_tasks)}개는 자동으로 건너뜁니다."
                 )
+            self._append_output_warnings(tasks, warnings, same_location=same_location)
 
             return PlannedConversion(
                 format_type=format_type,
@@ -141,6 +142,7 @@ class TaskPlanner:
             warnings.append(
                 f"동일 형식 {len(skipped_tasks)}개는 자동으로 건너뜁니다."
             )
+        self._append_output_warnings(tasks, warnings, same_location=same_location)
 
         return PlannedConversion(
             format_type=format_type,
@@ -154,16 +156,15 @@ class TaskPlanner:
         )
 
     def resolve_output_conflicts(self, tasks: list[ConversionTask], overwrite: bool) -> int:
-        if overwrite:
-            return 0
-
-        used_paths: set[Path] = set()
+        used_path_keys: set[str] = set()
         renamed_count = 0
 
         for task in tasks:
             original_path = task.output_file
+            original_key = str(original_path).lower()
+            batch_duplicate = original_key in used_path_keys
 
-            if task.output_file.exists() or task.output_file in used_paths:
+            if batch_duplicate or ((not overwrite) and task.output_file.exists()):
                 counter = 1
                 stem = original_path.stem
                 ext = original_path.suffix
@@ -172,7 +173,9 @@ class TaskPlanner:
                 while counter <= MAX_FILENAME_COUNTER:
                     new_name = f"{stem} ({counter}){ext}"
                     new_path = parent / new_name
-                    if (not new_path.exists()) and (new_path not in used_paths):
+                    new_key = str(new_path).lower()
+                    exists_conflict = (not overwrite) and new_path.exists()
+                    if (not exists_conflict) and (new_key not in used_path_keys):
                         task.output_file = new_path
                         break
                     counter += 1
@@ -183,7 +186,9 @@ class TaskPlanner:
                         suffix = "" if fallback_counter == 1 else f"_{fallback_counter}"
                         new_name = f"{stem}_{timestamp}{suffix}{ext}"
                         new_path = parent / new_name
-                        if (not new_path.exists()) and (new_path not in used_paths):
+                        new_key = str(new_path).lower()
+                        exists_conflict = (not overwrite) and new_path.exists()
+                        if (not exists_conflict) and (new_key not in used_path_keys):
                             task.output_file = new_path
                             logger.warning(f"파일명 카운터 초과, 타임스탬프 사용: {new_name}")
                             break
@@ -194,6 +199,32 @@ class TaskPlanner:
                     renamed_count += 1
                     logger.info(f"출력 경로 조정: {original_path} -> {task.output_file}")
 
-            used_paths.add(task.output_file)
+            used_path_keys.add(str(task.output_file).lower())
 
         return renamed_count
+
+    def _append_output_warnings(
+        self,
+        tasks: list[ConversionTask],
+        warnings: list[str],
+        *,
+        same_location: bool,
+    ) -> None:
+        if not same_location:
+            return
+
+        unwritable_dirs: list[Path] = []
+        seen: set[str] = set()
+        for task in tasks:
+            parent = task.output_file.parent
+            key = str(parent).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            if not check_write_permission(parent):
+                unwritable_dirs.append(parent)
+
+        if unwritable_dirs:
+            preview = ", ".join(str(path) for path in unwritable_dirs[:3])
+            suffix = "" if len(unwritable_dirs) <= 3 else f" 외 {len(unwritable_dirs) - 3}개"
+            warnings.append(f"같은 위치 저장 대상 중 쓰기 권한을 확인하지 못한 폴더가 있습니다: {preview}{suffix}")

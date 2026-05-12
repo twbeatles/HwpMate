@@ -58,3 +58,37 @@ def test_save_replaces_config_atomically_without_leaving_temp_files(tmp_path: Pa
     reloaded = repo.load()
     assert reloaded.backup_enabled is False
     assert reloaded.retry_count == 2
+
+
+def test_load_recovers_type_mismatches(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.json"
+    config_file.write_text(
+        """
+        {
+          "config_version": "bad",
+          "theme": 123,
+          "mode": "files",
+          "format": "NOPE",
+          "include_sub": "false",
+          "same_location": "false",
+          "overwrite": "yes",
+          "backup_enabled": "off",
+          "retry_count": "abc",
+          "folder_path": 42
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    repo = ConfigRepository(config_file)
+    config = repo.load()
+
+    assert config.theme == "dark"
+    assert config.mode == "files"
+    assert config.format == "PDF"
+    assert config.include_sub is False
+    assert config.same_location is False
+    assert config.overwrite is True
+    assert config.backup_enabled is False
+    assert config.retry_count == 1
+    assert config.folder_path == ""

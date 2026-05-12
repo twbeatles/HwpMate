@@ -42,6 +42,10 @@ pip-wheel-metadata/
 *.tmp
 *.swp
 backup/
+hwp_com_smoke_*.json
+변환결과_*.csv
+변환결과_*.json
+변환실패_*.txt
 
 # ===== OS / IDE =====
 .DS_Store

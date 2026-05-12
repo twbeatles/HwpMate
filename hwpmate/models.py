@@ -61,6 +61,11 @@ class ConversionTask:
     backup_file: Path | None = None
     backup_error: str | None = None
     conflict_original_output_file: Path | None = None
+    created_files: list[Path] = field(default_factory=list)
+    output_size: int | None = None
+    output_mtime: float | None = None
+    save_format: str | None = None
+    progid_used: str | None = None
 
     def __post_init__(self) -> None:
         self.input_file = Path(self.input_file)
@@ -69,6 +74,7 @@ class ConversionTask:
             self.backup_file = Path(self.backup_file)
         if self.conflict_original_output_file is not None:
             self.conflict_original_output_file = Path(self.conflict_original_output_file)
+        self.created_files = [Path(path) for path in self.created_files]
 
     @property
     def detail(self) -> str:
@@ -83,7 +89,17 @@ class ConversionTask:
             "retry_count": self.retry_count,
             "backup_file": str(self.backup_file) if self.backup_file is not None else "",
             "backup_error": self.backup_error or "",
+            "created_files": "; ".join(str(path) for path in self.created_files),
+            "output_size": self.output_size if self.output_size is not None else "",
+            "output_mtime": self.output_mtime if self.output_mtime is not None else "",
+            "save_format": self.save_format or "",
+            "progid_used": self.progid_used or "",
         }
+
+    def to_json_record(self) -> dict[str, Any]:
+        record = self.to_record()
+        record["created_files"] = [str(path) for path in self.created_files]
+        return record
 
 
 @dataclass
@@ -151,7 +167,15 @@ class ConversionSummary:
 
     @property
     def output_paths(self) -> list[str]:
-        return [str(task.output_file) for task in self.tasks if task.status == "성공"]
+        paths: list[str] = []
+        for task in self.tasks:
+            if task.status != "성공":
+                continue
+            if task.created_files:
+                paths.extend(str(path) for path in task.created_files)
+            else:
+                paths.append(str(task.output_file))
+        return paths
 
     @property
     def failed_tasks(self) -> list[ConversionTask]:
@@ -181,5 +205,5 @@ class ConversionSummary:
                 "progid_used": self.progid_used,
                 "warnings": list(self.warnings),
             },
-            "tasks": [task.to_record() for task in self.sorted_tasks()],
+            "tasks": [task.to_json_record() for task in self.sorted_tasks()],
         }
