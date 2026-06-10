@@ -62,9 +62,10 @@
   - `services/file_selection_store.py`, `services/task_planner.py`: 파일 선택 상태와 작업 계획/건너뜀/출력 충돌 계산
   - `workers/file_scan_worker.py`, `workers/conversion_worker.py`: 비동기 스캔/변환 워커
   - `windows_integration.py`: 관리자 권한 드롭 처리
-  - `ui/main_window.py`: 전체 UI 오케스트레이션
+  - `ui/main_window.py`: `MainWindow` import 경로를 유지하는 조립 루트와 호환 래퍼
+  - `ui/main_window_controllers/`: 상태, 테마/표시, 파일 선택/스캔, 변환, 네이티브 드롭, 수명주기 컨트롤러
   - `ui/theme.py`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs.py`: UI 컴포넌트 분리 (`PreflightDialog`, `ResultDialog` 포함)
-  - `ui/main_window_ui.py`: 메인 윈도우 레이아웃 빌더
+  - `ui/main_window_ui.py`: `MainWindowCallbacks`로 시그널을 연결하는 메인 윈도우 레이아웃 빌더
 - `hwp_converter.spec`
   - PyInstaller 경량 빌드
   - `uac_admin=True` 유지
@@ -109,6 +110,6 @@ pyright .
 - README의 지원 형식, 실행 방법, 빌드 결과 이름이 현재 코드와 일치하는가
 - `PROJECT_STRUCTURE_ANALYSIS.md`의 아키텍처 설명과 스냅샷 정보가 현재 구조와 일치하는가
 - `update_history.md`에 유지보수 내역이 반영되었는가
-- `FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md`와 `HWP_COM_SMOKE_TEST_CHECKLIST.md`가 현재 구현/검증 기준과 일치하는가
+- `PROJECT_STRUCTURE_ANALYSIS.md`, `update_history.md`, `HWP_COM_SMOKE_TEST_CHECKLIST.md`가 현재 구현/검증 기준과 일치하는가
 - `.gitignore`가 `backup/`, 빌드 산출물, 캐시를 충분히 제외하는가
 - 정적 분석 설정이 실제 코드 상태와 맞는가

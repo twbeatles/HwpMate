@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -59,7 +59,25 @@ class MainWindowWidgets:
     progress_label: QLabel
 
 
-def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
+@dataclass(frozen=True)
+class MainWindowCallbacks:
+    toggle_theme: Callable[..., None]
+    update_mode_ui: Callable[..., None]
+    select_folder: Callable[..., None]
+    include_sub_toggled: Callable[..., None]
+    add_files: Callable[..., None]
+    browse_files: Callable[..., None]
+    remove_selected: Callable[..., None]
+    clear_all: Callable[..., None]
+    update_output_ui: Callable[..., None]
+    select_output: Callable[..., None]
+    format_card_clicked: Callable[..., None]
+    start_conversion: Callable[..., None]
+    cancel_conversion: Callable[..., None]
+    update_format_cards: Callable[..., None]
+
+
+def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallbacks) -> MainWindowWidgets:
     window.setWindowTitle(f"HWP 변환기 v{VERSION} - PyQt6")
     window.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
     window.resize(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT)
@@ -93,7 +111,7 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
     window.theme_btn.setProperty("secondary", True)
     window.theme_btn.setFixedWidth(100)
     window.theme_btn.setToolTip("다크 모드와 라이트 모드를 전환합니다")
-    window.theme_btn.clicked.connect(window._toggle_theme)
+    window.theme_btn.clicked.connect(callbacks.toggle_theme)
     header_layout.addWidget(window.theme_btn)
 
     main_layout.addLayout(header_layout)
@@ -122,7 +140,7 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
     else:
         window.files_radio.setChecked(True)
 
-    window.folder_radio.toggled.connect(window._update_mode_ui)
+    window.folder_radio.toggled.connect(callbacks.update_mode_ui)
 
     main_layout.addWidget(mode_group)
 
@@ -149,7 +167,7 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
     window.folder_btn.setProperty("secondary", True)
     window.folder_btn.setFixedWidth(100)
     window.folder_btn.setMinimumHeight(40)
-    window.folder_btn.clicked.connect(window._select_folder)
+    window.folder_btn.clicked.connect(callbacks.select_folder)
     folder_row.addWidget(window.folder_btn)
 
     folder_layout.addLayout(folder_row)
@@ -157,7 +175,7 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
     window.include_sub_check = QCheckBox("하위 폴더 포함")
     window.include_sub_check.setToolTip("하위 폴더의 파일도 함께 변환합니다")
     window.include_sub_check.setChecked(window.config.get("include_sub", True))
-    window.include_sub_check.toggled.connect(window._on_include_sub_toggled)
+    window.include_sub_check.toggled.connect(callbacks.include_sub_toggled)
     folder_layout.addWidget(window.include_sub_check)
 
     # 저장된 폴더 경로 복원
@@ -176,7 +194,7 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
     # 드롭 영역 - 고정 높이
     window.drop_area = DropArea()
     window.drop_area.setFixedHeight(120)
-    window.drop_area.files_dropped.connect(window._add_files)
+    window.drop_area.files_dropped.connect(callbacks.add_files)
     files_layout.addWidget(window.drop_area)
 
     # 버튼 행
@@ -187,21 +205,21 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
     window.add_btn.setProperty("secondary", True)
     window.add_btn.setMinimumHeight(36)
     window.add_btn.setToolTip("파일 선택 대화상자를 엽니다 (Ctrl+O)")
-    window.add_btn.clicked.connect(window._browse_files)
+    window.add_btn.clicked.connect(callbacks.browse_files)
     btn_row.addWidget(window.add_btn)
 
     window.remove_btn = QPushButton("➖ 선택 제거")
     window.remove_btn.setProperty("secondary", True)
     window.remove_btn.setMinimumHeight(36)
     window.remove_btn.setToolTip("선택한 파일을 목록에서 제거합니다 (Delete)")
-    window.remove_btn.clicked.connect(window._remove_selected)
+    window.remove_btn.clicked.connect(callbacks.remove_selected)
     btn_row.addWidget(window.remove_btn)
 
     window.clear_btn = QPushButton("🗑️ 전체 제거")
     window.clear_btn.setProperty("secondary", True)
     window.clear_btn.setMinimumHeight(36)
     window.clear_btn.setToolTip("모든 파일을 목록에서 제거합니다 (Ctrl+Delete)")
-    window.clear_btn.clicked.connect(window._clear_all)
+    window.clear_btn.clicked.connect(callbacks.clear_all)
     btn_row.addWidget(window.clear_btn)
 
     btn_row.addStretch()
@@ -236,7 +254,7 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
     window.same_location_check = QCheckBox("입력 파일과 같은 위치에 저장")
     window.same_location_check.setToolTip("변환된 파일을 원본과 같은 폴더에 저장합니다")
     window.same_location_check.setChecked(window.config.get("same_location", True))
-    window.same_location_check.toggled.connect(window._update_output_ui)
+    window.same_location_check.toggled.connect(callbacks.update_output_ui)
     output_layout.addWidget(window.same_location_check)
 
     output_row = QHBoxLayout()
@@ -255,7 +273,7 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
     window.output_btn.setProperty("secondary", True)
     window.output_btn.setFixedWidth(100)
     window.output_btn.setMinimumHeight(40)
-    window.output_btn.clicked.connect(window._select_output)
+    window.output_btn.clicked.connect(callbacks.select_output)
     output_row.addWidget(window.output_btn)
 
     output_layout.addLayout(output_row)
@@ -302,7 +320,7 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
                 fmt_key, 
                 info['desc']
             )
-            card.clicked.connect(window._on_format_card_clicked)
+            card.clicked.connect(callbacks.format_card_clicked)
             card.setMinimumSize(120, 120) # 크기 충분히 확보 (텍스트 잘림 방지)
             card.setMaximumWidth(1000)
 
@@ -334,7 +352,7 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
             window.format_tabs.setCurrentIndex(i)
             break
 
-    window._update_format_cards()
+    callbacks.update_format_cards()
 
     options_layout.addWidget(window.format_tabs)
 
@@ -378,7 +396,7 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
     font.setPointSize(12)
     font.setBold(True)
     window.start_btn.setFont(font)
-    window.start_btn.clicked.connect(window._start_conversion)
+    window.start_btn.clicked.connect(callbacks.start_conversion)
     btn_layout.addWidget(window.start_btn)
 
     window.cancel_btn = QPushButton("⏹️ 취소")
@@ -387,7 +405,7 @@ def build_main_window_ui(window: Any, config: Any) -> MainWindowWidgets:
     window.cancel_btn.setFixedWidth(100)
     window.cancel_btn.setToolTip("진행 중인 변환을 취소합니다 (Esc)")
     window.cancel_btn.setEnabled(False)
-    window.cancel_btn.clicked.connect(window._cancel_conversion)
+    window.cancel_btn.clicked.connect(callbacks.cancel_conversion)
     btn_layout.addWidget(window.cancel_btn)
 
     main_layout.addLayout(btn_layout)

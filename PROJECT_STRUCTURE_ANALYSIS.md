@@ -6,7 +6,8 @@
 - 추가 보강 일자: 2026-03-18
 - v8.7 반영 일자: 2026-04-27
 - 기능 리스크 보강 일자: 2026-05-12
-- 대상 저장소: `c:\twbeatles-repos\HwpMate`
+- MainWindow 컨트롤러 리팩토링 반영 일자: 2026-06-10
+- 대상 저장소: `D:\twbeatles-repos\HwpMate`
 - 분석 목적: "다양한 기능 추가"를 위한 현재 구조, 제약, 확장 포인트 파악
 
 ## 2. 참고한 문서
@@ -14,7 +15,6 @@
 - `claude.md`
 - `gemini.md`
 - `update_history.md`
-- `FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md`
 - `HWP_COM_SMOKE_TEST_CHECKLIST.md`
 - `hwp_converter.spec`
 - `hwptopdf-hwpx_v4.py` (루트 엔트리포인트 래퍼)
@@ -33,7 +33,6 @@
 | `pyrightconfig.json` | 추적 | Pylance/pyright 공용 정적 분석 설정 |
 | `.editorconfig` | 추적 | UTF-8/LF 편집 규칙 |
 | `README.md` | 추적 | 사용자 관점 기능/설치/사용법 |
-| `FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md` | 문서 | 기능 구현 리스크 점검 및 개선 결과 |
 | `HWP_COM_SMOKE_TEST_CHECKLIST.md` | 추적 | 실제 한글 COM 수동 검증 체크리스트 |
 | `claude.md` | 추적 | 핵심 로직 보존 지침(변경 주의사항) |
 | `gemini.md` | 추적 | 유지보수/확장 지침(절대 변경 금지 영역 포함) |
@@ -65,8 +64,14 @@
 | `workers/conversion_worker.py` | 작업 리스트 순차 변환, 백업, 취소/요약 집계, 안전한 강제 종료 위임 |
 | `windows_integration.py` | 관리자 권한에서도 동작하는 네이티브 DnD 처리 |
 | `ui/theme.py`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs.py` | 테마/토스트/위젯/사전 점검/결과 다이얼로그 |
-| `ui/main_window.py` | UI 상태 관리, 모드별 DnD 분기, 종료 제어 오케스트레이션 |
-| `ui/main_window_ui.py` | 메인 윈도우 레이아웃 빌더 |
+| `ui/main_window.py` | `MainWindow` import 경로를 유지하는 조립 루트와 호환 래퍼 |
+| `ui/main_window_ui.py` | 콜백 객체 기반 메인 윈도우 레이아웃 빌더 |
+| `ui/main_window_controllers/state.py` | `MainWindowState` 런타임 상태 모델 |
+| `ui/main_window_controllers/appearance.py` | 테마, 포맷 선택, 모드/출력 UI 활성 상태 |
+| `ui/main_window_controllers/file_selection.py` | 파일/폴더 선택, 파일 테이블, 비동기 스캔 수명주기 |
+| `ui/main_window_controllers/conversion.py` | 작업 계획, 사전 점검, 변환 워커, 결과/취소 처리 |
+| `ui/main_window_controllers/native_drop.py` | 네이티브 WM_DROPFILES 초기화와 모드별 드롭 처리 |
+| `ui/main_window_controllers/lifecycle.py` | 메뉴, 단축키, 트레이, 설정 저장, 종료 이벤트 |
 
 ### 4.3 데이터/상태 모델
 - 설정 파일: `%USERPROFILE%\.hwp_converter_config.json`
@@ -77,22 +82,23 @@
   - `folder_path`, `output_path`, `last_folder`, `last_output`
 - 런타임 주요 상태:
   - `self.file_list`, `self._file_set`
-  - `self.plan`, `self.tasks`, `self.last_summary`, `self.worker`, `self.file_scan_worker`
-  - `self.is_converting`, `self._scan_mode`, `self._force_kill_pending`, `self._close_after_worker`
+  - `MainWindowState.plan`, `tasks`, `last_summary`, `worker`, `scan_worker`
+  - `MainWindowState.is_converting`, `scan_mode`, `force_kill_pending`, `close_after_worker`, `selected_format`
+  - `MainWindow`의 기존 underscore 속성은 테스트/외부 호환용 property 래퍼로 유지
 
 ## 5. 실제 동작 플로우
 
 ### 5.1 파일 수집 플로우
 1. 사용자 입력 (파일 선택, 폴더 선택, 네이티브 드롭)
-2. `_start_scan()`으로 `FileScanWorker` 실행
-3. 배치별 `_on_scan_batch_found()` 호출
-4. `_append_files_batch()`에서 중복 제거 + 테이블 렌더링
-5. `_on_scan_finished()`에서 상태 라벨 갱신
+2. `FileSelectionController.start_scan()`으로 `FileScanWorker` 실행
+3. 배치별 `FileSelectionController.on_scan_batch_found()` 호출
+4. `append_files_batch()`에서 중복 제거 + 테이블 렌더링
+5. `on_scan_finished()`에서 상태 라벨 갱신
 
 ### 5.2 변환 플로우
-1. `_start_conversion()`
-2. `_collect_tasks()`로 `PlannedConversion` 생성
-3. 필요 시 `_adjust_output_paths()`로 충돌 회피 수 계산
+1. `ConversionController.start_conversion()`
+2. `collect_tasks()`로 `PlannedConversion` 생성
+3. 필요 시 `adjust_output_paths()`로 충돌 회피 수 계산
 4. `PreflightDialog`로 실행 대상/건너뜀/경고/입력·출력 차단 오류 확인
 5. 실행 대상 없이 동일 형식 건너뜀만 있으면 즉시 `ResultDialog` 표시
 6. 실행 대상이 있으면 `ConversionWorker` 시작
@@ -105,7 +111,7 @@
    - 산출 파일/크기/수정 시각/COM 형식을 기록한 `ConversionSummary` 생성
 8. `task_completed` 시그널 수신 후 `ResultDialog` 표시
 9. 필요 시 실패 TXT / 결과 CSV·JSON 저장
-10. `_on_worker_finished()`에서 UI/시그널/상태 정리 및 종료 대기 처리
+10. `on_worker_finished()`에서 UI/시그널/상태 정리 및 종료 대기 처리
 
 ## 6. 기능 추가 시 반드시 지켜야 할 핵심 제약
 (출처: `claude.md`, `gemini.md`, 코드 본문)
@@ -150,15 +156,15 @@
 ### 7.1 강점
 - 비동기 스캔/변환 스레드 분리 완료.
 - 변환 포맷 메타데이터(`FORMAT_TYPES`) 중심 확장 구조.
-- UI/상태/변환 흐름이 비교적 명확한 메서드 단위로 분리.
+- `MainWindow`는 조립 루트로 축소되고 UI 런타임 책임이 컨트롤러별로 분리됨.
+- 레이아웃 빌더는 `MainWindowCallbacks`로 시그널 연결을 주입받아 직접 underscore 메서드에 덜 결합됨.
 - 변환 안정성 관련 폴백/예외 처리 경험치가 코드에 축적됨.
 
 ### 7.2 한계
-- `MainWindow`가 여전히 가장 큰 조정 지점이라 UI 상태 전이가 이곳에 비교적 많이 남아 있습니다.
-- PyQt 위젯 생성은 분리됐지만, 런타임 오케스트레이션은 단일 클래스 중심입니다.
-- 자동 테스트는 순수 로직 계층 위주이며, GUI/COM 경로는 여전히 수동 검증 비중이 높습니다.
+- 컨트롤러가 Qt 위젯을 직접 다루므로 GUI 경계의 수동/오프스크린 검증은 계속 필요합니다.
+- 실제 HWP COM 경로는 설치 환경 의존성이 커서 자동 테스트와 별도로 수동 검증 비중이 높습니다.
 - 설정 스키마 마이그레이션은 기본값 병합 후 타입/범위 정규화를 수행하며, v8.7에서 `config_version=2`입니다.
-- 워커/스캐너 상태 관리가 객체 필드 기반이라 기능이 늘수록 복잡도 상승 가능.
+- 향후 기능 추가 시 새 컨트롤러 책임 경계를 넘는 상호 호출이 늘어나지 않도록 주의해야 합니다.
 
 ## 8. 추천 기능 추가 항목 (우선순위)
 
@@ -202,8 +208,8 @@
 ## 9. 안전한 구조 개선 제안
 현재 패키지 분리 이후에도 아래 개선 여지는 남아 있습니다:
 
-1. `MainWindow` 상태 전이 축소
-- 변환 상태, 스캔 상태, 토스트/트레이 상태를 별도 상태 객체로 더 분리 가능
+1. 컨트롤러 간 의존 방향 유지
+- `MainWindow`를 경유한 위임은 호환용으로 유지하되, 신규 기능은 해당 책임 컨트롤러 안에서 먼저 닫히도록 설계
 
 2. UI 액션 서비스화
 - 폴더 열기, 실패 목록 내보내기, 사용자 알림 정책을 더 작은 서비스로 분리 가능
@@ -249,4 +255,4 @@
 - 앱 버전과 PyInstaller 산출물 이름은 `8.7` / `HWP변환기_v8.7.exe`입니다.
 - `.gitignore`는 `build/`, `dist/`, PyInstaller 중간 산출물, 캐시, `backup/`, COM 스모크/결과 리포트 산출물을 제외합니다.
 - 실제 한글 COM 동작은 자동 테스트와 별도로 `HWP_COM_SMOKE_TEST_CHECKLIST.md` 기준 수동 검증이 필요합니다.
-- `FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md`는 기능 구현 리스크와 2026-05-12 보강 내역을 요약합니다.
+- 2026-05-12 기능 리스크 보강 내역은 `update_history.md`와 본 구조 분석 문서에 반영되어 있습니다.

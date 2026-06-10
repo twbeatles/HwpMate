@@ -19,6 +19,7 @@ env/
 .hypothesis/
 .tox/
 .nox/
+.codegraph/
 .coverage
 .coverage.*
 coverage.xml

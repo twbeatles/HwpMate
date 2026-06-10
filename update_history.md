@@ -9,6 +9,17 @@
 - 빌드 설정: `hwp_converter.spec`
 - 정적 검사 기준: `pyrightconfig.json`
 
+## 2026-06-10 MainWindow SOLID 리팩토링
+
+### 구조 분리
+- `MainWindow`를 기존 import 경로와 underscore 메서드 호환 래퍼로 유지하면서 실제 런타임 책임을 `ui/main_window_controllers/` 패키지로 분리했습니다.
+- `MainWindowState`로 변환/스캔/종료/선택 포맷 상태를 모으고, 테마/표시, 파일 선택/스캔, 변환, 네이티브 드롭, 메뉴/트레이/종료 처리를 컨트롤러별로 나눴습니다.
+- `main_window_ui.py`는 `MainWindowCallbacks`를 받아 시그널을 연결하도록 바꿔 레이아웃 빌더와 `MainWindow` 내부 메서드 결합을 줄였습니다.
+
+### 동작 보존과 검증
+- 폴더 모드 단일 폴더 드롭, 파일 모드 비동기 스캔, 포맷 변경 시 미리보기 재스캔, 동일 형식 건너뜀 결과, 종료 중 워커 취소/강제 종료 흐름을 유지했습니다.
+- 컨트롤러 경계 테스트를 추가해 스캔 상태 정리, 파일 테이블 반영, 출력 경로 검증, skipped-only 결과, 네이티브 드롭 분기를 확인합니다.
+
 ## 2026-05-12 기능 구현 리스크 보강
 
 ### 출력/산출물 안전성
@@ -25,7 +36,7 @@
 - 설정 JSON의 타입과 범위를 로드 시 정규화해 `retry_count="abc"`, `same_location="false"` 같은 값으로 앱 시작이 깨지지 않도록 했습니다.
 - 실제 HWP COM 검증 보조 스크립트 `tools/hwp_com_smoke.py`를 추가했습니다.
 - `.gitignore`에 COM 스모크 JSON, 결과 CSV/JSON, 실패 TXT 같은 로컬 검증 산출물을 추가했습니다.
-- `FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md`, README, 구조 분석 문서, COM 수동 체크리스트, 협업 가이드를 현재 구현 기준으로 동기화했습니다.
+- README, 구조 분석 문서, COM 수동 체크리스트, 협업 가이드를 현재 구현 기준으로 동기화했습니다.
 
 ## 2026-04-27 v8.7 안정성/검증 보강
 

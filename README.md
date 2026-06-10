@@ -54,7 +54,7 @@ pyinstaller hwp_converter.spec
 - 실행 파일 이름은 `HWP변환기_v8.7.exe`입니다.
 - `.spec` 파일은 루트 래퍼 `hwptopdf-hwpx_v4.py`를 기준으로 경량 빌드되며, 내부적으로 `hwpmate/` 패키지를 함께 분석합니다.
 - `uac_admin=True`가 설정되어 있어 배포 실행 파일은 관리자 권한 승격을 요청합니다.
-- 2026-05-12 산출물 감사/설정 복구/COM 스모크 보조 스크립트 보강 이후에도 추가 hidden import나 data bundle 변경 없이 동작하도록 구성되어 있습니다.
+- 2026-05-12 산출물 감사/설정 복구/COM 스모크 보강과 2026-06-10 MainWindow 컨트롤러 분리 이후에도 추가 hidden import나 data bundle 변경 없이 동작하도록 구성되어 있습니다.
 
 ## 개발 품질 기준
 
@@ -99,6 +99,7 @@ HwpMate/
 │   ├── services/
 │   ├── workers/
 │   └── ui/
+│       └── main_window_controllers/
 ├── tests/
 ├── tools/
 │   └── hwp_com_smoke.py
@@ -106,7 +107,6 @@ HwpMate/
 ├── pyrightconfig.json
 ├── .editorconfig
 ├── README.md
-├── FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md
 ├── HWP_COM_SMOKE_TEST_CHECKLIST.md
 ├── PROJECT_STRUCTURE_ANALYSIS.md
 ├── update_history.md
@@ -125,7 +125,6 @@ HwpMate/
 ## 문서 안내
 
 - [update_history.md](update_history.md): 기능 변화와 유지보수 이력
-- [FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md](FUNCTIONAL_IMPLEMENTATION_RISK_REVIEW_2026-05-12.md): 기능 구현 리스크 점검 및 개선 계획/결과
 - [HWP_COM_SMOKE_TEST_CHECKLIST.md](HWP_COM_SMOKE_TEST_CHECKLIST.md): 실제 한글 COM 수동 검증 체크리스트
 - [PROJECT_STRUCTURE_ANALYSIS.md](PROJECT_STRUCTURE_ANALYSIS.md): 아키텍처와 확장 포인트 분석
 - [claude.md](claude.md): Claude 계열 협업 가이드
