@@ -48,6 +48,7 @@ def test_write_failed_list_only_contains_failed_entries(tmp_path: Path) -> None:
     assert "b.hwp" in text
     assert "save failed" in text
     assert "c.hwpx" not in text
+    assert not list(tmp_path.glob(".failed.txt.*.tmp"))
 
 
 def test_write_results_csv_contains_all_statuses(tmp_path: Path) -> None:
@@ -63,6 +64,7 @@ def test_write_results_csv_contains_all_statuses(tmp_path: Path) -> None:
     assert "건너뜀" in text
     assert "취소됨" in text
     assert "backup/b.hwp" in text.replace("\\", "/")
+    assert not list(tmp_path.glob(".results.csv.*.tmp"))
 
 
 def test_write_results_json_contains_summary_and_tasks(tmp_path: Path) -> None:
@@ -84,3 +86,4 @@ def test_write_results_json_contains_summary_and_tasks(tmp_path: Path) -> None:
     assert success["created_files"] == [str(tmp_path / "a.pdf")]
     assert success["output_size"] == 123
     assert success["save_format"] == "PDF"
+    assert not list(tmp_path.glob(".results.json.*.tmp"))

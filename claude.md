@@ -28,6 +28,7 @@
 - 관리자 권한 환경 호환을 위해 `NativeDropFilter`와 `WM_DROPFILES` 흐름을 유지합니다.
 - 폴더 모드에서는 "폴더 1개 드롭 -> 폴더 선택/미리보기 스캔" 흐름을 유지합니다.
 - 파일 모드에서만 다중 파일/폴더 스캔 입력을 파일 목록으로 보냅니다.
+- 변환 중에는 네이티브 드롭, 파일 추가/삭제, 폴더 변경, 시작 단축키가 상태를 변경하지 못하도록 busy guard를 유지합니다.
 - Qt 기본 드래그 앤 드롭만으로 되돌리지 않습니다.
 
 ### 자동 백업
@@ -38,8 +39,9 @@
 
 ### 성공 판정과 재시도
 - `Open()` 또는 `SaveAs()`가 명시적으로 `False`를 반환하면 실패로 처리합니다.
+- `Open()`이 `False`를 반환한 경우에도 다음 파일에 상태가 전파되지 않도록 best-effort `Clear(option=1)` 정리를 유지합니다.
 - 2-인자/3-인자 `SaveAs` 폴백 후 출력 산출물이 새로 생성되거나 갱신되고 0바이트보다 클 때만 성공으로 집계합니다.
-- 이미지/HTML 계열은 기본 출력 파일 외에도 같은 stem 기반 보조 산출물을 함께 수집해 성공 판정과 결과 저장에 반영합니다.
+- 이미지/HTML 계열은 기본 출력 파일 외에도 같은 stem 기반 보조 산출물을 함께 수집해 성공 판정, 충돌 회피, 결과 저장에 반영합니다.
 - 실패 자동 재시도는 설정값 `retry_count`를 따르며 기본 1회, 최대 3회입니다.
 
 ### 동일 형식 건너뜀과 결과 집계
@@ -47,6 +49,11 @@
 - `ConversionWorker.task_completed`는 `ConversionSummary`를 전달하며, `성공/실패/건너뜀/취소됨` 집계를 분리합니다.
 - 동일 형식만 선택된 경우에도 변환 워커를 시작하지 않고 `건너뜀` 전용 결과 다이얼로그를 표시합니다.
 - `ResultDialog`와 결과 저장(CSV/JSON/TXT)은 이 집계를 기준으로 동작해야 하며, CSV/JSON에는 `retry_count`, `backup_file`, `backup_error`, `created_files`, `output_size`, `output_mtime`, `save_format`, `progid_used`가 포함됩니다.
+- 결과 TXT/CSV/JSON 저장은 임시 파일 작성 후 교체하는 원자 저장 흐름을 유지합니다.
+
+### 단일 인스턴스와 설정 저장
+- `SingleInstanceLock`의 `QLockFile` 기반 단일 실행 잠금을 유지해 두 앱이 같은 COM/출력 파일을 동시에 다루지 않게 합니다.
+- 설정 저장은 `save_config()`의 bool 반환값을 확인할 수 있어야 하며, 실패 시 UI 상태/경고로 사용자에게 알려야 합니다.
 
 ### 강제 종료 안전장치
 - 강제 종료는 `HWPConverter.kill_owned_processes()`를 통해 앱이 직접 띄운 PID에만 적용합니다.
@@ -57,7 +64,9 @@
 - `hwptopdf-hwpx_v4.py`
   - 패키지 진입용 얇은 래퍼
 - `hwpmate/`
+  - `app_instance.py`: `QLockFile` 기반 단일 인스턴스 잠금
   - `config_repository.py`, `path_utils.py`, `models.py`: 설정/경로/데이터 모델 (`AppConfig`, `ConversionTask`, `PlannedConversion`, `ConversionSummary`)
+  - `services/artifact_policy.py`: 이미지/HTML 보조 산출물 후보, 충돌, snapshot 대상 정책
   - `services/hwp_converter.py`: HWP COM 래퍼
   - `services/file_selection_store.py`, `services/task_planner.py`: 파일 선택 상태와 작업 계획/건너뜀/출력 충돌 계산
   - `workers/file_scan_worker.py`, `workers/conversion_worker.py`: 비동기 스캔/변환 워커
@@ -100,6 +109,8 @@ pyright .
 - 결과 CSV/JSON 저장
 - 결과 CSV/JSON의 산출 파일/크기/수정 시각/COM 형식 감사 필드
 - 백업 옵션 및 재시도 횟수 저장/복원
+- 변환 중 입력/드롭/시작 단축키 차단
+- 이미지/HTML 보조 산출물 충돌 회피
 - 동일 형식만 있는 경우의 건너뜀 전용 결과
 - 취소 후 종료/강제 종료 흐름
 - `python tools/hwp_com_smoke.py --input <샘플.hwp> --format PDF --output-dir <출력폴더>` 관리자 권한 스모크

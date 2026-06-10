@@ -102,7 +102,7 @@ class ConfigRepository:
             logger.error(f"설정 로드 실패: {e}")
         return default_config
 
-    def save(self, config: AppConfig | dict[str, Any]) -> None:
+    def save(self, config: AppConfig | dict[str, Any]) -> bool:
         temp_path: Path | None = None
         try:
             if isinstance(config, AppConfig):
@@ -125,6 +125,7 @@ class ConfigRepository:
                 json.dump(config_data, f, ensure_ascii=False, indent=2)
                 f.write("\n")
             temp_path.replace(self.config_file)
+            return True
         except Exception as e:
             logger.error(f"설정 저장 실패: {e}")
             if temp_path is not None:
@@ -132,6 +133,7 @@ class ConfigRepository:
                     temp_path.unlink(missing_ok=True)
                 except OSError:
                     pass
+            return False
 
 
 _DEFAULT_REPOSITORY = ConfigRepository()
@@ -141,5 +143,5 @@ def load_config() -> AppConfig:
     return _DEFAULT_REPOSITORY.load()
 
 
-def save_config(config: AppConfig | dict[str, Any]) -> None:
-    _DEFAULT_REPOSITORY.save(config)
+def save_config(config: AppConfig | dict[str, Any]) -> bool:
+    return _DEFAULT_REPOSITORY.save(config)

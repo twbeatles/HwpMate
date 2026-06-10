@@ -72,6 +72,14 @@ class NativeDropController:
         if not files:
             return
 
+        worker = self.state.worker
+        worker_running = bool(worker and getattr(worker, "isRunning", lambda: False)())
+        if self.state.is_converting or worker_running:
+            self.window.status_label.setText("변환 중에는 드롭 입력을 받을 수 없습니다")
+            if hasattr(self.window, "toast"):
+                self.window.toast.show_message("변환 중에는 드롭 입력을 받을 수 없습니다", "⚠️")
+            return
+
         normalized = [canonicalize_path(path) for path in files if str(path).strip()]
         if not normalized:
             return

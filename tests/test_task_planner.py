@@ -141,6 +141,30 @@ def test_resolve_output_conflicts_allows_existing_overwrite_but_renames_batch_du
     assert tasks[1].conflict_original_output_file == existing
 
 
+def test_resolve_output_conflicts_renames_existing_auxiliary_artifact(tmp_path: Path) -> None:
+    planner = TaskPlanner()
+    existing_aux = tmp_path / "doc_001.png"
+    existing_aux.write_bytes(b"old")
+    task = ConversionTask(input_file=tmp_path / "a.hwp", output_file=tmp_path / "doc.png")
+
+    renamed_count = planner.resolve_output_conflicts([task], overwrite=False, format_type="PNG")
+
+    assert renamed_count == 1
+    assert task.output_file == tmp_path / "doc (1).png"
+    assert task.conflict_original_output_file == tmp_path / "doc.png"
+
+
+def test_resolve_output_conflicts_ignores_unrelated_same_prefix_artifact(tmp_path: Path) -> None:
+    planner = TaskPlanner()
+    (tmp_path / "document_001.png").write_bytes(b"old")
+    task = ConversionTask(input_file=tmp_path / "a.hwp", output_file=tmp_path / "doc.png")
+
+    renamed_count = planner.resolve_output_conflicts([task], overwrite=False, format_type="PNG")
+
+    assert renamed_count == 0
+    assert task.output_file == tmp_path / "doc.png"
+
+
 def test_resolve_output_conflicts_timestamp_fallback_avoids_duplicates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     planner = TaskPlanner()
     existing = tmp_path / "doc.pdf"

@@ -293,8 +293,8 @@ class MainWindow(QMainWindow):
     def _show_about(self) -> None:
         self.lifecycle_controller.show_about()
 
-    def _save_settings(self) -> None:
-        self.lifecycle_controller.save_settings()
+    def _save_settings(self) -> bool:
+        return self.lifecycle_controller.save_settings()
 
     def _apply_theme(self) -> None:
         self.appearance_controller.apply_theme()

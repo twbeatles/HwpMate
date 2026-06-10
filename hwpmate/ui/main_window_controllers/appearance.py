@@ -15,7 +15,7 @@ class AppearanceController:
         self,
         window: Any,
         state: MainWindowState,
-        save_config_func: Callable[[AppConfig], None],
+        save_config_func: Callable[[AppConfig], bool],
     ) -> None:
         self.window = window
         self.state = state
@@ -35,7 +35,10 @@ class AppearanceController:
 
         self.apply_theme()
         self.window.config["theme"] = self.window.current_theme
-        self._save_config(self.window.config)
+        if self._save_config(self.window.config) is False:
+            self.window.status_label.setText("테마 설정 저장에 실패했습니다")
+            if hasattr(self.window, "toast"):
+                self.window.toast.show_message("테마 설정 저장에 실패했습니다", "⚠️")
 
     def on_format_card_clicked(self, format_type: str) -> None:
         if format_type not in FORMAT_TYPES:
@@ -73,6 +76,8 @@ class AppearanceController:
         self.state.is_converting = converting
         self.window.start_btn.setEnabled(not converting)
         self.window.cancel_btn.setEnabled(converting)
+        if hasattr(self.window, "lifecycle_controller"):
+            self.window.lifecycle_controller.set_command_actions_enabled(not converting)
 
         if not converting:
             self.state.force_kill_pending = False

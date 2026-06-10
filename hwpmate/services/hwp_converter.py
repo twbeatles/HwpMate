@@ -10,6 +10,7 @@ from typing import Any, Optional, Protocol, Tuple, cast
 
 from ..constants import DOCUMENT_LOAD_DELAY, FORMAT_TYPES, HWP_PROGIDS
 from ..logging_config import get_logger
+from .artifact_policy import iter_candidate_artifact_paths
 
 logger = get_logger(__name__)
 
@@ -27,7 +28,6 @@ except ImportError:
     PYWIN32_AVAILABLE = False
 
 HWP_PROCESS_NAMES = {"hwp.exe", "hwpctrl.exe"}
-AUXILIARY_ARTIFACT_FORMATS = {"HTML", "PNG", "JPG", "BMP", "GIF"}
 
 
 @dataclass(frozen=True)
@@ -119,31 +119,7 @@ def _snapshot_file(path: Path) -> _FileSnapshot | None:
 
 
 def _iter_candidate_artifact_files(output_file: Path, format_type: str) -> list[Path]:
-    candidates: dict[str, Path] = {str(output_file): output_file}
-    if format_type not in AUXILIARY_ARTIFACT_FORMATS:
-        return list(candidates.values())
-
-    parent = output_file.parent
-    if not parent.exists():
-        return list(candidates.values())
-
-    stem_key = output_file.stem.lower()
-    try:
-        for child in parent.iterdir():
-            if child.name.lower().startswith(stem_key):
-                if child.is_file():
-                    candidates[str(child)] = child
-                elif child.is_dir():
-                    try:
-                        for nested in child.rglob("*"):
-                            if nested.is_file():
-                                candidates[str(nested)] = nested
-                    except OSError:
-                        continue
-    except OSError:
-        return list(candidates.values())
-
-    return list(candidates.values())
+    return iter_candidate_artifact_paths(output_file, format_type)
 
 
 def _snapshot_artifacts(output_file: Path, format_type: str) -> dict[Path, _FileSnapshot]:
@@ -250,6 +226,10 @@ class HWPConverter:
 
             open_result = hwp.Open(input_str, "", "forceopen:true")
             if open_result is False:
+                try:
+                    hwp.Clear(option=1)
+                except Exception:
+                    pass
                 return False, "문서 열기 실패: HWP Open이 False를 반환했습니다"
             time.sleep(DOCUMENT_LOAD_DELAY)
 

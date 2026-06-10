@@ -6,6 +6,7 @@ HWP 변환기 v8.7 - PyInstaller 빌드 설정
 2026-03-18 안정화/UX 보강(사전 점검, 결과 리포트, 안전한 강제 종료) 이후에도
 2026-05-12 산출물 감사/설정 복구/COM 스모크 보조 스크립트 보강 이후에도
 2026-06-10 MainWindow 컨트롤러 분리 이후에도
+2026-06-11 감사 개선(단일 인스턴스, artifact policy, busy guard) 이후에도
 추가 hidden import 또는 data 번들 없이 동일 빌드 구성이 동작함을 확인했습니다.
 """
 
@@ -53,7 +54,7 @@ a = Analysis(
     datas=[],  # 문서/설정/리포트 템플릿은 런타임 생성하므로 배포 번들에 포함하지 않음
     hiddenimports=[
         # 필수 pywin32 모듈
-        # 2026-06-10 기준 ui/main_window_controllers 패키지는 정적 import로 분석되므로
+        # 2026-06-11 기준 ui/main_window_controllers와 services/artifact_policy는 정적 import로 분석되므로
         # 별도 hidden import 없이 빌드 검증 통과
         'win32com.client',
         'win32api',

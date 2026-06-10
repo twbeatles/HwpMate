@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from hwpmate.models import AppConfig, ConversionTask, PlannedConversion
+from hwpmate.models import AppConfig, ConversionSummary, ConversionTask, PlannedConversion
 
 
 class DummyTray:
@@ -134,6 +134,58 @@ def test_conversion_controller_shows_skipped_only_result(monkeypatch: pytest.Mon
     assert window.plan is None
 
 
+def test_start_conversion_ignores_duplicate_start_while_converting(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    window.is_converting = True
+
+    window.conversion_controller.start_conversion()
+
+    assert window.worker is None
+    assert "이미 진행" in window.status_label.text()
+
+
+def test_set_converting_state_disables_menu_actions_and_start_shortcut(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+
+    window._set_converting_state(True)
+
+    assert window.lifecycle_controller.add_files_action is not None
+    assert window.lifecycle_controller.add_files_action.isEnabled() is False
+    assert window.lifecycle_controller.add_folder_action is not None
+    assert window.lifecycle_controller.add_folder_action.isEnabled() is False
+    assert window.lifecycle_controller.start_shortcut is not None
+    assert window.lifecycle_controller.start_shortcut.isEnabled() is False
+
+    window._set_converting_state(False)
+    assert window.lifecycle_controller.add_files_action.isEnabled() is True
+    assert window.lifecycle_controller.start_shortcut.isEnabled() is True
+
+
+def test_file_selection_ignores_changes_while_converting(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    dropped = tmp_path / "doc.hwp"
+    dropped.write_text("x", encoding="utf-8")
+    window.is_converting = True
+
+    window.file_selection_controller.add_files([str(dropped)])
+
+    assert window.file_store.count == 0
+    assert "변환 중" in window.status_label.text()
+
+
+def test_worker_finished_preserves_failed_hwp_status(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    failed = ConversionTask(tmp_path / "a.hwp", tmp_path / "a.pdf", status="실패", error="boom")
+    window.last_summary = ConversionSummary(
+        format_type="PDF",
+        tasks=[failed],
+    )
+
+    window.conversion_controller.on_worker_finished()
+
+    assert "실패" in window.hwp_status_label.text()
+
+
 def test_native_drop_controller_routes_file_mode_paths(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
     window, _ = create_window(monkeypatch, qapp)
     dropped = tmp_path / "doc.hwp"
@@ -147,3 +199,20 @@ def test_native_drop_controller_routes_file_mode_paths(monkeypatch: pytest.Monke
     window.native_drop_controller.on_native_files_dropped([str(dropped)])
 
     assert calls == [[str(dropped.resolve())]]
+
+
+def test_native_drop_ignores_paths_while_converting(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    dropped = tmp_path / "doc.hwp"
+    dropped.write_text("x", encoding="utf-8")
+    calls = []
+
+    window.files_radio.setChecked(True)
+    window.is_converting = True
+    monkeypatch.setattr(window, "_add_files", lambda files: calls.append(files))
+    monkeypatch.setattr(window.toast, "show_message", lambda *args, **kwargs: None)
+
+    window.native_drop_controller.on_native_files_dropped([str(dropped)])
+
+    assert calls == []
+    assert "변환 중" in window.status_label.text()

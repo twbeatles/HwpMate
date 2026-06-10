@@ -4,6 +4,7 @@ import sys
 
 from PyQt6.QtWidgets import QApplication, QMessageBox, QStyleFactory
 
+from .app_instance import SingleInstanceLock
 from .logging_config import get_logger
 from .services.hwp_converter import PYWIN32_AVAILABLE
 from .ui.main_window import MainWindow
@@ -68,12 +69,25 @@ def main() -> None:
         app = QApplication(sys.argv)
         app.setStyle(QStyleFactory.create("Fusion"))
 
-        window = MainWindow()
-        window.show()
+        instance_lock = SingleInstanceLock()
+        if not instance_lock.try_lock():
+            QMessageBox.information(
+                None,
+                "이미 실행 중",
+                "HwpMate가 이미 실행 중입니다.\n기존 창을 사용해 주세요.",
+            )
+            del app
+            sys.exit(0)
 
-        exit_code = app.exec()
-        logger.info(f"애플리케이션 이벤트 루프 종료: code={exit_code}")
-        sys.exit(exit_code)
+        try:
+            window = MainWindow()
+            window.show()
+
+            exit_code = app.exec()
+            logger.info(f"애플리케이션 이벤트 루프 종료: code={exit_code}")
+            sys.exit(exit_code)
+        finally:
+            instance_lock.release()
     except Exception as e:
         logger.critical(f"애플리케이션 실행 오류: {e}")
         raise

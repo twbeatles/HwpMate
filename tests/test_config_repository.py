@@ -37,7 +37,7 @@ def test_save_and_reload_preserves_known_keys(tmp_path: Path) -> None:
     repo = ConfigRepository(config_file)
     config = AppConfig(theme="light", format="DOCX", folder_path="C:/work")
 
-    repo.save(config)
+    assert repo.save(config) is True
     reloaded = repo.load()
 
     assert reloaded.theme == "light"
@@ -51,7 +51,7 @@ def test_save_replaces_config_atomically_without_leaving_temp_files(tmp_path: Pa
     config_file = tmp_path / "config.json"
     repo = ConfigRepository(config_file)
 
-    repo.save(AppConfig(theme="light", backup_enabled=False, retry_count=2))
+    assert repo.save(AppConfig(theme="light", backup_enabled=False, retry_count=2)) is True
 
     assert config_file.exists()
     assert not list(tmp_path.glob(".config.json.*.tmp"))
@@ -92,3 +92,12 @@ def test_load_recovers_type_mismatches(tmp_path: Path) -> None:
     assert config.backup_enabled is False
     assert config.retry_count == 1
     assert config.folder_path == ""
+
+
+def test_save_reports_failure_when_parent_is_not_directory(tmp_path: Path) -> None:
+    blocked_parent = tmp_path / "blocked"
+    blocked_parent.write_text("not a directory", encoding="utf-8")
+    repo = ConfigRepository(blocked_parent / "config.json")
+
+    assert repo.save(AppConfig(theme="light")) is False
+    assert blocked_parent.read_text(encoding="utf-8") == "not a directory"

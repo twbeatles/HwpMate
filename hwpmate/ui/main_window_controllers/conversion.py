@@ -38,7 +38,11 @@ class ConversionController:
         )
 
     def adjust_output_paths(self, plan: PlannedConversion, *, overwrite: bool) -> int:
-        return self.window.task_planner.resolve_output_conflicts(plan.tasks, overwrite=overwrite)
+        return self.window.task_planner.resolve_output_conflicts(
+            plan.tasks,
+            overwrite=overwrite,
+            format_type=plan.format_type,
+        )
 
     def validate_output_settings(self) -> None:
         if self.window.same_location_check.isChecked():
@@ -58,6 +62,12 @@ class ConversionController:
 
     def start_conversion(self) -> None:
         try:
+            if self.is_conversion_active():
+                self.window.status_label.setText("변환이 이미 진행 중입니다")
+                if hasattr(self.window, "toast"):
+                    self.window.toast.show_message("변환이 이미 진행 중입니다", "⚠️")
+                return
+
             if self.state.scan_worker and self.state.scan_worker.isRunning():
                 if self.state.scan_mode == "add_files":
                     QMessageBox.warning(self.window, "경고", "파일 스캔이 진행 중입니다. 스캔 완료 후 다시 시도하세요.")
@@ -132,6 +142,11 @@ class ConversionController:
         except Exception as e:
             logger.exception("변환 시작 오류")
             QMessageBox.critical(self.window, "오류", f"오류 발생: {e}")
+
+    def is_conversion_active(self) -> bool:
+        worker = self.state.worker
+        worker_running = bool(worker and getattr(worker, "isRunning", lambda: False)())
+        return self.state.is_converting or worker_running
 
     def show_skipped_only_result(self, plan: PlannedConversion) -> None:
         summary = ConversionSummary(
@@ -276,7 +291,13 @@ class ConversionController:
         self.window.progress_bar.setValue(0)
         self.window.progress_label.setText("0 / 0")
         self.window.status_label.setText("대기 중")
-        self.window.hwp_status_label.setText("🟢 한글 대기중")
+        summary = self.state.last_summary
+        if summary and summary.failed_count:
+            self.window.hwp_status_label.setText("🔴 마지막 작업 실패")
+        elif summary and summary.canceled_count:
+            self.window.hwp_status_label.setText("🟡 변환 취소됨")
+        else:
+            self.window.hwp_status_label.setText("🟢 한글 대기중")
 
         if self.state.worker:
             try:

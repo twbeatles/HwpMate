@@ -8,6 +8,10 @@ from ..constants import FORMAT_TYPES, MAX_FILENAME_COUNTER, SUPPORTED_EXTENSIONS
 from ..logging_config import get_logger
 from ..models import ConversionTask, PlannedConversion
 from ..path_utils import canonicalize_path, check_write_permission, iter_supported_files
+from .artifact_policy import (
+    artifact_key,
+    existing_artifact_conflicts,
+)
 
 logger = get_logger(__name__)
 
@@ -155,16 +159,21 @@ class TaskPlanner:
             warnings=warnings,
         )
 
-    def resolve_output_conflicts(self, tasks: list[ConversionTask], overwrite: bool) -> int:
+    def resolve_output_conflicts(
+        self,
+        tasks: list[ConversionTask],
+        overwrite: bool,
+        format_type: str | None = None,
+    ) -> int:
         used_path_keys: set[str] = set()
         renamed_count = 0
 
         for task in tasks:
             original_path = task.output_file
-            original_key = str(original_path).lower()
-            batch_duplicate = original_key in used_path_keys
+            batch_duplicate = artifact_key(original_path) in used_path_keys
 
-            if batch_duplicate or ((not overwrite) and task.output_file.exists()):
+            existing_conflict = (not overwrite) and self._has_existing_output_conflict(task.output_file, format_type)
+            if batch_duplicate or existing_conflict:
                 counter = 1
                 stem = original_path.stem
                 ext = original_path.suffix
@@ -173,9 +182,9 @@ class TaskPlanner:
                 while counter <= MAX_FILENAME_COUNTER:
                     new_name = f"{stem} ({counter}){ext}"
                     new_path = parent / new_name
-                    new_key = str(new_path).lower()
-                    exists_conflict = (not overwrite) and new_path.exists()
-                    if (not exists_conflict) and (new_key not in used_path_keys):
+                    exists_conflict = (not overwrite) and self._has_existing_output_conflict(new_path, format_type)
+                    batch_conflict = artifact_key(new_path) in used_path_keys
+                    if (not exists_conflict) and (not batch_conflict):
                         task.output_file = new_path
                         break
                     counter += 1
@@ -186,9 +195,9 @@ class TaskPlanner:
                         suffix = "" if fallback_counter == 1 else f"_{fallback_counter}"
                         new_name = f"{stem}_{timestamp}{suffix}{ext}"
                         new_path = parent / new_name
-                        new_key = str(new_path).lower()
-                        exists_conflict = (not overwrite) and new_path.exists()
-                        if (not exists_conflict) and (new_key not in used_path_keys):
+                        exists_conflict = (not overwrite) and self._has_existing_output_conflict(new_path, format_type)
+                        batch_conflict = artifact_key(new_path) in used_path_keys
+                        if (not exists_conflict) and (not batch_conflict):
                             task.output_file = new_path
                             logger.warning(f"파일명 카운터 초과, 타임스탬프 사용: {new_name}")
                             break
@@ -199,9 +208,14 @@ class TaskPlanner:
                     renamed_count += 1
                     logger.info(f"출력 경로 조정: {original_path} -> {task.output_file}")
 
-            used_path_keys.add(str(task.output_file).lower())
+            used_path_keys.add(artifact_key(task.output_file))
 
         return renamed_count
+
+    def _has_existing_output_conflict(self, output_file: Path, format_type: str | None) -> bool:
+        if format_type is None:
+            return output_file.exists()
+        return bool(existing_artifact_conflicts(output_file, format_type))
 
     def _append_output_warnings(
         self,

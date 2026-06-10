@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Callable, Iterable, Optional
@@ -12,10 +13,46 @@ logger = get_logger(__name__)
 
 def is_valid_path_name(path: str) -> bool:
     """Windows 파일 경로에 유효하지 않은 문자가 있는지 검증"""
+    path = str(path).strip()
+    if not path:
+        return False
+    if any(ord(char) < 32 for char in path):
+        return False
+
+    normalized = path.replace("/", "\\")
+    extended_unc_prefix = "\\\\?\\UNC\\"
+    extended_prefix = "\\\\?\\"
+    if normalized.startswith(extended_unc_prefix):
+        normalized = "\\\\" + normalized[len(extended_unc_prefix):]
+    elif normalized.startswith(extended_prefix):
+        normalized = normalized[len(extended_prefix):]
+
     invalid_chars = '<>"|?*'
-    # 드라이브 문자(:) 제외
-    path_without_drive = path[2:] if len(path) > 2 and path[1] == ':' else path
-    return not any(char in path_without_drive for char in invalid_chars)
+    if any(char in normalized for char in invalid_chars):
+        return False
+
+    path_without_drive = normalized
+    if len(normalized) >= 2 and normalized[1] == ":":
+        if not normalized[0].isalpha():
+            return False
+        path_without_drive = normalized[2:]
+    if ":" in path_without_drive:
+        return False
+
+    reserved_names = {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    }
+    for part in re.split(r"[\\]+", path_without_drive):
+        if not part or part in {".", ".."}:
+            continue
+        if part.endswith((" ", ".")):
+            return False
+        base = part.split(".")[0].upper()
+        if base in reserved_names:
+            return False
+    return True
 
 
 def check_write_permission(folder_path: Path) -> bool:

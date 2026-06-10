@@ -20,11 +20,16 @@ class LifecycleController:
         self,
         window: Any,
         state: MainWindowState,
-        save_config_func: Callable[[AppConfig], None],
+        save_config_func: Callable[[AppConfig], bool],
     ) -> None:
         self.window = window
         self.state = state
         self._save_config = save_config_func
+        self.add_files_action: QAction | None = None
+        self.add_folder_action: QAction | None = None
+        self.remove_selected_action: QAction | None = None
+        self.clear_all_action: QAction | None = None
+        self.start_shortcut: QShortcut | None = None
 
     def init_menu_bar(self) -> None:
         menubar = self.window.menuBar()
@@ -33,15 +38,15 @@ class LifecycleController:
         file_menu = menubar.addMenu("파일(&F)")
         assert file_menu is not None
 
-        add_files_action = QAction("파일 추가(&A)", self.window)
-        add_files_action.setShortcut("Ctrl+O")
-        add_files_action.triggered.connect(self.window._browse_files)
-        file_menu.addAction(add_files_action)
+        self.add_files_action = QAction("파일 추가(&A)", self.window)
+        self.add_files_action.setShortcut("Ctrl+O")
+        self.add_files_action.triggered.connect(self.window._browse_files)
+        file_menu.addAction(self.add_files_action)
 
-        add_folder_action = QAction("폴더 선택(&F)", self.window)
-        add_folder_action.setShortcut("Ctrl+Shift+O")
-        add_folder_action.triggered.connect(self.window._select_folder)
-        file_menu.addAction(add_folder_action)
+        self.add_folder_action = QAction("폴더 선택(&F)", self.window)
+        self.add_folder_action.setShortcut("Ctrl+Shift+O")
+        self.add_folder_action.triggered.connect(self.window._select_folder)
+        file_menu.addAction(self.add_folder_action)
 
         file_menu.addSeparator()
 
@@ -53,15 +58,15 @@ class LifecycleController:
         edit_menu = menubar.addMenu("편집(&E)")
         assert edit_menu is not None
 
-        remove_selected_action = QAction("선택 파일 제거(&R)", self.window)
-        remove_selected_action.setShortcut("Delete")
-        remove_selected_action.triggered.connect(self.window._remove_selected)
-        edit_menu.addAction(remove_selected_action)
+        self.remove_selected_action = QAction("선택 파일 제거(&R)", self.window)
+        self.remove_selected_action.setShortcut("Delete")
+        self.remove_selected_action.triggered.connect(self.window._remove_selected)
+        edit_menu.addAction(self.remove_selected_action)
 
-        clear_all_action = QAction("전체 제거(&C)", self.window)
-        clear_all_action.setShortcut("Ctrl+Delete")
-        clear_all_action.triggered.connect(self.window._clear_all)
-        edit_menu.addAction(clear_all_action)
+        self.clear_all_action = QAction("전체 제거(&C)", self.window)
+        self.clear_all_action.setShortcut("Ctrl+Delete")
+        self.clear_all_action.triggered.connect(self.window._clear_all)
+        edit_menu.addAction(self.clear_all_action)
 
         help_menu = menubar.addMenu("도움말(&H)")
         assert help_menu is not None
@@ -92,8 +97,8 @@ class LifecycleController:
         status_bar.addPermanentWidget(self.window.file_count_label)
 
     def init_shortcuts(self) -> None:
-        start_shortcut = QShortcut(QKeySequence("Ctrl+Return"), self.window)
-        start_shortcut.activated.connect(self.window._start_conversion)
+        self.start_shortcut = QShortcut(QKeySequence("Ctrl+Return"), self.window)
+        self.start_shortcut.activated.connect(self.window._start_conversion)
 
         cancel_shortcut = QShortcut(QKeySequence("Escape"), self.window)
         cancel_shortcut.activated.connect(self.cancel_conversion_if_running)
@@ -205,7 +210,7 @@ class LifecycleController:
 """
         QMessageBox.about(self.window, "프로그램 정보", about_text)
 
-    def save_settings(self) -> None:
+    def save_settings(self) -> bool:
         self.window.config["mode"] = "folder" if self.window.folder_radio.isChecked() else "files"
         self.window.config["format"] = self.state.selected_format
 
@@ -222,7 +227,25 @@ class LifecycleController:
         if self.window.output_entry.text().strip():
             self.window.config["last_output"] = self.window.output_entry.text().strip()
 
-        self._save_config(self.window.config)
+        saved = self._save_config(self.window.config)
+        if saved is False:
+            self.window.status_label.setText("설정 저장에 실패했습니다")
+            if hasattr(self.window, "toast"):
+                self.window.toast.show_message("설정 저장에 실패했습니다", "⚠️")
+            return False
+        return True
+
+    def set_command_actions_enabled(self, enabled: bool) -> None:
+        for action in (
+            self.add_files_action,
+            self.add_folder_action,
+            self.remove_selected_action,
+            self.clear_all_action,
+        ):
+            if action is not None:
+                action.setEnabled(enabled)
+        if self.start_shortcut is not None:
+            self.start_shortcut.setEnabled(enabled)
 
     def close_event(self, event: QCloseEvent) -> None:
         logger.info("메인 윈도우 종료 이벤트 수신")
@@ -271,6 +294,7 @@ class LifecycleController:
         if hasattr(self.window, "tray_icon"):
             self.window.tray_icon.hide()
 
-        self.save_settings()
+        if not self.save_settings():
+            QMessageBox.warning(self.window, "설정 저장 실패", "현재 설정을 저장하지 못했습니다. 다음 실행에서 일부 설정이 복원되지 않을 수 있습니다.")
         logger.info("메인 윈도우 종료 허용")
         event.accept()

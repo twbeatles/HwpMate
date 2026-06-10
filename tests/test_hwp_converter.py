@@ -69,6 +69,7 @@ def test_convert_file_fails_when_open_returns_false(tmp_path: Path) -> None:
     assert success is False
     assert error is not None and "문서 열기 실패" in error
     assert not fake.save_calls
+    assert fake.clear_calls == [1]
 
 
 def test_convert_file_falls_back_when_saveas_returns_false(tmp_path: Path) -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hwpmate.path_utils import canonicalize_path, check_write_permission, iter_supported_files, make_path_key
+from hwpmate.path_utils import canonicalize_path, check_write_permission, is_valid_path_name, iter_supported_files, make_path_key
 
 
 def test_canonicalize_and_make_path_key_normalize_windows_paths() -> None:
@@ -71,3 +71,15 @@ def test_iter_supported_files_excludes_nested_backup_dirs_but_allows_backup_root
 def test_check_write_permission_uses_temporary_file(tmp_path: Path) -> None:
     assert check_write_permission(tmp_path) is True
     assert not list(tmp_path.glob(".hwpmate_write_test_*"))
+
+
+def test_is_valid_path_name_rejects_windows_reserved_and_malformed_names() -> None:
+    assert not is_valid_path_name("C:/out/CON")
+    assert not is_valid_path_name("C:/out/report. ")
+    assert not is_valid_path_name("C:/out/report.")
+    assert not is_valid_path_name("C:/out/bad:name")
+    assert not is_valid_path_name("C:/out/bad\x01name")
+    assert is_valid_path_name("C:/out/report folder")
+    assert is_valid_path_name("//server/share/report")
+    assert is_valid_path_name(r"\\?\C:\out\report")
+    assert is_valid_path_name(r"\\?\UNC\server\share\report")

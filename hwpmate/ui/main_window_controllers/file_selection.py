@@ -57,6 +57,9 @@ class FileSelectionController:
         include_sub: bool = True,
         allowed_exts: Iterable[str] | None = None,
     ) -> None:
+        if self._input_locked():
+            return
+
         cleaned_inputs = [str(p).strip() for p in input_paths if str(p).strip()]
         if not cleaned_inputs:
             return
@@ -201,6 +204,8 @@ class FileSelectionController:
         self._clear_scan_state()
 
     def select_folder(self) -> None:
+        if self._input_locked():
+            return
         initial = self.window.config.get("last_folder", "")
         folder = QFileDialog.getExistingDirectory(self.window, "폴더 선택", initial)
         if folder:
@@ -209,6 +214,8 @@ class FileSelectionController:
             self.start_folder_preview_scan(folder)
 
     def select_output(self) -> None:
+        if self._input_locked("변환 중에는 출력 폴더를 변경할 수 없습니다"):
+            return
         initial = self.window.config.get("last_output", "")
         folder = QFileDialog.getExistingDirectory(self.window, "출력 폴더 선택", initial)
         if folder:
@@ -216,6 +223,8 @@ class FileSelectionController:
             self.window.config["last_output"] = folder
 
     def browse_files(self) -> None:
+        if self._input_locked():
+            return
         files, _ = QFileDialog.getOpenFileNames(
             self.window,
             "파일 선택",
@@ -226,6 +235,8 @@ class FileSelectionController:
             self.add_files(files)
 
     def add_files(self, files: list[str]) -> None:
+        if self._input_locked():
+            return
         if not files:
             return
 
@@ -246,6 +257,8 @@ class FileSelectionController:
             logger.debug(f"파일 스캔 요청 등록: 입력={len(requested)}, 소요={elapsed:.4f}s")
 
     def remove_selected(self) -> None:
+        if self._input_locked("변환 중에는 파일 목록을 변경할 수 없습니다"):
+            return
         selected = self.window.file_table.selectedItems()
         if not selected:
             return
@@ -259,6 +272,8 @@ class FileSelectionController:
         self.update_file_count()
 
     def clear_all(self) -> None:
+        if self._input_locked("변환 중에는 파일 목록을 변경할 수 없습니다"):
+            return
         if not self.window.file_list:
             return
 
@@ -285,3 +300,13 @@ class FileSelectionController:
         self.state.scan_started_at = None
         self.state.scan_new_file_count = 0
         self.state.scan_preview_count = 0
+
+    def _input_locked(self, message: str = "변환 중에는 입력을 변경할 수 없습니다") -> bool:
+        worker = self.state.worker
+        worker_running = bool(worker and getattr(worker, "isRunning", lambda: False)())
+        if not (self.state.is_converting or worker_running):
+            return False
+        self.window.status_label.setText(message)
+        if hasattr(self.window, "toast"):
+            self.window.toast.show_message(message, "⚠️")
+        return True
