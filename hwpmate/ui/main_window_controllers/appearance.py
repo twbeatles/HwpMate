@@ -47,7 +47,11 @@ class AppearanceController:
         self.state.selected_format = format_type
         self.update_format_cards()
         if self.window.folder_radio.isChecked() and self.window.folder_entry.text().strip():
-            self.window._start_folder_preview_scan(self.window.folder_entry.text().strip())
+            # 전체 확장자 캐시가 있으면 재스캔 없이 변환 가능 수만 갱신한다.
+            if self.state.folder_scan_ready:
+                self.window.file_selection_controller.refresh_folder_preview_count()
+            else:
+                self.window._start_folder_preview_scan(self.window.folder_entry.text().strip())
 
     def update_format_cards(self) -> None:
         for fmt_key, card in self.window.format_cards.items():
@@ -67,6 +71,7 @@ class AppearanceController:
 
     def on_include_sub_toggled(self, _: bool) -> None:
         if self.window.folder_radio.isChecked() and self.window.folder_entry.text().strip():
+            self.window.file_selection_controller.invalidate_folder_scan_cache()
             self.window._start_folder_preview_scan(self.window.folder_entry.text().strip())
 
     def set_converting_state(self, converting: bool) -> None:

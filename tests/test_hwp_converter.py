@@ -58,6 +58,53 @@ def build_converter(fake_hwp: FakeHwp) -> HWPConverter:
     return converter
 
 
+def test_kill_owned_processes_skips_pid_not_in_live_hwp_snapshot(monkeypatch) -> None:
+    import hwpmate.services.hwp_converter as converter_module
+
+    converter = HWPConverter()
+    converter.owned_pids = {111, 222}
+    monkeypatch.setattr(converter_module, "_snapshot_hwp_pids", lambda: {222})
+    calls: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        del kwargs
+        calls.append(list(args))
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr(converter_module.subprocess, "run", fake_run)
+
+    assert converter.kill_owned_processes() is True
+    assert calls == [["taskkill", "/PID", "222", "/F"]]
+    assert converter.owned_pids == set()
+
+
+def test_cleanup_does_not_uninitialize_unowned_com_apartment(monkeypatch) -> None:
+    import hwpmate.services.hwp_converter as converter_module
+
+    class FakePythoncom:
+        def __init__(self) -> None:
+            self.uninit_calls = 0
+
+        def CoUninitialize(self) -> None:
+            self.uninit_calls += 1
+
+    fake = FakePythoncom()
+    monkeypatch.setattr(converter_module, "pythoncom", fake)
+    converter = HWPConverter()
+    converter.is_initialized = True
+    converter.hwp = FakeHwp()
+    converter._com_apartment_owned = False
+
+    converter.cleanup()
+
+    assert fake.uninit_calls == 0
+    assert converter.is_initialized is False
+
+
 def test_convert_file_fails_when_open_returns_false(tmp_path: Path) -> None:
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")

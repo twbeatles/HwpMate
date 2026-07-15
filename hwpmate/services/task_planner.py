@@ -35,6 +35,7 @@ class TaskPlanner:
         file_paths: Sequence[str],
         backup_enabled: bool = True,
         retry_count: int = 1,
+        folder_file_paths: Sequence[str] | None = None,
     ) -> PlannedConversion:
         tasks: list[ConversionTask] = []
         skipped_tasks: list[ConversionTask] = []
@@ -53,21 +54,30 @@ class TaskPlanner:
             if not folder.is_dir():
                 raise ValueError("폴더 경로가 올바르지 않습니다.")
 
-            allowed_exts: Set[str] = set(SUPPORTED_EXTENSIONS)
-            input_files = [
-                Path(canonicalize_path(str(p)))
-                for p in iter_supported_files(
-                    folder,
-                    include_sub=include_sub,
-                    allowed_exts=allowed_exts,
-                )
-            ]
+            if folder_file_paths is not None:
+                # 미리보기 스캔 캐시를 재사용해 UI 스레드 전체 재스캔을 피한다.
+                input_files = [
+                    Path(canonicalize_path(str(p)))
+                    for p in folder_file_paths
+                    if str(p).strip()
+                ]
+                logger.debug(f"폴더 작업 수집(캐시): {len(input_files)}개")
+            else:
+                allowed_exts: Set[str] = set(SUPPORTED_EXTENSIONS)
+                input_files = [
+                    Path(canonicalize_path(str(p)))
+                    for p in iter_supported_files(
+                        folder,
+                        include_sub=include_sub,
+                        allowed_exts=allowed_exts,
+                    )
+                ]
+                logger.debug(f"폴더 작업 수집(재스캔): {len(input_files)}개")
 
             if not input_files:
                 raise ValueError("변환할 파일이 없습니다.")
 
             input_files = sorted(input_files, key=lambda p: str(p).lower())
-            logger.debug(f"폴더 작업 수집: {len(input_files)}개")
 
             for input_file in input_files:
                 if input_file.suffix.lower() == output_ext.lower():

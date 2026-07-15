@@ -20,7 +20,7 @@ class ConverterEngine(Protocol):
     @property
     def progid_used(self) -> str | None: ...
 
-    def initialize(self) -> bool: ...
+    def initialize(self, *, manage_com_apartment: bool = True) -> bool: ...
     def convert_file(self, input_path, output_path, format_type="PDF") -> tuple[bool, str | None]: ...
     def cleanup(self) -> None: ...
     def has_owned_processes(self) -> bool: ...
@@ -79,7 +79,8 @@ class ConversionWorker(QThread):
             self.converter = converter
             self.status_updated.emit("한글 프로그램 연결 중...")
             try:
-                converter.initialize()
+                # 워커 스레드가 COM apartment 를 소유한다. 컨버터는 중복 CoInit/Uninit 하지 않는다.
+                converter.initialize(manage_com_apartment=False)
                 runtime_warnings = self._collect_converter_warnings(converter)
             except Exception as e:
                 logger.exception("한글 초기화 실패")
@@ -103,7 +104,7 @@ class ConversionWorker(QThread):
                     self.status_updated.emit("사용자가 취소했습니다.")
                     break
 
-                self.progress_updated.emit(idx, total, task.input_file.name)
+                self.status_updated.emit(f"변환 중: {task.input_file.name}")
 
                 if self.backup_enabled:
                     try:
@@ -117,12 +118,14 @@ class ConversionWorker(QThread):
                 except Exception as e:
                     task.status = "실패"
                     task.error = f"폴더 생성 실패: {e}"
+                    self.progress_updated.emit(idx + 1, total, task.input_file.name)
                     continue
 
                 if not task.input_file.exists():
                     task.status = "실패"
                     task.error = f"파일을 찾을 수 없음: {task.input_file.name}"
                     logger.warning(f"파일 없음: {task.input_file}")
+                    self.progress_updated.emit(idx + 1, total, task.input_file.name)
                     continue
 
                 task.status = "진행중"
@@ -148,15 +151,19 @@ class ConversionWorker(QThread):
                         )
                         time.sleep(RETRY_DELAY_SECONDS)
 
-                if self.cancel_requested and not success and error is None:
-                    task.status = "취소됨"
-                    task.error = "사용자 취소"
-                elif success:
+                if success:
                     task.status = "성공"
                     task.error = None
+                elif self.cancel_requested:
+                    # 취소 요청 후 실패(또는 미완료)는 실패 대신 취소로 집계한다.
+                    detail = error.strip() if error else "사용자 취소"
+                    task.status = "취소됨"
+                    task.error = detail if detail == "사용자 취소" else f"사용자 취소 ({detail})"
                 else:
                     task.status = "실패"
                     task.error = error
+
+                self.progress_updated.emit(idx + 1, total, task.input_file.name)
 
             if self.cancel_requested:
                 for task in self.tasks:

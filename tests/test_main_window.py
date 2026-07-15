@@ -147,8 +147,8 @@ def test_start_conversion_shows_result_for_skipped_only_plan(monkeypatch, qapp, 
     shown = []
 
     class FakeResultDialog:
-        def __init__(self, summary, parent=None):
-            del parent
+        def __init__(self, summary, parent=None, **kwargs):
+            del parent, kwargs
             shown.append(summary)
 
         def exec(self):

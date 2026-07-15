@@ -8,9 +8,9 @@ from typing import Any
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from ...constants import WORKER_WAIT_TIMEOUT
+from ...constants import FOLDER_SCAN_WAIT_MS, WORKER_WAIT_TIMEOUT
 from ...logging_config import get_logger
-from ...models import ConversionSummary, PlannedConversion
+from ...models import ConversionSummary, ConversionTask, PlannedConversion
 from ...path_utils import check_write_permission, is_valid_path_name
 from .state import MainWindowState
 
@@ -25,8 +25,15 @@ class ConversionController:
         self.state = state
 
     def collect_tasks(self) -> PlannedConversion:
+        is_folder_mode = self.window.folder_radio.isChecked()
+        folder_file_paths = None
+        if is_folder_mode:
+            folder_file_paths = self.window.file_selection_controller.get_folder_scan_cache(
+                folder_path=self.window.folder_entry.text(),
+                include_sub=self.window.include_sub_check.isChecked(),
+            )
         return self.window.task_planner.build_tasks(
-            is_folder_mode=self.window.folder_radio.isChecked(),
+            is_folder_mode=is_folder_mode,
             format_type=self.state.selected_format,
             folder_path=self.window.folder_entry.text(),
             include_sub=self.window.include_sub_check.isChecked(),
@@ -35,6 +42,7 @@ class ConversionController:
             file_paths=self.window.file_store.paths,
             backup_enabled=self.window.backup_check.isChecked(),
             retry_count=self.window.retry_spin.value(),
+            folder_file_paths=folder_file_paths,
         )
 
     def adjust_output_paths(self, plan: PlannedConversion, *, overwrite: bool) -> int:
@@ -72,8 +80,15 @@ class ConversionController:
                 if self.state.scan_mode == "add_files":
                     QMessageBox.warning(self.window, "경고", "파일 스캔이 진행 중입니다. 스캔 완료 후 다시 시도하세요.")
                     return
-                if not self.window._cancel_active_scan():
-                    QMessageBox.warning(self.window, "경고", "폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요.")
+                # 폴더 미리보기는 취소하지 않고 완료를 기다려 캐시를 확보한다.
+                self.window.status_label.setText("폴더 스캔 완료 대기 중...")
+                QApplication.processEvents()
+                if not self.window.file_selection_controller.wait_for_active_scan(FOLDER_SCAN_WAIT_MS):
+                    QMessageBox.warning(
+                        self.window,
+                        "경고",
+                        "폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요.",
+                    )
                     return
 
             self.validate_output_settings()
@@ -270,7 +285,9 @@ class ConversionController:
                 "⚠️",
             )
 
-        if summary.progid_used:
+        if any("강제 종료는 비활성화" in warning for warning in summary.warnings):
+            self.window.hwp_status_label.setText("🟡 프로세스 추적 불가")
+        elif summary.progid_used:
             self.window.hwp_status_label.setText("🟢 한글 연결됨")
         elif summary.failed_count:
             self.window.hwp_status_label.setText("🔴 한글 연결 오류")
@@ -280,6 +297,71 @@ class ConversionController:
             return
         dialog = self.window._create_result_dialog(summary)
         dialog.exec()
+
+    def retry_failed_tasks(self, failed_tasks: list[ConversionTask]) -> None:
+        """결과 다이얼로그에서 실패 항목만 다시 변환한다."""
+        if self.is_conversion_active():
+            self.window.status_label.setText("변환이 이미 진행 중입니다")
+            return
+        if not failed_tasks:
+            return
+
+        format_type = self.state.selected_format
+        if self.state.last_summary is not None:
+            format_type = self.state.last_summary.format_type
+
+        retry_tasks = [
+            ConversionTask(input_file=task.input_file, output_file=task.output_file)
+            for task in failed_tasks
+            if task.input_file.exists()
+        ]
+        missing = len(failed_tasks) - len(retry_tasks)
+        warnings: list[str] = []
+        if missing:
+            warnings.append(f"다시 변환할 수 없는 실패 항목 {missing}개는 제외했습니다 (파일 없음).")
+        if not retry_tasks:
+            QMessageBox.warning(self.window, "경고", "다시 변환할 실패 파일이 없습니다.")
+            return
+
+        plan = PlannedConversion(
+            format_type=format_type,
+            same_location=self.window.same_location_check.isChecked(),
+            output_path=self.window.output_entry.text().strip(),
+            backup_enabled=self.window.backup_check.isChecked(),
+            retry_count=self.window.retry_spin.value(),
+            tasks=retry_tasks,
+            warnings=warnings + ["실패 항목만 다시 변환합니다."],
+        )
+        plan.conflict_renamed_count = self.adjust_output_paths(
+            plan,
+            overwrite=self.window.overwrite_check.isChecked(),
+        )
+        if plan.conflict_renamed_count:
+            plan.warnings.append(
+                f"출력 경로 충돌 {plan.conflict_renamed_count}개는 자동으로 새 이름으로 저장됩니다."
+            )
+
+        preflight = self.window._create_preflight_dialog(plan)
+        if preflight.exec() != self.window.dialog_accepted_code():
+            self.window.status_label.setText("실패 항목 재변환이 취소되었습니다")
+            return
+
+        self.state.plan = plan
+        self.state.tasks = plan.tasks
+        self.window._set_converting_state(True)
+        self.window.progress_bar.setMaximum(plan.runnable_count)
+        self.window.progress_bar.setValue(0)
+        self.state.conversion_start_time = time.time()
+        worker = self.window._create_conversion_worker(plan)
+        self.state.worker = worker
+        worker.progress_updated.connect(self.window._on_progress_updated)
+        worker.status_updated.connect(self.window._on_status_updated)
+        worker.task_completed.connect(self.window._on_task_completed)
+        worker.error_occurred.connect(self.window._on_error_occurred)
+        worker.finished.connect(self.window._on_worker_finished)
+        worker.start()
+        self.window.hwp_status_label.setText("🟡 한글 연결 중...")
+        self.window.toast.show_message(f"실패 {plan.runnable_count}개 재변환 시작", "🔁")
 
     def on_error_occurred(self, error_msg: str) -> None:
         self.window.toast.show_message("변환 중 오류 발생", "❌")
@@ -292,7 +374,9 @@ class ConversionController:
         self.window.progress_label.setText("0 / 0")
         self.window.status_label.setText("대기 중")
         summary = self.state.last_summary
-        if summary and summary.failed_count:
+        if summary and any("강제 종료는 비활성화" in warning for warning in summary.warnings):
+            self.window.hwp_status_label.setText("🟡 프로세스 추적 불가 (강제 종료 제한)")
+        elif summary and summary.failed_count:
             self.window.hwp_status_label.setText("🔴 마지막 작업 실패")
         elif summary and summary.canceled_count:
             self.window.hwp_status_label.setText("🟡 변환 취소됨")

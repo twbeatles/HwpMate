@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import QFileDialog, QMessageBox, QTableWidgetItem
 
 from ...constants import SCAN_BATCH_SIZE, SCAN_CANCEL_WAIT_MS, SUPPORTED_EXTENSIONS
 from ...logging_config import get_logger
-from ...path_utils import canonicalize_path
+from ...path_utils import canonicalize_path, make_path_key
 from ...workers.file_scan_worker import FileScanWorker
 from .state import MainWindowState
 
@@ -50,6 +50,13 @@ class FileSelectionController:
         self._clear_scan_state()
         return True
 
+    def wait_for_active_scan(self, wait_ms: int) -> bool:
+        """취소 없이 활성 스캔 종료를 대기한다."""
+        worker = self.state.scan_worker
+        if not worker or not worker.isRunning():
+            return True
+        return bool(worker.wait(wait_ms))
+
     def start_scan(
         self,
         input_paths: list[str],
@@ -72,6 +79,11 @@ class FileSelectionController:
         self.state.scan_new_file_count = 0
         self.state.scan_preview_count = 0
         self.state.scan_started_at = time.perf_counter()
+        if mode == "folder_preview":
+            self.invalidate_folder_scan_cache()
+            self.state.folder_scan_accum = []
+            self.state.folder_scan_folder = canonicalize_path(cleaned_inputs[0])
+            self.state.folder_scan_include_sub = include_sub
 
         self.state.scan_worker = FileScanWorker(
             cleaned_inputs,
@@ -88,12 +100,45 @@ class FileSelectionController:
 
     def start_folder_preview_scan(self, folder_path: str) -> None:
         self.window.status_label.setText("📂 폴더 스캔 중...")
+        # 전체 지원 확장자를 캐시하고, 표시 카운트만 현재 형식 기준으로 계산한다.
         self.start_scan(
             [folder_path],
             mode="folder_preview",
             include_sub=self.window.include_sub_check.isChecked(),
-            allowed_exts=set(self.window.task_planner.preview_allowed_extensions(self.state.selected_format)),
+            allowed_exts=set(SUPPORTED_EXTENSIONS),
         )
+
+    def invalidate_folder_scan_cache(self) -> None:
+        self.state.folder_scan_ready = False
+        self.state.folder_scan_files = []
+        self.state.folder_scan_accum = []
+
+    def get_folder_scan_cache(
+        self,
+        *,
+        folder_path: str,
+        include_sub: bool,
+    ) -> list[str] | None:
+        if not self.state.folder_scan_ready:
+            return None
+        folder_key = make_path_key(canonicalize_path(folder_path.strip()))
+        cached_key = make_path_key(self.state.folder_scan_folder) if self.state.folder_scan_folder else ""
+        if folder_key != cached_key:
+            return None
+        if bool(include_sub) != bool(self.state.folder_scan_include_sub):
+            return None
+        return list(self.state.folder_scan_files)
+
+    def _count_preview_convertible(self, paths: list[str]) -> int:
+        allowed = {
+            ext.lower()
+            for ext in self.window.task_planner.preview_allowed_extensions(self.state.selected_format)
+        }
+        count = 0
+        for path in paths:
+            if Path(path).suffix.lower() in allowed:
+                count += 1
+        return count
 
     def append_files_batch(self, files: list[str]) -> int:
         if not files:
@@ -136,7 +181,8 @@ class FileSelectionController:
             return
 
         if self.state.scan_mode == "folder_preview":
-            self.state.scan_preview_count += len(batch)
+            self.state.folder_scan_accum.extend(batch)
+            self.state.scan_preview_count = self._count_preview_convertible(self.state.folder_scan_accum)
 
     def on_scan_progress(self, current: int, total: int) -> None:
         if self.window.sender() is not self.state.scan_worker:
@@ -150,7 +196,8 @@ class FileSelectionController:
 
         if self.state.scan_mode == "folder_preview":
             self.window.status_label.setText(
-                f"📂 폴더 스캔 중... {current}/{total} 경로 처리 ({self.state.scan_preview_count}개 발견)"
+                f"📂 폴더 스캔 중... {current}/{total} 경로 처리 "
+                f"(전체 {len(self.state.folder_scan_accum)}개 / 변환가능 {self.state.scan_preview_count}개)"
             )
 
     def on_scan_finished(self, total_found: int, canceled: bool) -> None:
@@ -168,7 +215,7 @@ class FileSelectionController:
                 self.window.status_label.setText("추가할 새 파일이 없습니다")
             else:
                 self.window.status_label.setText(
-                    f"{self.state.scan_new_file_count}개 파일 추가됨 (총 {len(self.window.file_list)}개)"
+                    f"{self.state.scan_new_file_count}개 파일 추가됨 (총 {self.window.file_store.count}개)"
                 )
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
@@ -179,21 +226,31 @@ class FileSelectionController:
 
         if self.state.scan_mode == "folder_preview":
             if canceled:
+                self.invalidate_folder_scan_cache()
                 self.window.status_label.setText("폴더 스캔이 취소되었습니다")
-            elif self.state.scan_preview_count == 0:
-                self.window.status_label.setText("⚠️ 현재 포맷으로 변환 가능한 파일이 없습니다")
             else:
-                self.window.status_label.setText(f"📁 {self.state.scan_preview_count}개 변환 가능 파일 발견")
+                self.state.folder_scan_files = list(self.state.folder_scan_accum)
+                self.state.folder_scan_ready = True
+                self.state.scan_preview_count = self._count_preview_convertible(self.state.folder_scan_files)
+                if self.state.scan_preview_count == 0:
+                    self.window.status_label.setText("⚠️ 현재 포맷으로 변환 가능한 파일이 없습니다")
+                else:
+                    self.window.status_label.setText(
+                        f"📁 변환 가능 {self.state.scan_preview_count}개 "
+                        f"(스캔 전체 {len(self.state.folder_scan_files)}개)"
+                    )
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
-                    f"폴더 미리보기 스캔 완료: 발견={self.state.scan_preview_count}, "
-                    f"취소={canceled}, 소요={elapsed:.3f}s"
+                    f"폴더 미리보기 스캔 완료: 전체={len(self.state.folder_scan_files)}, "
+                    f"변환가능={self.state.scan_preview_count}, 취소={canceled}, 소요={elapsed:.3f}s"
                 )
 
     def on_scan_error(self, error_msg: str) -> None:
         if self.window.sender() is not self.state.scan_worker:
             return
         logger.error(f"파일 스캔 오류: {error_msg}")
+        if self.state.scan_mode == "folder_preview":
+            self.invalidate_folder_scan_cache()
         self.window.status_label.setText("파일 스캔 중 오류가 발생했습니다")
 
     def on_scan_worker_finished(self) -> None:
@@ -268,19 +325,19 @@ class FileSelectionController:
         for row in sorted(rows, reverse=True):
             self.window.file_table.removeRow(row)
 
-        self.window.status_label.setText(f"선택 파일 제거됨 (총 {len(self.window.file_list)}개)")
+        self.window.status_label.setText(f"선택 파일 제거됨 (총 {self.window.file_store.count}개)")
         self.update_file_count()
 
     def clear_all(self) -> None:
         if self._input_locked("변환 중에는 파일 목록을 변경할 수 없습니다"):
             return
-        if not self.window.file_list:
+        if self.window.file_store.count == 0:
             return
 
         reply = QMessageBox.question(
             self.window,
             "확인",
-            f"{len(self.window.file_list)}개 파일을 모두 제거하시겠습니까?",
+            f"{self.window.file_store.count}개 파일을 모두 제거하시겠습니까?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
@@ -294,12 +351,26 @@ class FileSelectionController:
         count = self.window.file_store.count
         self.window.file_count_label.setText(f"📄 파일: {count}개")
 
+    def refresh_folder_preview_count(self) -> None:
+        """포맷 변경 시 캐시된 전체 스캔에서 변환 가능 수만 다시 계산."""
+        if not self.state.folder_scan_ready:
+            return
+        self.state.scan_preview_count = self._count_preview_convertible(self.state.folder_scan_files)
+        if self.state.scan_preview_count == 0:
+            self.window.status_label.setText("⚠️ 현재 포맷으로 변환 가능한 파일이 없습니다")
+        else:
+            self.window.status_label.setText(
+                f"📁 변환 가능 {self.state.scan_preview_count}개 "
+                f"(스캔 전체 {len(self.state.folder_scan_files)}개)"
+            )
+
     def _clear_scan_state(self) -> None:
         self.state.scan_worker = None
         self.state.scan_mode = None
         self.state.scan_started_at = None
         self.state.scan_new_file_count = 0
         self.state.scan_preview_count = 0
+        self.state.folder_scan_accum = []
 
     def _input_locked(self, message: str = "변환 중에는 입력을 변경할 수 없습니다") -> bool:
         worker = self.state.worker

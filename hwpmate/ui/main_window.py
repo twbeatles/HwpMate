@@ -88,8 +88,6 @@ class MainWindow(QMainWindow):
         self.current_theme = self.config.get("theme", "dark")
 
         self.file_store = FileSelectionStore()
-        self.file_list = self.file_store.paths
-        self._file_set = self.file_store.path_keys
         self.task_planner = TaskPlanner()
 
         self.appearance_controller = AppearanceController(self, self.state, save_config)
@@ -420,7 +418,11 @@ class MainWindow(QMainWindow):
         return PreflightDialog(plan, self)
 
     def _create_result_dialog(self, summary: ConversionSummary) -> ResultDialog:
-        return ResultDialog(summary, self)
+        return ResultDialog(
+            summary,
+            self,
+            on_retry_failed=self.conversion_controller.retry_failed_tasks,
+        )
 
     def _create_conversion_worker(self, plan: PlannedConversion) -> ConversionWorker:
         return ConversionWorker(plan)

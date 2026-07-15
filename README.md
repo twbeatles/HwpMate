@@ -69,7 +69,10 @@ pytest
 
 - `pyrightconfig.json`을 리포지토리 기준 타입체크 설정으로 사용합니다.
 - `.editorconfig`로 `utf-8`, `LF`, 최종 개행 규칙을 고정해 인코딩 및 줄바꿈 혼선을 줄입니다.
-- 실제 사용자 데이터와 로그는 리포지토리 바깥 사용자 홈 디렉터리 아래에 저장됩니다.
+- 실제 사용자 데이터와 로그는 리포지토리 바깥 사용자 디렉터리에 저장됩니다.
+  - 설정: `~/.hwp_converter_config.json`
+  - 로그: `~/.hwp_converter/logs` 또는 `%LOCALAPPDATA%\HwpMate\logs`
+  - 단일 인스턴스 잠금: `%LOCALAPPDATA%\HwpMate\HwpMate.lock`
 - 실제 한글 COM 스모크는 관리자 권한 PowerShell에서 `python tools/hwp_com_smoke.py --input <샘플.hwp> --format PDF --output-dir <출력폴더>`로 보조 확인할 수 있습니다.
 
 ## 단축키

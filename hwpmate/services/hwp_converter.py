@@ -159,18 +159,30 @@ class HWPConverter:
         self.last_output_size: int | None = None
         self.last_output_mtime: float | None = None
         self.last_save_format: str | None = None
+        # True only when this instance successfully called CoInitialize itself.
+        self._com_apartment_owned = False
 
-    def initialize(self) -> bool:
-        """COM 초기화 및 한글 객체 생성."""
+    def initialize(self, *, manage_com_apartment: bool = True) -> bool:
+        """COM 초기화 및 한글 객체 생성.
+
+        manage_com_apartment=False 이면 호출 스레드가 이미 CoInitialize 한 경우
+        (ConversionWorker 등) 중복 초기화/해제를 하지 않는다.
+        """
         if self.is_initialized:
             return True
 
         pythoncom_module, win32_client_module = require_pywin32()
 
-        try:
-            pythoncom_module.CoInitialize()
-        except Exception as e:
-            logger.debug(f"CoInitialize 오류 (무시 가능): {e}")
+        if manage_com_apartment:
+            try:
+                pythoncom_module.CoInitialize()
+                self._com_apartment_owned = True
+            except Exception as e:
+                # 이미 동일 스레드에서 초기화된 경우 등은 무시하고 소유하지 않는다.
+                self._com_apartment_owned = False
+                logger.debug(f"CoInitialize 오류 (무시 가능): {e}")
+        else:
+            self._com_apartment_owned = False
 
         errors = []
         for progid in HWP_PROGIDS:
@@ -198,7 +210,10 @@ class HWPConverter:
                     self.process_tracking_warning = None
                     logger.info(f"앱 소유 한글 프로세스 추적: {sorted(self.owned_pids)}")
                 else:
-                    self.process_tracking_warning = "새로 생성된 한글 프로세스를 추적하지 못했습니다. 강제 종료는 비활성화됩니다."
+                    self.process_tracking_warning = (
+                        "새로 생성된 한글 프로세스를 추적하지 못했습니다. "
+                        "강제 종료는 비활성화됩니다. 변환 전 다른 한글 창을 닫으면 추적이 안정됩니다."
+                    )
                     logger.info(self.process_tracking_warning)
                 return True
 
@@ -207,6 +222,12 @@ class HWPConverter:
                 continue
 
         error_detail = "\n".join(errors)
+        if self._com_apartment_owned and pythoncom is not None:
+            try:
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
+            self._com_apartment_owned = False
         raise Exception(f"한글 COM 객체 생성 실패\n\n시도한 ProgID:\n{error_detail}")
 
     def convert_file(self, input_path, output_path, format_type="PDF") -> Tuple[bool, Optional[str]]:
@@ -321,8 +342,16 @@ class HWPConverter:
             logger.warning("추적된 한글 프로세스가 없어 강제 종료를 수행하지 않습니다.")
             return False
 
+        # PID 재사용 방지를 위해 종료 직전 한글 이미지명 프로세스인지 재확인한다.
+        live_hwp_pids = _snapshot_hwp_pids()
         killed_any = False
+        remaining: set[int] = set()
         for pid in sorted(self.owned_pids):
+            if pid not in live_hwp_pids:
+                logger.warning(
+                    f"PID={pid} 가 현재 한글 관련 프로세스가 아니거나 이미 종료되어 강제 종료를 건너뜁니다."
+                )
+                continue
             try:
                 result = subprocess.run(
                     ["taskkill", "/PID", str(pid), "/F"],
@@ -334,12 +363,13 @@ class HWPConverter:
                     killed_any = True
                     logger.warning(f"앱 소유 한글 프로세스를 강제 종료했습니다: PID={pid}")
                 else:
+                    remaining.add(pid)
                     logger.debug(f"PID 종료 실패 또는 이미 종료됨: PID={pid}, code={result.returncode}")
             except Exception as e:
+                remaining.add(pid)
                 logger.error(f"PID 강제 종료 실패: PID={pid}, 오류={e}")
 
-        if killed_any:
-            self.owned_pids.clear()
+        self.owned_pids = remaining
         return killed_any
 
     def cleanup(self) -> None:
@@ -361,8 +391,9 @@ class HWPConverter:
             self.owned_pids.clear()
             self.process_tracking_warning = None
 
-        if pythoncom is not None:
+        if self._com_apartment_owned and pythoncom is not None:
             try:
                 pythoncom.CoUninitialize()
             except Exception:
                 pass
+            self._com_apartment_owned = False

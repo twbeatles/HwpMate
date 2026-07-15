@@ -32,6 +32,30 @@ def test_build_tasks_in_file_mode_skips_same_format_entries(tmp_path: Path) -> N
     assert plan.skipped_tasks[0].status == "건너뜀"
 
 
+def test_build_tasks_in_folder_mode_uses_cached_file_paths(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    doc = source / "a.hwp"
+    doc.write_text("x", encoding="utf-8")
+    # 디스크에 더 있어도 캐시만 사용해야 한다.
+    (source / "ignored.hwp").write_text("x", encoding="utf-8")
+
+    planner = TaskPlanner()
+    plan = planner.build_tasks(
+        is_folder_mode=True,
+        format_type="PDF",
+        folder_path=str(source),
+        include_sub=True,
+        same_location=True,
+        output_path="",
+        file_paths=[],
+        folder_file_paths=[str(doc)],
+    )
+
+    assert len(plan.tasks) == 1
+    assert plan.tasks[0].input_file.name == "a.hwp"
+
+
 def test_build_tasks_in_folder_mode_uses_relative_output_paths(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()

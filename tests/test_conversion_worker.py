@@ -15,8 +15,10 @@ class StubConverter:
         self.progid_used = "Stub.Hwp"
         self.cleaned = False
         self.kill_called = False
+        self.manage_com_apartment_args: list[bool] = []
 
-    def initialize(self) -> bool:
+    def initialize(self, *, manage_com_apartment: bool = True) -> bool:
+        self.manage_com_apartment_args.append(manage_com_apartment)
         return True
 
     def convert_file(self, input_path, output_path, format_type="PDF"):
@@ -36,7 +38,8 @@ class StubConverter:
 
 
 class FailingInitConverter(StubConverter):
-    def initialize(self) -> bool:
+    def initialize(self, *, manage_com_apartment: bool = True) -> bool:
+        self.manage_com_apartment_args.append(manage_com_apartment)
         raise RuntimeError("init failed")
 
 
@@ -151,6 +154,67 @@ def test_conversion_worker_marks_remaining_tasks_as_canceled(tmp_path: Path) -> 
     assert summary.canceled_count == 1
     assert summary.skipped_count == 1
     assert any(task.status == "취소됨" for task in summary.tasks)
+
+
+def test_conversion_worker_marks_in_progress_failure_as_canceled(tmp_path: Path) -> None:
+    """취소 요청 후 COM 오류가 나도 실패가 아니라 취소로 집계한다."""
+    first = tmp_path / "a.hwp"
+    first.write_text("x", encoding="utf-8")
+    plan = PlannedConversion(
+        format_type="PDF",
+        same_location=True,
+        output_path="",
+        retry_count=0,
+        tasks=[ConversionTask(first, first.with_suffix(".pdf"))],
+    )
+    summaries = []
+    worker = ConversionWorker(
+        plan,
+        converter_factory=lambda: StubConverter(
+            results={"a.hwp": (False, "COM error")},
+            on_convert=lambda _: worker.cancel(),
+        ),
+    )
+    worker.task_completed.connect(lambda summary: summaries.append(summary))
+    worker.run()
+
+    task = summaries[0].tasks[0]
+    assert task.status == "취소됨"
+    assert "COM error" in (task.error or "")
+    assert summaries[0].canceled_count == 1
+    assert summaries[0].failed_count == 0
+
+
+def test_conversion_worker_progress_emits_completed_count(tmp_path: Path) -> None:
+    first = tmp_path / "a.hwp"
+    second = tmp_path / "b.hwp"
+    for path in (first, second):
+        path.write_text("x", encoding="utf-8")
+    plan = PlannedConversion(
+        format_type="PDF",
+        same_location=True,
+        output_path="",
+        tasks=[
+            ConversionTask(first, first.with_suffix(".pdf")),
+            ConversionTask(second, second.with_suffix(".pdf")),
+        ],
+    )
+    progress_events: list[tuple[int, int, str]] = []
+    created: list[StubConverter] = []
+
+    def factory() -> StubConverter:
+        converter = StubConverter(results={"a.hwp": (True, None), "b.hwp": (True, None)})
+        created.append(converter)
+        return converter
+
+    worker = ConversionWorker(plan, converter_factory=factory)
+    worker.progress_updated.connect(lambda cur, total, name: progress_events.append((cur, total, name)))
+    worker.run()
+
+    assert (1, 2, "a.hwp") in progress_events
+    assert (2, 2, "b.hwp") in progress_events
+    assert progress_events[-1][:2] == (2, 2)
+    assert created and created[0].manage_com_apartment_args == [False]
 
 
 def test_conversion_worker_emits_failed_summary_when_initialize_fails(tmp_path: Path) -> None:

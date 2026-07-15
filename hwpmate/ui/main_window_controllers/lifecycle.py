@@ -163,7 +163,7 @@ class LifecycleController:
 <ul>
 {format_html}
 </ul>
-<p>이미지 변환은 한글 설치 버전에 따라 저장 방식이 다를 수 있으며, 기본 출력 파일 생성 여부와 파일 크기로 성공을 판단합니다.</p>
+<p>이미지/HTML 변환은 한글 설치 버전에 따라 저장 방식이 다를 수 있으며, 기본 출력 파일과 같은 stem 기반 보조 산출물이 새로 생성·갱신되고 0바이트보다 클 때 성공으로 판단합니다.</p>
 
 <p><b>3. 단축키</b></p>
 <ul>
@@ -197,7 +197,7 @@ class LifecycleController:
 <ul>
 {supported_formats}
 </ul>
-<p>이미지 변환 결과는 한글 설치 버전에 따라 차이가 있을 수 있으며, 앱은 기본 출력 파일의 존재와 0바이트 초과 크기를 성공 기준으로 사용합니다.</p>
+<p>이미지/HTML 변환 결과는 한글 설치 버전에 따라 차이가 있을 수 있으며, 앱은 기본 출력 파일과 같은 stem 기반 보조 산출물의 생성·갱신 여부(0바이트 초과)를 성공 기준으로 사용합니다.</p>
 
 <p><b>요구사항:</b></p>
 <ul>
@@ -206,7 +206,14 @@ class LifecycleController:
 <li>관리자 권한</li>
 </ul>
 
-<p>© 2024-2025</p>
+<p><b>데이터 저장 위치:</b></p>
+<ul>
+<li>설정: 사용자 홈 <code>.hwp_converter_config.json</code></li>
+<li>로그: <code>~/.hwp_converter/logs</code> 또는 <code>%LOCALAPPDATA%\\HwpMate\\logs</code></li>
+<li>단일 인스턴스 잠금: <code>%LOCALAPPDATA%\\HwpMate\\HwpMate.lock</code></li>
+</ul>
+
+<p>© 2024-2026</p>
 """
         QMessageBox.about(self.window, "프로그램 정보", about_text)
 

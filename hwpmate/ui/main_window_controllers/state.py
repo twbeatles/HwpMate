@@ -22,6 +22,12 @@ class MainWindowState:
     scan_new_file_count: int = 0
     scan_preview_count: int = 0
     scan_started_at: float | None = None
+    # 폴더 미리보기 스캔 결과 캐시 (변환 계획 수립 시 재스캔 방지)
+    folder_scan_folder: str = ""
+    folder_scan_include_sub: bool = True
+    folder_scan_files: list[str] = field(default_factory=list)
+    folder_scan_accum: list[str] = field(default_factory=list)
+    folder_scan_ready: bool = False
     force_kill_pending: bool = False
     close_after_worker: bool = False
     drag_drop_initialized: bool = False

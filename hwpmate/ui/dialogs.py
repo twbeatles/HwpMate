@@ -139,6 +139,10 @@ class PreflightDialog(QDialog):
         warnings = list(plan.warnings)
         if blocking_errors:
             warnings.extend(f"변환 시작 차단: {error}" for error in blocking_errors)
+        warnings.append(
+            "강제 종료는 앱이 새로 띄운 한글 프로세스에만 적용됩니다. "
+            "이미 한글이 실행 중이면 프로세스 추적이 실패할 수 있으니 변환 전 다른 한글 창을 닫는 것을 권장합니다."
+        )
         if not warnings:
             warnings = ["추가 경고 없음"]
 
@@ -236,9 +240,12 @@ class ResultDialog(QDialog):
         self,
         summary: ConversionSummary,
         parent: Optional[QWidget] = None,
+        *,
+        on_retry_failed: Callable[[list[ConversionTask]], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.summary = summary
+        self._on_retry_failed = on_retry_failed
         self.setWindowTitle("변환 결과")
         self.setMinimumSize(640, 480)
         self.setModal(True)
@@ -289,6 +296,14 @@ class ResultDialog(QDialog):
             export_btn.setMaximumWidth(150)
             btn_layout.addWidget(export_btn)
 
+            if self._on_retry_failed is not None:
+                retry_btn = QPushButton("🔁 실패 항목 재변환")
+                retry_btn.setProperty("secondary", True)
+                retry_btn.setToolTip("실패한 파일만 다시 변환합니다")
+                retry_btn.clicked.connect(self._retry_failed)
+                retry_btn.setMaximumWidth(160)
+                btn_layout.addWidget(retry_btn)
+
         save_results_btn = QPushButton("💾 결과 저장")
         save_results_btn.setProperty("secondary", True)
         save_results_btn.setToolTip("전체 결과를 CSV 또는 JSON으로 저장합니다")
@@ -316,6 +331,14 @@ class ResultDialog(QDialog):
         label = QLabel(text)
         label.setProperty("heading", True)
         return label
+
+    def _retry_failed(self) -> None:
+        if self._on_retry_failed is None or not self.summary.failed_tasks:
+            return
+        callback = self._on_retry_failed
+        failed = list(self.summary.failed_tasks)
+        self.accept()
+        callback(failed)
 
     def _export_failed_list(self) -> None:
         file_path, _ = QFileDialog.getSaveFileName(

@@ -115,8 +115,8 @@ def test_conversion_controller_shows_skipped_only_result(monkeypatch: pytest.Mon
     shown = []
 
     class FakeResultDialog:
-        def __init__(self, summary, parent=None):
-            del parent
+        def __init__(self, summary, parent=None, **kwargs):
+            del parent, kwargs
             shown.append(summary)
 
         def exec(self):
@@ -184,6 +184,46 @@ def test_worker_finished_preserves_failed_hwp_status(monkeypatch: pytest.MonkeyP
     window.conversion_controller.on_worker_finished()
 
     assert "실패" in window.hwp_status_label.text()
+
+
+def test_retry_failed_tasks_builds_plan_and_starts_worker(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    failed_path = tmp_path / "a.hwp"
+    failed_path.write_text("x", encoding="utf-8")
+    failed = ConversionTask(failed_path, failed_path.with_suffix(".pdf"), status="실패", error="boom")
+    window.last_summary = ConversionSummary(format_type="PDF", tasks=[failed])
+    started: list[object] = []
+
+    class AcceptPreflight:
+        def __init__(self, plan, parent=None):
+            del plan, parent
+
+        def exec(self):
+            return window.dialog_accepted_code()
+
+    class FakeWorker:
+        def __init__(self, plan):
+            self.plan = plan
+            self.progress_updated = type("S", (), {"connect": lambda *a, **k: None})()
+            self.status_updated = type("S", (), {"connect": lambda *a, **k: None})()
+            self.task_completed = type("S", (), {"connect": lambda *a, **k: None})()
+            self.error_occurred = type("S", (), {"connect": lambda *a, **k: None})()
+            self.finished = type("S", (), {"connect": lambda *a, **k: None})()
+
+        def start(self):
+            started.append(self.plan)
+
+    monkeypatch.setattr(window, "_create_preflight_dialog", lambda plan: AcceptPreflight(plan))
+    monkeypatch.setattr(window, "_create_conversion_worker", lambda plan: FakeWorker(plan))
+    monkeypatch.setattr(window.toast, "show_message", lambda *a, **k: None)
+
+    window.conversion_controller.retry_failed_tasks([failed])
+
+    assert len(started) == 1
+    assert started[0].runnable_count == 1  # type: ignore[attr-defined]
+    assert window.is_converting is True
 
 
 def test_native_drop_controller_routes_file_mode_paths(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:

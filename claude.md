@@ -18,6 +18,8 @@
 ### COM 초기화
 - 메인 스레드와 워커 스레드에서 COM 초기화/해제를 분리합니다.
 - `ConversionWorker.run()`의 `pythoncom.CoInitialize()` / `CoUninitialize()` 호출을 제거하지 않습니다.
+- 워커가 apartment를 소유하므로 `HWPConverter.initialize(manage_com_apartment=False)`로 호출해 컨버터의 중복 CoInit/Uninit을 피합니다.
+- 스모크 스크립트 등 단독 사용 시에는 기본값 `manage_com_apartment=True`를 유지합니다.
 
 ### 보안 모듈 등록
 - `RegisterModule("FilePathCheckDLL", "FilePathCheckerModuleExample")`는 외부 자동화 경고 완화를 위해 유지합니다.
