@@ -21,6 +21,7 @@ _TOAST_ACCENT_BY_ICON: dict[str, str] = {
     "⚠️": "#f59e0b",
     "❌": "#ef4444",
     "🛑": "#ef4444",
+    "⏭️": "#94a3b8",
 }
 
 

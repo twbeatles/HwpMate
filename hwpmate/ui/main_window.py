@@ -3,6 +3,7 @@ from __future__ import annotations
 import platform
 import sys
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import QTimer
@@ -239,6 +240,22 @@ class MainWindow(QMainWindow):
         # showEvent 재진입/첫 paint 중 native filter 설치 시 QtCore AV 를 피하기 위해
         # 이벤트 루프 한 틱 뒤로 미룬다.
         QTimer.singleShot(0, self.native_drop_controller.initialize_native_drag_drop)
+        # 설정에서 복원한 폴더가 있으면 미리보기 스캔 (콜드 UI 재스캔 방지)
+        QTimer.singleShot(0, self._maybe_start_restored_folder_scan)
+
+    def _maybe_start_restored_folder_scan(self) -> None:
+        if not self.folder_radio.isChecked():
+            return
+        folder = self.folder_entry.text().strip()
+        if not folder:
+            return
+        if self.state.folder_scan_ready:
+            return
+        if self.state.scan_worker and self.state.scan_worker.isRunning():
+            return
+        if not Path(folder).is_dir():
+            return
+        self.file_selection_controller.start_folder_preview_scan(folder)
 
     def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
         if a0 is None:
@@ -407,9 +424,6 @@ class MainWindow(QMainWindow):
 
     def _on_task_completed(self, summary_obj: object) -> None:
         self.conversion_controller.on_task_completed(summary_obj)
-
-    def _on_error_occurred(self, error_msg: str) -> None:
-        self.conversion_controller.on_error_occurred(error_msg)
 
     def _on_worker_finished(self) -> None:
         self.conversion_controller.on_worker_finished()

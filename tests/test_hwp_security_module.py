@@ -14,6 +14,8 @@ def test_ensure_hwp_security_module_writes_registry_and_installs_dll(
     runtime_dir = tmp_path / "runtime_security"
     monkeypatch.setattr(sec, "_runtime_security_dir", lambda: runtime_dir)
     monkeypatch.setattr(sec, "find_bundled_security_dll", lambda: dll_src)
+    # 단위 테스트용 가짜 DLL — 무결성 검증을 우회
+    monkeypatch.setattr(sec, "verify_dll_integrity", lambda path, **kwargs: None)
 
     written: dict[str, str] = {}
 
@@ -47,3 +49,27 @@ def test_ensure_hwp_security_module_fails_without_dll(tmp_path: Path, monkeypatc
     assert ok is False
     assert alias is None
     assert "찾을 수 없" in msg or "DLL" in msg
+
+
+def test_verify_dll_integrity_rejects_mismatch(tmp_path: Path) -> None:
+    dll = tmp_path / "bad.dll"
+    dll.write_bytes(b"not-the-expected-content")
+
+    try:
+        sec.verify_dll_integrity(dll)
+        raised = False
+    except ValueError as exc:
+        raised = True
+        assert "무결성" in str(exc)
+
+    assert raised is True
+
+
+def test_verify_dll_integrity_accepts_known_hash(tmp_path: Path, monkeypatch) -> None:
+    dll = tmp_path / "ok.dll"
+    content = b"known-content-for-hash"
+    dll.write_bytes(content)
+    expected = sec.sha256_file(dll)
+    monkeypatch.setattr(sec, "EXPECTED_DLL_SHA256", expected)
+
+    sec.verify_dll_integrity(dll, expected_sha256=expected)

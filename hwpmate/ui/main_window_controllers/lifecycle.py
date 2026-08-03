@@ -237,6 +237,9 @@ class LifecycleController:
         self.window.config["overwrite"] = self.window.overwrite_check.isChecked()
         self.window.config["backup_enabled"] = self.window.backup_check.isChecked()
         self.window.config["retry_count"] = self.window.retry_spin.value()
+        auto_accept = getattr(self.window, "auto_accept_security_check", None)
+        if auto_accept is not None:
+            self.window.config["auto_accept_security_dialog"] = auto_accept.isChecked()
 
         self.window.config["folder_path"] = self.window.folder_entry.text().strip()
         self.window.config["output_path"] = self.window.output_entry.text().strip()

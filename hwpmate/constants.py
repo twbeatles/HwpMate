@@ -45,6 +45,10 @@ CONFIG_VERSION = 2
 SCAN_BATCH_SIZE = 100
 SCAN_CANCEL_WAIT_MS = 2000
 FOLDER_SCAN_WAIT_MS = 120_000
+# 폴더 미리보기 캐시 최대 유효 시간 (초). 초과 시 변환 전 재스캔.
+FOLDER_SCAN_CACHE_MAX_AGE_SECONDS = 300
+# 캐시 신선도 샘플 검사 개수 (앞에서부터)
+FOLDER_SCAN_CACHE_SAMPLE_SIZE = 24
 
 HWP_PROGIDS = [
     "HWPControl.HwpCtrl.1",
@@ -67,3 +71,15 @@ PRINT_SETTINGS_NOTICE = (
 
 # 연결 중 한글 창 전면화 폴링 간격 (ms) — Toolhelp 기반이라 콘솔 플래시 없음
 HWP_FOREGROUND_POLL_MS = 800
+# 보안 모듈 등록 성공 후 전면화만 유지할 때 완화 간격
+HWP_FOREGROUND_POLL_MS_RELAXED = 2500
+
+# 「모두 허용」 자동 클릭 보호
+SECURITY_AUTO_CLICK_COOLDOWN_SECONDS = 1.5
+SECURITY_AUTO_CLICK_MAX_PER_SESSION = 40
+
+# 한컴 FilePathCheckerModuleExample.dll 번들 무결성 (SHA-256)
+# 파일 교체 시 이 값을 함께 갱신해야 한다.
+SECURITY_MODULE_DLL_SHA256 = (
+    "9ac5b97c47ac8aed1e8bca27a3eef39411361d8f68c262509f0c40a8f9d21bb6"
+)

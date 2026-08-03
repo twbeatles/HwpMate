@@ -7,7 +7,8 @@
 - v8.7 반영 일자: 2026-04-27
 - 기능 리스크 보강 일자: 2026-05-12
 - MainWindow 컨트롤러 리팩토링 반영 일자: 2026-06-10
-- 대상 저장소: `D:\twbeatles-repos\HwpMate`
+- 보안 세션·계획 잠금·DLL 무결성 반영 일자: 2026-08-03
+- 대상 저장소: `D:\github\HwpMate`
 - 분석 목적: "다양한 기능 추가"를 위한 현재 구조, 제약, 확장 포인트 파악
 
 ## 2. 참고한 문서
@@ -37,6 +38,9 @@
 | `claude.md` | 추적 | 핵심 로직 보존 지침(변경 주의사항) |
 | `gemini.md` | 추적 | 유지보수/확장 지침(절대 변경 금지 영역 포함) |
 | `update_history.md` | 추적 | 버전 이력, 기술적 문제 해결 기록 |
+| `PROJECT_AUDIT.md` | 추적 | 기능 감사 리포트·권장안 반영 상태 |
+| `hwpmate/resources/security/` | 추적 | FilePathCheck DLL + README (빌드 필수) |
+| `hwpmate/services/hwp_security_*.py` | 추적 | 보안 모듈 설치·세션 정책 |
 
 현재 구조는 `hwpmate/` 패키지 기준의 모듈 분리 아키텍처이며, 루트 래퍼와 기존 배포 흐름은 유지됩니다.
 
@@ -59,10 +63,12 @@
 | `models.py` | `AppConfig`, `ConversionTask`, `PlannedConversion`, `ConversionSummary`, `FormatSpec` 데이터 모델 |
 | `services/file_selection_store.py` | 순서 유지 + 대소문자 비민감 중복 제거 |
 | `services/task_planner.py` | 모드별 작업 생성, 동일 형식 건너뜀 분리, 출력 충돌 해소 |
-| `services/hwp_converter.py` | COM 연결/문서 열기/SaveAs/정리 담당 |
+| `services/hwp_converter.py` | COM 연결/문서 열기/SaveAs/정리·Toolhelp PID 담당 |
+| `services/hwp_security_module.py` | 보안승인 DLL 설치·SHA-256·HKCU 등록 |
+| `services/hwp_security_session.py` | 전면화/자동 클릭 세션 정책 |
 | `workers/file_scan_worker.py` | 파일/폴더를 비동기 배치 스캔 |
-| `workers/conversion_worker.py` | 작업 리스트 순차 변환, 백업, 취소/요약 집계, 안전한 강제 종료 위임 |
-| `windows_integration.py` | 관리자 권한에서도 동작하는 네이티브 DnD 처리 |
+| `workers/conversion_worker.py` | 작업 리스트 순차 변환, 백업, 취소/요약 집계, engine_status 시그널 |
+| `windows_integration.py` | 네이티브 DnD·한글 보안 창 전면화·모두 허용 best-effort |
 | `ui/theme.py`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs.py` | 테마/토스트/위젯/사전 점검/결과 다이얼로그 |
 | `ui/main_window.py` | `MainWindow` import 경로를 유지하는 조립 루트와 호환 래퍼 |
 | `ui/main_window_ui.py` | 콜백 객체 기반 메인 윈도우 레이아웃 빌더 |
@@ -77,7 +83,7 @@
 - 설정 파일: `%USERPROFILE%\.hwp_converter_config.json`
 - 기본 설정 키:
   - `config_version`, `theme`, `mode`, `format`, `include_sub`, `same_location`, `overwrite`
-  - `backup_enabled`, `retry_count`
+  - `backup_enabled`, `retry_count`, `auto_accept_security_dialog`
 - 추가 저장 키:
   - `folder_path`, `output_path`, `last_folder`, `last_output`
 - 런타임 주요 상태:

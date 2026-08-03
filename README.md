@@ -19,8 +19,8 @@
 - 변환 시작 전 사전 점검 다이얼로그에서 실행 대상, 건너뜀, 출력 충돌 조정, 입력 파일/출력 폴더 상태, 백업/재시도 설정을 확인할 수 있습니다.
 - 한글 COM 허용·보안 창이 뒤에 가려질 수 있어, 변환 연결 중 한글 창 전면화와 안내 토스트를 제공합니다.
 - 프로세스 조회는 `tasklist` 대신 Win32 Toolhelp를 사용해 변환 중 콘솔 창이 뜨지 않습니다.
-- 한컴 오토메이션 보안승인 모듈(DLL)을 앱이 자동 설치·레지스트리 등록해 파일별 허용 팝업을 억제합니다.
-- 모듈 준비에 실패할 때만 허용 창이 뜨며, 변환 중 보조로 '모두 허용' 자동 시도를 유지합니다.
+- 한컴 오토메이션 보안승인 모듈(DLL)을 앱이 자동 설치·레지스트리 등록해 파일별 허용 팝업을 억제합니다. 설치 전 SHA-256 무결성을 검증합니다.
+- 모듈 준비에 실패할 때만 허용 창이 뜨며, 변환 중 보조로 '모두 허용' 자동 시도를 할 수 있습니다(옵션으로 끌 수 있음). 모듈 등록 성공 시 자동 클릭은 생략됩니다.
 - 토스트는 변환 시작·완료·경고 등 짧은 안내를 화면 우측 하단에 띄우며, 배경은 거의 불투명한 슬레이트 톤(`#0f172a`), 본문은 **흰색 굵은 글씨**로 가독성을 맞춥니다.
 - PDF·이미지 등 일부 형식은 한컴오피스 인쇄/용지 설정에 따라 결과가 달라질 수 있음을 사전 점검·도움말에 안내합니다.
 - 변환 전 원본을 `backup` 폴더에 자동 백업하며, 필요 시 백업을 끌 수 있습니다.
@@ -32,8 +32,10 @@
 - 실패 목록 TXT와 전체 결과 CSV/JSON 저장을 지원하며, 결과에는 산출 파일/크기/수정 시각/COM 형식 감사 정보가 포함됩니다.
 - 결과 TXT/CSV/JSON과 설정 파일은 임시 파일 작성 후 교체해 부분 저장 위험을 줄입니다.
 - 단일 인스턴스 잠금과 변환 중 입력/단축키/드롭 차단으로 중복 실행과 상태 꼬임을 줄입니다.
+- 폴더 스캔 대기·작업 계획 중(`is_planning`)에도 시작/입력/드롭 재진입을 막습니다.
+- 폴더 미리보기 캐시는 만료·샘플 존재 검증 후 사용하며, 캐시 없으면 비동기 스캔 후 변환합니다(UI 스레드 전체 재스캔 없음).
 - 강제 종료는 앱이 직접 띄운 한글 프로세스에만 제한적으로 적용합니다.
-- `pyright` 기준 정적 타입 검사를 통과하도록 관리합니다.
+- `pyright`·`pytest` 기준 정적 검사와 단위 테스트를 통과하도록 관리합니다.
 
 ## 실행 환경
 
@@ -96,24 +98,24 @@ pytest
 
 ```text
 HwpMate/
-├── hwptopdf-hwpx_v4.py
+├── hwptopdf-hwpx_v4.py          # 배포/실행 래퍼
 ├── legacy/
-│   └── hwptopdf-hwpx v3.py
+│   └── hwptopdf-hwpx v3.py      # 레거시 참고용
 ├── hwpmate/
-│   ├── app.py
-│   ├── app_instance.py
-│   ├── bootstrap.py
-│   ├── constants.py
-│   ├── config_repository.py
-│   ├── logging_config.py
-│   ├── models.py
-│   ├── path_utils.py
-│   ├── windows_integration.py
+│   ├── app.py / bootstrap.py / app_instance.py
+│   ├── constants.py / config_repository.py / models.py
+│   ├── path_utils.py / logging_config.py
+│   ├── windows_integration.py  # 네이티브 DnD, 한글 창 전면화
+│   ├── resources/security/     # FilePathChecker 보안 모듈 DLL (빌드 필수)
 │   ├── services/
-│   │   └── artifact_policy.py
-│   ├── workers/
-│   └── ui/
-│       └── main_window_controllers/
+│   │   ├── artifact_policy.py
+│   │   ├── hwp_converter.py
+│   │   ├── hwp_security_module.py   # DLL 설치·SHA-256·레지스트리
+│   │   ├── hwp_security_session.py  # 전면화/자동 클릭 정책
+│   │   ├── file_selection_store.py
+│   │   └── task_planner.py
+│   ├── workers/                # 스캔·변환 QThread
+│   └── ui/                     # MainWindow, 컨트롤러, 토스트, 다이얼로그
 ├── tests/
 ├── tools/
 │   └── hwp_com_smoke.py
@@ -123,6 +125,7 @@ HwpMate/
 ├── README.md
 ├── HWP_COM_SMOKE_TEST_CHECKLIST.md
 ├── PROJECT_STRUCTURE_ANALYSIS.md
+├── PROJECT_AUDIT.md
 ├── update_history.md
 ├── claude.md
 └── gemini.md
@@ -142,6 +145,7 @@ HwpMate/
 - [update_history.md](update_history.md): 기능 변화와 유지보수 이력
 - [HWP_COM_SMOKE_TEST_CHECKLIST.md](HWP_COM_SMOKE_TEST_CHECKLIST.md): 실제 한글 COM 수동 검증 체크리스트
 - [PROJECT_STRUCTURE_ANALYSIS.md](PROJECT_STRUCTURE_ANALYSIS.md): 아키텍처와 확장 포인트 분석
+- [PROJECT_AUDIT.md](PROJECT_AUDIT.md): 기능 감사 리포트 (권장안 반영 상태 포함)
 - [claude.md](claude.md): Claude 계열 협업 가이드
 - [gemini.md](gemini.md): Gemini 계열 협업 가이드
 

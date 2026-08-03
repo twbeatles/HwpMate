@@ -42,7 +42,13 @@ class ConfigRepository:
         if merged["format"] not in FORMAT_TYPES:
             repair("format", default_config.format)
 
-        bool_keys = {"include_sub", "same_location", "overwrite", "backup_enabled"}
+        bool_keys = {
+            "include_sub",
+            "same_location",
+            "overwrite",
+            "backup_enabled",
+            "auto_accept_security_dialog",
+        }
         for key in bool_keys:
             value = merged.get(key)
             if isinstance(value, bool):

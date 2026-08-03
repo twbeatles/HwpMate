@@ -1,32 +1,32 @@
 # Project Audit
 
-**감사 일자:** 2026-07-15  
-**후속 구현:** 2026-07-15 (본 문서 권장안 1~3단계 반영 완료, `update_history.md` 참고)  
+**감사 일자:** 2026-08-03 (재감사)  
+**후속 구현:** 2026-08-03 — 본 문서 1~3단계 권장안 반영 (`update_history.md` 「재감사 권장안 구현」)  
+**감사 초점:** 직전 감사 권장안 반영 **이후** 전체 기능 구현 상태  
 **대상:** HwpMate (`hwptopdf-hwpx_v4.py` → `hwpmate/`)  
 **방법:** README.md / Claude.md 정독 → CodeGraph MCP 구조·호출 관계 분석 → 필요 시 핵심 소스 확인 → `pytest` / `pyright` 보조 검증  
-**범위:** 기능 구현 관점 감사 후, 권장 수정안 구현 완료
+
+| 검증 (권장안 구현 후) | 결과 |
+|------|------|
+| `python -m pytest -q` | **98 passed** |
+| `python -m pyright .` | **0 errors / 0 warnings** |
+| 전체 기능 위험도 (구현 전 재감사) | **Low–Medium** → 계획 잠금·연결 구간 정책 반영 후 잔여는 COM 환경 의존 위주 |
 
 ---
 
 ## 1. Executive Summary
 
-HwpMate는 한컴오피스 한글 COM 자동화를 쓰는 **Windows 전용 일괄 변환 GUI**다. 2026-05~06 구간에서 변환 중 busy guard, 보조 산출물 충돌 회피, 원자 저장, 단일 인스턴스 잠금, Open 실패 정리 등이 이미 보강되어 있고, 현재 자동 검증 기준은 안정적이다.
+HwpMate는 한컴오피스 한글 COM으로 HWP/HWPX를 일괄 변환하는 Windows 전용 PyQt6 앱이다. 직전 감사 이후 **보안 모듈 SHA-256**, **소유 PID 우선 전면화**, **모듈 성공 시 자동 클릭 생략**, **폴더 스캔 wait 후 캐시 확정**, **`HwpSecuritySession`**, **자동 허용 설정 토글**, **pyright 클린**이 반영되어 이전 High 이슈의 상당수가 닫혔다.
 
-| 항목 | 결과 |
-|------|------|
-| `python -m pytest -q` | **67 passed** (약 7.4s) |
-| `python -m pyright .` | **0 errors / 0 warnings** |
-| 전체 기능 위험도 | **Medium** (일반 경로 Low–Medium, COM/대량 폴더/강제 종료 경로 Medium–High) |
+**잔여 리스크는 “대량/경계/COM 환경”에 집중**된다. 자동 검증(93 tests + pyright)은 건강하다. 다만 연결 직후 폴링 창구, 스캔 대기 중 `processEvents` 재진입, 폴더 캐시 콜드 경로·신선도, 문서 드리프트는 여전히 기능적으로 문제를 만들 수 있다.
 
-**핵심 잔여 리스크 (코드 근거 있음):**
+**후속 구현으로 해소된 항목 (2026-08-03):**  
+1~4번(계획 잠금, 연결 전 자동 클릭 금지, 콜드 경로 비동기 스캔, 캐시 만료·신선도)은 코드에 반영됨.  
 
-1. **폴더 모드 변환 시작 시 GUI 스레드 동기 재스캔** — 대용량 폴더에서 UI 정지 가능  
-2. **취소 중 진행 파일 상태 분류 오류** — 실패 COM 오류가 있으면 `취소됨` 대신 `실패`로 집계  
-3. **워커·컨버터 이중 `CoInitialize`/`CoUninitialize`** — 아파트 참조 카운트 불균형 가능성  
-4. **강제 종료 PID 재사용 위험** — 추적 PID에 `taskkill /F`만 수행, 재사용 검증 없음  
-5. **프로세스 추적 실패 시 강제 종료 불가** — 이미 실행 중인 한글에 attach 되면 응답 없음 상태로 남을 수 있음  
+**구조적으로 남는 한계:**  
+5. **프로세스 추적 실패(선실행 한글 attach) 시 강제 종료 불가** — 전체 Hwp kill 금지는 Claude.md 정책  
 
-이전 감사(2026-06-11)에서 닫힌 항목(중복 시작, 보조 산출물 충돌, Open False Clear, 설정 저장 실패 전파 등)은 현재 코드에서도 유지되고 있다. 남은 문제는 **COM 환경 의존성**과 **대량 입력·취소·강제 종료 경계**에 집중되어 있다.
+이전 감사 High(캐시 race, 전역 전면화+자동 클릭, pyright 실패)는 **현재 코드 기준으로 해소 또는 완화**된 것으로 재확인했다.
 
 ---
 
@@ -34,289 +34,239 @@ HwpMate는 한컴오피스 한글 COM 자동화를 쓰는 **Windows 전용 일�
 
 ### 2.1 목적과 규칙 (README / Claude.md)
 
-- **목적:** HWP/HWPX → PDF, HWPX, DOCX, ODT, HTML, RTF, TXT, PNG/JPG/BMP/GIF 일괄 변환  
-- **스택:** PyQt6 UI, pywin32 COM, PyInstaller 배포 (`HWP변환기_v8.7.exe`, `uac_admin=True`)  
-- **환경:** Windows 10/11, Python 3.10+, 한컴오피스 한글, 관리자 권한 사실상 필수  
-- **유지보수 중심:** `hwpmate/` 패키지. `legacy/hwptopdf-hwpx v3.py`는 참고용  
-- **깨지면 안 되는 로직:** SaveAs 2→3 인자 폴백, 워커 COM 초기화, 보안 모듈 등록, 네이티브 DnD, 백업 실패 비중단, 성공=산출물 갱신·비어 있지 않음, 동일 형식 건너뜀, 단일 인스턴스, 소유 PID만 강제 종료  
+| 항목 | 내용 |
+|------|------|
+| 목적 | HWP/HWPX → PDF·문서·이미지 일괄 변환 |
+| 스택 | PyQt6, pywin32 COM, PyInstaller (`HWP변환기_v8.7.exe`, `uac_admin=True`) |
+| 환경 | Windows 10/11, Python 3.10+, 한컴 한글, 관리자 권한 사실상 필수 |
+| 깨지면 안 되는 로직 | SaveAs 2→3 폴백, 워커 COM apartment, 보안 모듈 실패 가시화, 네이티브 DnD, 백업 실패 비중단, artifact 성공 판정, 동일 형식 건너뜀, 단일 인스턴스, **소유 PID만** 강제 종료 |
 
-### 2.2 아키텍처 (CodeGraph + 패키지 구조)
+### 2.2 아키텍처 (CodeGraph + 패키지)
 
 ```text
 hwptopdf-hwpx_v4.py
-  └─ hwpmate.bootstrap.main
-       └─ hwpmate.app.main
-            ├─ pywin32 / is_admin / SingleInstanceLock
-            ├─ enable_drag_drop_for_admin (정책 허용 시)
-            └─ MainWindow
-                 ├─ AppearanceController      (테마·형식·busy UI)
-                 ├─ FileSelectionController   (스캔·파일 목록)
-                 ├─ ConversionController      (계획·워커·결과)
-                 ├─ NativeDropController      (WM_DROPFILES)
-                 └─ LifecycleController       (메뉴·트레이·종료·설정)
+  └─ hwpmate.app.main
+       ├─ pywin32 · is_admin · SingleInstanceLock
+       ├─ enable_drag_drop_for_admin (정책)
+       └─ MainWindow
+            ├─ FileSelectionController  (스캔·캐시·wait+processEvents)
+            ├─ ConversionController     (계획·워커·HwpSecuritySession 폴링)
+            ├─ Appearance / NativeDrop / Lifecycle
+            └─ ToastManager
 ```
 
-**CodeGraph blast radius 요약 (대표):**
+**CodeGraph 호출 흐름 (핵심):**
 
-| 심볼 | 주요 호출자 / 영향 |
-|------|-------------------|
-| `ConversionWorker` | `MainWindow` 생성·시그널, 테스트 `test_conversion_worker` |
-| `start_conversion` | 단축키/버튼 → 중복 시작 차단·preflight·워커 start |
-| `HWPConverter.convert_file` | 워커 재시도 루프, SaveAs 폴백·artifact snapshot |
-| `TaskPlanner.build_tasks` / `resolve_output_conflicts` | 변환 계획·충돌 리네임, `artifact_policy` 공유 |
-| `save_config` / `ConfigRepository` | 종료·테마·변환 시작 시 설정 영속화 |
-| `SingleInstanceLock` | `app.main` 단일 실행 |
+`start_conversion` → (선택) `wait_for_active_scan` → `collect_tasks` → `TaskPlanner.build_tasks` → preflight → `ConversionWorker` → `HWPConverter.initialize`(`ensure_hwp_security_module`) → `engine_status_updated` → `HwpSecuritySession.apply_engine_status` → 파일 루프 `convert_file` → `ConversionSummary`.
+
+| 심볼 | 영향 / 테스트 |
+|------|----------------|
+| `start_conversion` / `collect_tasks` | MainWindow 단축키·버튼; 컨트롤러 테스트 |
+| `build_tasks` | conversion 다수 호출; `test_task_planner` |
+| `HwpSecuritySession` | state·폴링; `test_hwp_security_session` |
+| `ensure_hwp_security_module` | converter initialize; 단위 테스트(+무결성) |
+| `kill_owned_processes` | 강제 종료; converter 테스트 있음 / Protocol 경로 약함 |
 
 ### 2.3 주요 실행 흐름
 
-1. **기동:** `app.main` → pywin32 검사 → 관리자 아니면 종료 → DnD 정책 → `QLockFile` → `MainWindow`  
-2. **입력:** 폴더 미리보기/`FileScanWorker` 또는 파일 추가 스캔 → `FileSelectionStore` 중복 제거  
-3. **계획:** `TaskPlanner.build_tasks` → 동일 확장자 건너뜀 → `resolve_output_conflicts` (기본+보조 산출물)  
-4. **사전 점검:** `PreflightDialog` (입력 존재/읽기, 출력 쓰기, ProgID)  
-5. **변환:** `ConversionWorker.run` → 워커 COM 초기화 → `HWPConverter.initialize` → 파일별 백업·재시도·`convert_file`  
-6. **성공 판정:** Open/SaveAs False 거부, 전후 artifact snapshot 비교, size>0, Clear 정리  
-7. **결과:** `ConversionSummary` → 토스트/`ResultDialog` → TXT·CSV·JSON 원자 저장  
-8. **종료/취소:** cancel 플래그 → (타임아웃 시) `kill_owned_processes` → 설정 저장  
+1. 기동: 관리자·단일 인스턴스·DnD 정책 → MainWindow  
+2. 입력: 폴더 미리보기 캐시 또는 파일 스캔  
+3. 계획: 캐시 우선 / 콜드 시 UI 재스캔, 동일 형식 건너뜀, 출력 충돌 조정  
+4. 사전 점검: Preflight (+ 인쇄·허용 안내)  
+5. 변환: 보안 DLL 설치·해시·레지스트리 → RegisterModule → Open/SaveAs → artifact 판정  
+6. UI 폴링: 소유 PID 우선 전면화, 모듈 실패 시에만 자동 클릭(쿨다운·상한·옵션)  
+7. 결과: Summary / 토스트 / ResultDialog / 원자 저장 CSV·JSON·TXT  
 
-### 2.4 문서 vs 구현 정합 (요약)
+### 2.4 문서 vs 구현 정합
 
-| 문서 주장 | 구현 상태 |
-|-----------|-----------|
-| SaveAs 2/3 인자 폴백 | 일치 (`hwp_converter.convert_file`) |
-| 변환 중 입력/드롭/시작 차단 | 일치 (컨트롤러 busy guard) |
-| 보조 산출물 성공/충돌 반영 | 일치 (`artifact_policy`) |
-| 단일 인스턴스 | 일치 (`app_instance`) |
-| 소유 PID만 강제 종료 | 일치 (단, 추적 실패 시 비활성) |
-| 사용법/정보 문구 “기본 출력 파일만 성공 기준” | **불일치** — 코드는 보조 산출물도 성공 인정 |
-| README 지원 형식·버전 8.7 | 일치 (`constants.VERSION`, `FORMAT_TYPES`) |
+| 문서 주장 | 상태 |
+|-----------|------|
+| 보안 DLL + SHA-256 + LOCALAPPDATA | 일치 |
+| 모듈 성공 시 자동 클릭 생략·옵션 off 가능 | 일치 |
+| Toolhelp PID, 소유 PID 강제 종료 | 일치 |
+| SaveAs 폴백·보조 산출물 성공 판정 | 일치 |
+| `pyright` / `pytest` 통과 | **일치** (재감사 시점) |
+| Claude.md 구조에 `hwp_security_module` / `hwp_security_session` | **미기재** (문서 갭) |
+| `PROJECT_STRUCTURE_ANALYSIS.md` (2026-06 스냅샷) | **구식** — 보안 세션·SHA-256·설정 키 미반영 |
+| README 구조 트리에 security 리소스 상세 | 부분 일치 (본문 기능 설명은 최신) |
 
 ---
 
 ## 3. High-Risk Issues
 
-> 이전 감사에서 **완료**로 닫힌 항목은 재발 여부를 코드로 확인했고, 아래는 **현재 잔여** 이슈다.  
-> 스타일/취향 지적은 제외했다.
+> 직전 감사에서 **해소된 항목**은 재발 여부만 확인하고, 아래는 **현재 잔여** 이슈다.
 
-### 3.1 폴더 모드 변환 시작 시 UI 스레드 동기 재스캔
+### 3.1 폴더 스캔 대기 중 `processEvents` 재진입
 
-* **위치:** `TaskPlanner.build_tasks` (folder 분기) ← `ConversionController.collect_tasks` ← `start_conversion`  
-* **문제:** 폴더 미리보기는 `FileScanWorker`로 비동기인데, 변환 시작 시 `build_tasks`가 **메인(UI) 스레드에서 `iter_supported_files`로 전체 트리를 다시 순회**한다.  
-* **영향:** 대량 파일/깊은 트리는 사전 점검 다이얼로그 전까지 UI 정지(응답 없음) 가능. 미리보기 결과와 실제 실행 목록도 시점 차로 어긋날 수 있다.  
-* **근거:**
-  - `file_selection.start_folder_preview_scan` → 비동기 `FileScanWorker`
-  - `conversion.collect_tasks` → `task_planner.build_tasks` → 폴더 모드에서 동기 `iter_supported_files`  
-* **권장 수정 방향:**
-  - 미리보기 스캔 결과를 캐시해 `build_tasks` 입력으로 재사용하거나
-  - 변환 계획 수립을 워커/비동기 단계로 분리하고 preflight 직전 UI 로딩 표시  
-* **우선순위:** **High** (대용량 폴더 실사용 시)
+* **위치:** `FileSelectionController.wait_for_active_scan`, `ConversionController.start_conversion`
+* **문제:** 스캔 대기 루프가 100ms마다 `QApplication.processEvents()`를 호출한다. 이 시점에는 `is_converting`이 아직 `False`라 busy guard가 없다. 대기 중 사용자가 변환 시작을 다시 누르거나 폴더/옵션을 바꿀 수 있다.
+* **영향:** 중첩 `start_conversion`, 대기 중 입력 변경으로 계획/캐시 불일치, UI 상태 꼬임 (드묾~중간 빈도, 대용량 스캔에서 노출 시간 김).
+* **근거:** `wait_for_active_scan`의 `processEvents` 루프; `start_conversion`의 `is_conversion_active` 검사는 wait **이전**에만 수행; wait 중 `set_converting_state(True)` 없음.
+* **권장 수정 방향:** wait 시작 시 “계획 중/스캔 대기” 잠금 플래그로 시작 버튼·입력·드롭 차단; 또는 모달 progress + 단일 진입 가드(`_planning_in_progress`).
+* **우선순위:** **High**
 
-### 3.2 취소 요청 중 진행 파일의 상태 분류 오류
+### 3.2 연결 직후 폴링 창: 전체 HWP + 자동 클릭 가능
 
-* **위치:** `ConversionWorker.run` (재시도 루프 직후 상태 결정)  
-* **문제:** 취소 후 진행 중 파일이 실패하면 다음 조건만 `취소됨`으로 본다.
+* **위치:** `HwpSecuritySession.target_pids` / `should_auto_accept`; `ConversionController._start_hwp_foreground_polling` → `_poll_hwp_foreground`
+* **문제:** 폴링은 워커 `start` 직후 시작되고, `engine_status_updated`는 `initialize` 완료 후에야 온다. 그 사이 `owned_pids` 비움 → `target_pids() is None` → 전면화/자동 클릭이 **시스템 전체 HWP** best-effort. 또한 `security_module_registered is None`이면 자동 클릭이 **허용**된다(`True`일 때만 차단).
+* **영향:** 한글 연결에 수 초 걸리는 환경에서 다른 한글 문서 포커스 간섭·오클릭 여지. 이전 “전 구간 전역 폴링”보다는 짧지만 연결 창은 남음.
+* **근거:** `_start_hwp_foreground_polling`에서 `reset_runtime()` 후 즉시 폴; `should_auto_accept`는 `registered is True`만 거부; `target_pids` 빈 집합 시 `None`.
+* **권장 수정 방향:** 상태가 오기 전 자동 클릭 금지(`registered is not False`면 스킵 또는 “unknown” 정책); 전면화만 허용; 또는 initialize 시작 시그널 후 폴링 시작.
+* **우선순위:** **Medium–High**
 
-```text
-cancel_requested and not success and error is None  → 취소됨
-success                                               → 성공
-else                                                  → 실패  (error 메시지 유지)
-```
+### 3.3 폴더 캐시 없는 콜드 경로의 UI 스레드 재스캔
 
-사용자가 취소한 뒤 COM이 오류 문자열을 반환하면 **의도상 취소인데 실패로 집계**된다.  
-* **영향:** 결과 다이얼로그/CSV의 실패·취소 카운트 왜곡, 재시도 정책 해석 혼란.  
-* **근거:** `conversion_worker.py` 상태 분기; 취소 시 대기 작업만 `취소됨`으로 일괄 마킹.  
-* **권장 수정 방향:** `cancel_requested and not success`이면 `취소됨`으로 통일하고, COM 오류는 `error`/`detail`에 보조 기록.  
+* **위치:** `collect_tasks` (`require_folder_cache=False`), `TaskPlanner.build_tasks` `folder_file_paths is None` 분기
+* **문제:** 설정 복원으로 폴더만 채워지고 미리보기 스캔이 안 된 채 변환하면 캐시 없이 UI 스레드에서 `iter_supported_files` 전체 순회.
+* **영향:** 대용량 폴더에서 변환 시작 직후 UI freeze (이전 감사 3.1의 잔존 형태).
+* **근거:** `main_window_ui`가 `folder_path`만 복원하고 스캔 미시작; `build_tasks` 재스캔 로그 경로 유지.
+* **권장 수정 방향:** 시작 시 캐시 없으면 비동기 스캔 트리거 후 변환; 또는 복원 시 `QTimer.singleShot`으로 미리보기 스캔; 콜드 재스캔을 백그라운드 워커로.
 * **우선순위:** **Medium**
 
-### 3.3 워커와 컨버터의 이중 COM 아파트 초기화/해제
+### 3.4 폴더 스캔 캐시 신선도(stale cache)
 
-* **위치:**
-  - `ConversionWorker.run`: `CoInitialize` / finally `CoUninitialize`
-  - `HWPConverter.initialize` / `cleanup`: 동일 API 재호출  
-* **문제:** 같은 워커 스레드에서 COM을 두 번 초기화·해제한다. `initialize`의 `CoInitialize` 예외는 무시하고, `cleanup`은 항상 `CoUninitialize`를 시도한다.  
-* **영향:** 아파트 참조 카운트 불균형 시 이후 파일 변환 또는 강제 종료 후 잔존 스레드에서 COM 호출 실패·hang 가능. (환경/pywin32 버전에 따라 재현 강도 다름)  
-* **근거:** CodeGraph/`grep`으로 양쪽 `CoInitialize`/`CoUninitialize` 확인. Claude.md는 워커 쪽 호출 유지를 요구하므로 **제거 시 한쪽만 소유**하도록 역할을 분리해야 한다.  
-* **권장 수정 방향:**
-  - 워커만 apartment 소유, 컨버터는 Dispatch/Quit만 담당 **또는**
-  - 컨버터가 apartment를 소유하고 워커는 중복 호출 금지  
-  - 중첩 시 `CoInitialize` 성공 여부를 플래그로 추적해 대칭 해제  
-* **우선순위:** **Medium** (간헐적 COM 이슈 원인 후보)
-
-### 3.4 강제 종료 시 PID 재사용 검증 부재
-
-* **위치:** `HWPConverter.kill_owned_processes`  
-* **문제:** 초기화 시점 스냅샷 diff로 `owned_pids`를 저장한 뒤, 강제 종료 시 **PID만으로 `taskkill /F`** 한다. 프로세스가 종료된 뒤 OS가 PID를 재사용하면 다른 프로세스에 강제 종료가 갈 수 있다.  
-* **영향:** 드물지만 파괴적. 관리자 권한 앱이라 피해 반경이 큼.  
-* **근거:** `_snapshot_hwp_pids` → set 차집합 저장 → `taskkill /PID` (이미지명/생성 시각 재검증 없음).  
-* **권장 수정 방향:** 종료 직전 `tasklist`/WMI로 이미지명이 `Hwp.exe` 등인지 재확인; 가능하면 생성 시각·명령줄 교차 검증.  
-* **우선순위:** **Medium** (확률 낮음, 영향 큼)
-
-### 3.5 한글 프로세스 추적 실패 시 강제 종료·응답 없음 복구 공백
-
-* **위치:** `HWPConverter.initialize` (`owned_pids` 공백 시 경고), `ConversionWorker.can_force_terminate` / `force_terminate`, `ConversionController.request_worker_stop`  
-* **문제:** 이미 떠 있는 한글에 COM attach 되면 새 PID가 없어 `has_owned_processes()==False`. 이 경우 취소 후 강제 종료 UI가 비활성/불가이고, COM hang 시 워커·앱 종료가 막힐 수 있다.  
-* **영향:** 변환 “응답 없음” 체감, close_event가 워커 대기로 `event.ignore()` 반복 가능.  
-* **근거:** `process_tracking_warning` 설정 및 `can_force_terminate`가 converter owned PID에만 의존. Claude.md 정책상 전역 `Hwp.exe` kill은 금지.  
-* **권장 수정 방향:**
-  - 추적 실패를 preflight/상태바에 더 눈에 띄게 표시
-  - hang 시 “마지막 수단” 옵션을 분리 설계(명시 동의 + 범위 제한)하거나 타임아웃 후 사용자 안내 강화
-  - 초기화 전 사용자 한글 창 종료 권고  
-* **우선순위:** **High** (운영 장애 체감), 다만 정책 트레이드오프 존재
-
-### 3.6 스캔 취소 대기 시간 과소 (`SCAN_CANCEL_WAIT_MS = 200`)
-
-* **위치:** `constants.SCAN_CANCEL_WAIT_MS`, `FileSelectionController.cancel_active_scan`, `ConversionController.start_conversion`  
-* **문제:** 활성 스캔 취소 후 200ms만 대기한다. 대용량 스캔이 끝나지 않으면 변환 시작이 “스캔 종료 대기”로 거절되거나, 종료 이벤트가 무시된다.  
-* **영향:** UX 마찰, 종료/변환 시작 실패 체감. 데이터 손상보다는 사용성/상태 꼬임.  
-* **근거:** `cancel_active_scan(wait_ms=SCAN_CANCEL_WAIT_MS)` 기본 200; 변환 시작 시 folder_preview 취소 실패 분기.  
-* **권장 수정 방향:** 대기 시간 상향 또는 진행 중 폴링/재시도, 스캔 중 변환 시작 시 “스캔 취소 후 자동 재개” UX.  
+* **위치:** `folder_scan_ready` / `folder_scan_files`; `get_folder_scan_cache`
+* **문제:** 캐시는 폴더 경로·include_sub만 키로 삼고, mtime/TTL/내용 해시가 없다. 스캔 후 파일이 추가·삭제되어도 변환 계획은 옛 목록을 사용한다.
+* **영향:** 누락 변환 또는 삭제된 파일 실패 다수 (사용자 인지 어려움).
+* **근거:** `get_folder_scan_cache` 키 비교만 존재; invalidate는 폴더 재선택·include 변경·스캔 취소/오류 시.
+* **권장 수정 방향:** 변환 직전 경량 재검증(개수·샘플 mtime) 또는 “캐시 시각 + N분” 만료; preflight에 캐시 시각 표시.
 * **우선순위:** **Medium**
 
-### 3.7 (잔존 환경 리스크) 실제 COM/빌드 미자동검증
+### 3.5 선실행 한글 attach 시 강제 종료 불가 (구조적)
 
-* **위치:** `tools/hwp_com_smoke.py`, `HWP_COM_SMOKE_TEST_CHECKLIST.md`, `hwp_converter.spec`  
-* **문제:** 단위 테스트는 COM을 모킹한다. 실제 한글 버전별 SaveAs/이미지·HTML 보조 산출물, UAC DnD, PyInstaller 바이너리는 CI/로컬 자동 검증 밖이다.  
-* **영향:** 회귀가 릴리스 후에야 드러날 수 있음.  
-* **근거:** 테스트 스위트에 실 COM 통합 테스트 없음; README/Claude가 수동 스모크를 권장.  
-* **권장 수정 방향:** 관리자 환경 주기 스모크 체크리스트 실행, 가능하면 형식별 smoke matrix 최소화 자동화.  
-* **우선순위:** **Medium** (제품 리스크, 코드 버그 단정은 아님)
+* **위치:** `HWPConverter.initialize` owned_pids 차집합; `kill_owned_processes`; `can_force_terminate`
+* **문제:** 이미 Hwp가 떠 있으면 새 PID가 안 잡혀 강제 종료가 비활성. Toolhelp 전환·스냅샷 경고 보강 후에도 attach 시나리오는 동일.
+* **영향:** COM hang 시 사용자가 앱 소유 프로세스만으로 탈출 불가.
+* **근거:** `owned_pids = after - before`; 비면 경고 + `has_owned_processes` False.
+* **권장 수정 방향:** 연결 전 한글 종료 권고 강화; 세션 창 핸들 기반 보조 추적(신중); 전체 Hwp kill 복귀는 Claude.md 금지.
+* **우선순위:** **Medium**
+
+### 3.6 `error_occurred` 시그널 미사용 (죽은 경로)
+
+* **위치:** `ConversionWorker.error_occurred`; `ConversionController.on_error_occurred`
+* **문제:** 워커 `run()`은 예외를 `task_completed(summary)`로만 보내고 `error_occurred.emit`을 호출하지 않는다. UI 핸들러는 연결만 되어 있다.
+* **영향:** 치명 오류 UI 분기가 사실상 사문화. 기능 회귀는 약하지만, 오류 UX 기대와 불일치.
+* **근거:** 워커 전역 grep 상 `error_occurred.emit` 없음; 연결은 `_begin_worker_ui`에 존재.
+* **권장 수정 방향:** 미사용 시그널 제거 또는 초기화 실패 등에서 emit 후 요약과 역할 분리 명확화.
+* **우선순위:** **Low**
+
+### 3.7 문서 드리프트 (Claude / 구조 분석)
+
+* **위치:** `Claude.md` §3 구조; `PROJECT_STRUCTURE_ANALYSIS.md`
+* **문제:** 신규 `hwp_security_module` / `hwp_security_session`, `auto_accept_security_dialog`, SHA-256 정책이 Claude 구조 목록·구조 분석 문서에 반영되지 않음.
+* **영향:** 에이전트/기여자 오판, 회귀 시 문서 체크리스트 실패.
+* **근거:** Claude.md services 목록에 security 모듈 없음; 구조 분석 설정 키에 `auto_accept` 없음, 일자 2026-06.
+* **권장 수정 방향:** Claude.md·PROJECT_STRUCTURE_ANALYSIS를 현재 패키지와 동기화.
+* **우선순위:** **Low–Medium**
 
 ---
 
 ## 4. Potential Functional Gaps
 
-확실하지 않은 항목은 **추정**으로 표시한다.
-
-### 4.1 구현 근거가 있는 보완 지점
-
-| 항목 | 설명 |
-|------|------|
-| 미리보기 vs 실행 목록 정책 불일치 | 폴더 미리보기는 `preview_allowed_extensions`로 동일 형식 제외, `build_tasks`는 전체 지원 확장자를 모아 동일 형식을 **건너뜀**으로 넣음. 카운트 불일치 가능. |
-| 진행률 표시 | `progress_updated.emit(idx, ...)`가 **작업 시작 시점** 인덱스라 첫 파일 동안 0/N으로 보임. 완료 기준 갱신이 아님. |
-| 정보/사용법 문구 | `LifecycleController.show_about` / `show_usage`가 “기본 출력 파일 존재·0바이트 초과”만 성공 기준으로 설명. 실제는 보조 산출물 허용. |
-| 설정 경로 분산 | 설정: `~/.hwp_converter_config.json`, 로그: `~/.hwp_converter/logs` 또는 `%LOCALAPPDATA%/HwpMate`, 락: `%LOCALAPPDATA%/HwpMate`. 동작은 하나 문서/지원 관점에서 파편화. |
-| 파일 선택 필터 | `browse_files`에 `모든 파일 (*.*)` 허용 → 비대상 파일은 스캔에서 조용히 제외될 수 있음 (피드백 약함). |
-| 취소 중 성공 | 취소 요청 후 이미 성공한 `convert_file`은 성공 유지(합리적). 실패+취소는 3.2 이슈. |
-
-### 4.2 추정 (요구사항 미확인)
-
-| 항목 | 추정 내용 |
-|------|-----------|
-| 암호/배포용 문서 | `forceopen:true`와 메시지박스 억제로 암호 문서·매크로 문서는 실패 또는 조용한 오동작 가능. 전용 UX 없음. **추정** |
-| 네트워크/동기화 폴더 | OneDrive 등에서 스냅샷 mtime/size 경쟁으로 성공 판정 오탐/미탐 가능. **추정** |
-| 병렬 변환 | 단일 COM/단일 워커 설계. 성능 향상을 위한 다중 인스턴스는 정책상 의도적 미지원으로 보임. **추정** |
-| 결과 재변환 필터 | 실패 항목만 재실행 UI 없음. CSV 기반 수동 재시도. **추정(기능 공백 후보)** |
-| 다국어/접근성 | UI 문자열 한국어 고정, 스크린리더 등은 범위 밖. **추정** |
-
-### 4.3 이전 감사 대비 이미 닫힌 항목 (재확인)
-
-다음 항목은 현재 코드·테스트에 방어 로직이 있어 **잔여 High-Risk로 올리지 않음:**
-
-- 변환 중 중복 시작 / 입력·드롭·단축키 차단  
-- 이미지·HTML 보조 산출물 충돌 회피  
-- Open False 시 Clear  
-- 설정/결과 원자 저장 및 저장 실패 UI 전파  
-- 단일 인스턴스 잠금  
-- Windows 경로 예약명·잘못된 문자 검증  
+| 항목 | 구분 | 설명 |
+|------|------|------|
+| 스캔 대기 중 busy lock | **갭 (코드)** | 3.1 |
+| 엔진 상태 전 자동 클릭 정책 | **갭 (코드)** | 3.2 — `registered is None`을 “미확인”으로 취급 안 함 |
+| 설정 복원 시 자동 폴더 스캔 | **갭 (코드)** | 3.3 |
+| 캐시 TTL / 디스크 동기화 | **갭 (코드)** | 3.4 |
+| 폴더 작업 수집 백그라운드화 | **잔여 구조 (추정 보완)** | 콜드 경로 완전 제거에 필요 |
+| Authenticode DLL 서명 검증 | **추정 보완** | SHA-256은 있음, 서명 체인은 없음 |
+| COM 실기 자동화 | **환경 갭** | smoke·체크리스트 수동 |
+| `error_occurred` 시그널 | **갭 (코드)** | 3.6 |
+| 변환 중 입력 파일 삭제 | **기존 처리** | 워커가 파일 없음 실패 처리 — 양호 |
+| 단일 인스턴스·원자 설정 저장 | **양호** | 유지 |
+| 모듈 성공 시 폴링 완화·옵션 토글 | **양호** | 직전 구현 유효 |
 
 ---
 
 ## 5. Recommended Fix Plan
 
-### 1단계 — 즉시 수정 (기능 신뢰도·운영 장애)
+### 1단계 — 즉시 (안전·재진입)
 
-1. **취소 상태 분류 수정** (`ConversionWorker`): `cancel_requested and not success` → `취소됨`  
-2. **폴더 모드 변환 계획 비동기화 또는 미리보기 캐시 재사용** (UI freeze 제거)  
-3. **프로세스 추적 실패 가시성 강화** (preflight/상태바 + 종료 불가 시 명확 안내)  
-4. **강제 종료 전 PID 이미지명 재검증**  
+1. 스캔 대기/`collect_tasks` 구간에 **계획 중 잠금** (`planning` 플래그)으로 시작·입력·드롭 차단  
+2. `security_module_registered is None`일 때 **자동 클릭 금지** (전면화만 또는 폴링 지연)  
+3. `engine_status_updated` 수신 전 전역 HWP(`pids=None`) 자동 클릭 금지  
 
-### 2단계 — 안정성 개선
+### 2단계 — 안정성
 
-1. COM apartment 소유권 단일화 (워커 vs 컨버터)  
-2. `SCAN_CANCEL_WAIT_MS` 상향 또는 스캔 취소 재시도 UX  
-3. 진행률을 “완료 개수” 기준으로 변경  
-4. About/Usage/README 성공 판정 문구를 보조 산출물 정책에 맞게 동기화  
-5. 설정·로그·락 경로를 문서에 표로 정리 (가능하면 디렉터리 정책 통일)
+1. 폴더 경로 복원 시 자동 미리보기 스캔 또는 변환 시 캐시 없으면 비동기 스캔 후 시작  
+2. 캐시 만료·변환 직전 파일 존재 샘플 검증  
+3. 스냅샷/추적 실패 시 preflight·상태바 문구 강화  
+4. Claude.md / PROJECT_STRUCTURE_ANALYSIS 동기화  
 
-### 3단계 — 구조 개선
+### 3단계 — 구조
 
-1. 폴더 미리보기 결과 → `PlannedConversion` 파이프라인 단일화  
-2. 실패 항목만 재실행 워크플로 (결과 다이얼로그 연계) **추정 요구**  
-3. COM 스모크를 형식 매트릭스/체크리스트와 릴리스 게이트에 고정  
-4. `file_list`/`_file_set` 별칭을 제거하고 `file_store` API만 사용 (유지보수 실수 방지)  
-5. 컨트롤러 단위에서 cancel/close/force-kill 통합 시나리오 테스트 확대  
+1. 폴더 작업 목록 생성을 스캔 워커와 동일 백그라운드 경로로 통합  
+2. `error_occurred` 정리 또는 의미 있는 치명 경로에 연결  
+3. (선택) DLL Authenticode 검증  
+4. 계획 잠금·연결 구간 정책 회귀 테스트 고정  
 
 ---
 
 ## 6. Test Recommendations
 
-### 6.1 단위/회귀 (우선 추가)
+### 6.1 우선 추가
 
 | 테스트 | 목적 |
 |--------|------|
-| `ConversionWorker`: 취소 중 `convert_file`이 `(False, "COM error")` 반환 → status=`취소됨` | 3.2 회귀 |
-| `ConversionWorker`: 취소 중 성공 → `성공` 유지 | 경계 확인 |
-| `TaskPlanner`/`ConversionController`: 폴더 모드 계획 수립이 UI 스레드에서 장시간 walk 하지 않음 (캐시/워커 mock) | 3.1 |
-| `kill_owned_processes`: 종료 직전 이미지명 불일치 시 taskkill 미호출 | 3.4 |
-| `can_force_terminate` False일 때 close/cancel UI 메시지 경로 | 3.5 |
-| `cancel_active_scan` 타임아웃 시 start_conversion 거절 메시지 | 3.6 |
-| About/상수 문서 문자열이 아닌 **정책 함수**와 성공 기준 일치 스냅샷 | 문서 드리프트 방지 |
+| `wait_for_active_scan` 중 두 번째 `start_conversion` 무시 | 3.1 재진입 |
+| `security_module_registered is None` → `should_auto_accept` False (정책 변경 후) | 3.2 |
+| 폴링 시작 직후 `target_pids is None`일 때 `try_accept` 미호출 | 3.2 |
+| 캐시 없이 폴더 변환 시 동기 재스캔 대신 스캔 요청/에러 | 3.3 정책 고정 |
+| 캐시 후 파일 삭제 시 preflight/변환 실패 메시지 | 3.4 |
+| `error_occurred` emit 여부 또는 제거 후 import 정리 | 3.6 |
 
-### 6.2 이미 있는 테스트 (유지)
+### 6.2 유지·보강
 
-- busy guard, 네이티브 드롭 차단, 보조 산출물 충돌, Open False Clear  
-- 설정 정규화/원자 저장, 결과 CSV/JSON 필드, 단일 인스턴스  
-- TaskPlanner 건너뜀/상대 경로/타임스탬프 폴백  
+| 영역 | 현황 |
+|------|------|
+| 보안 세션·폴링 PID | `test_hwp_security_session`, 컨트롤러 테스트 존재 — 유지 |
+| DLL 무결성 | `test_hwp_security_module` — 유지 |
+| kill_owned live PID | `test_hwp_converter` — 유지 |
+| 설정 `auto_accept_security_dialog` | load/save round-trip 테스트 추가 권장 |
 
-### 6.3 수동/릴리스 (자동 대체 곤란)
+### 6.3 수동 스모크 (체크리스트 연계)
 
-체크리스트는 기존 `HWP_COM_SMOKE_TEST_CHECKLIST.md`를 따르되, 감사 관점에서 특히:
-
-1. 관리자 권한 기동 + 두 번째 인스턴스 차단  
-2. 폴더 모드 1만+ 파일(또는 깊은 트리)에서 변환 시작 시 UI 응답성  
-3. HWP/HWPX → PDF, DOCX, HTML, PNG 각 1건 + 보조 산출물 생성 환경  
-4. 변환 중 Esc 취소 → 집계(취소/실패) 확인  
-5. 한글 미실행 vs 이미 실행 상태에서 강제 종료 가능 여부  
-6. 덮어쓰기 OFF + 기존 HTML/이미지 보조 산출물 충돌 리네임  
-7. 결과 CSV/JSON 감사 필드 및 원자 저장  
-8. `pyinstaller hwp_converter.spec` 산출물 실행 + DnD  
-
-### 6.4 현재 자동 검증 스냅샷
-
-```text
-pytest  : 67 passed
-pyright : 0 errors, 0 warnings, 0 informations
-```
+1. 대용량 폴더 스캔 중 변환 연타 → 중복 워커 없음  
+2. 한글 선실행 + 변환 → 추적 경고·강제 종료 제한 안내  
+3. 연결 수 초 구간 다른 한글 문서 편집 → 포커스 간섭 정도  
+4. 설정만 복원된 폴더 즉시 변환 → freeze 여부  
+5. 보안 모듈 정상 PC에서 자동 클릭 옵션 on/off  
+6. `pyinstaller` 빌드 + DLL 포함·해시 통과  
 
 ---
 
-## 부록 A. CodeGraph로 확인한 호출 경로 (요약)
+## 부록 A. 직전 감사 대비 상태
+
+| 2026-08-03 1차 감사 이슈 | 재감사 상태 |
+|--------------------------|-------------|
+| 폴더 wait 후 캐시 race | **해소** (processEvents 드레인 + require_folder_cache) |
+| try_accept 전역 top-level 전면화 | **완화** (보안 창 위주 + 소유 PID) — 연결 창 잔존(3.2) |
+| 모듈 성공 후 전 구간 폴링 자동 클릭 | **해소** |
+| pyright 6 errors | **해소** |
+| DLL 해시 없음 | **해소** (SHA-256) |
+| UI 동기 재스캔 | **부분** — wait 경로 해소, 콜드 경로 잔존(3.3) |
+| attach 시 강제 종료 | **잔존** |
+
+## 부록 B. 검증 명령 (재감사 시점)
 
 ```text
-app.main
-  → SingleInstanceLock.try_lock
-  → MainWindow
-       → ConversionController.start_conversion
-            → TaskPlanner.build_tasks / resolve_output_conflicts
-            → PreflightDialog
-            → ConversionWorker.start
-                 → HWPConverter.initialize / convert_file / cleanup
-                 → task_completed(ConversionSummary)
-            → ResultDialog / write_* 원자 저장
+python -m pytest -q
+# 93 passed in ~6.3s
 
-NativeDropController.on_native_files_dropped
-  → (busy guard) folder_preview | FileSelectionController.add_files
-
-LifecycleController.close_event
-  → cancel scan / request_worker_stop / force_terminate / save_settings
+python -m pyright .
+# 0 errors, 0 warnings, 0 informations
 ```
 
-## 부록 B. 감사 범위 밖 / 의도적 비범위
+## 부록 C. 잘 유지되는 안전장치
 
-- 레거시 `legacy/hwptopdf-hwpx v3.py` 품질 (유지보수 비대상)  
-- 코드 스타일, 네이밍 취향  
-- 비Windows 이식  
-- 라이선스/배포 채널 운영  
+- SaveAs 2/3 폴백, Open False 시 Clear  
+- 보조 산출물 성공/충돌 정책 (`artifact_policy`)  
+- 단일 인스턴스, 변환 중 busy guard (대기 구간 제외)  
+- 결과/설정 원자 저장  
+- 소유 PID 재확인 후 taskkill + CREATE_NO_WINDOW  
+- 보안 모듈 실패 경고를 Summary에 포함  
 
 ---
 
-*이 문서는 코드를 수정하지 않고 작성한 기능 구현 감사 리포트다. 수정 착수 시 1단계 항목부터 PR 단위로 처리하는 것을 권장한다.*
+*이 문서는 기능 재감사 결과물이다. 코드 변경은 포함하지 않았다.*

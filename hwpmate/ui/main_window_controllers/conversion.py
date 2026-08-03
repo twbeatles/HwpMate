@@ -33,13 +33,23 @@ class ConversionController:
         self.window = window
         self.state = state
         self._security_dialog_auto_accepted = False
+        self._waited_for_folder_scan = False
+
+    def _auto_accept_enabled_from_ui(self) -> bool:
+        check = getattr(self.window, "auto_accept_security_check", None)
+        if check is not None:
+            return bool(check.isChecked())
+        return bool(self.window.config.get("auto_accept_security_dialog", True))
 
     def _start_hwp_foreground_polling(self) -> None:
         """Dispatch/Open 블로킹 중에도 UI 스레드에서 한글 창을 전면화한다."""
         self._stop_hwp_foreground_polling()
         self._security_dialog_auto_accepted = False
+        session = self.state.security_session
+        session.reset_runtime()
+        session.auto_accept_enabled = self._auto_accept_enabled_from_ui()
         timer = QTimer(self.window)
-        timer.setInterval(HWP_FOREGROUND_POLL_MS)
+        timer.setInterval(session.poll_interval_ms())
         timer.timeout.connect(self._poll_hwp_foreground)
         self.state.hwp_foreground_timer = timer
         timer.start()
@@ -57,15 +67,41 @@ class ConversionController:
             pass
         self.state.hwp_foreground_timer = None
 
+    def _sync_poll_interval(self) -> None:
+        timer = self.state.hwp_foreground_timer
+        if timer is None:
+            return
+        try:
+            timer.setInterval(self.state.security_session.poll_interval_ms())
+        except RuntimeError:
+            pass
+
+    def on_engine_status_updated(self, status_obj: object) -> None:
+        """워커 initialize 직후 보안 모듈·소유 PID 를 세션에 반영."""
+        if not isinstance(status_obj, dict):
+            return
+        self.state.security_session.apply_engine_status(status_obj)
+        self._sync_poll_interval()
+        session = self.state.security_session
+        if session.snapshot_unreliable:
+            self.window.hwp_status_label.setText("🟡 프로세스 스냅샷 불안정")
+        elif not session.owned_pids:
+            self.window.hwp_status_label.setText("🟡 한글 연결됨 (프로세스 추적 제한)")
+        elif session.security_module_registered is False:
+            self.window.hwp_status_label.setText("🟡 한글 연결됨 (보안 모듈 실패)")
+
     def _poll_hwp_foreground(self) -> None:
         if not self.is_conversion_active():
             self._stop_hwp_foreground_polling()
             return
+        session = self.state.security_session
+        target = session.target_pids()
         try:
-            # 파일 Open/Save 중에도 동작 (연결 성공 후 중지하지 않음)
-            bring_hwp_windows_to_foreground(None)
-            # 보안 모듈 미준비 환경: 「모두 허용」 반복 best-effort (파일마다 창이 다시 뜰 수 있음)
-            if try_accept_hwp_security_dialog(None):
+            # 파일 Open/Save 중에도 동작. 소유 PID 가 있으면 그 범위만.
+            bring_hwp_windows_to_foreground(target)
+            # 모듈 성공·설정 꺼짐·쿨다운이면 자동 클릭 생략
+            if session.should_auto_accept() and try_accept_hwp_security_dialog(target):
+                session.note_auto_accept()
                 self._security_dialog_auto_accepted = True
         except Exception as e:
             logger.debug(f"한글 창 전면화 폴링 오류: {e}")
@@ -76,16 +112,19 @@ class ConversionController:
         worker.progress_updated.connect(self.window._on_progress_updated)
         worker.status_updated.connect(self.window._on_status_updated)
         worker.task_completed.connect(self.window._on_task_completed)
-        worker.error_occurred.connect(self.window._on_error_occurred)
         worker.finished.connect(self.window._on_worker_finished)
+        engine_status = getattr(worker, "engine_status_updated", None)
+        if engine_status is not None:
+            engine_status.connect(self.on_engine_status_updated)
         worker.start()
         self.window.hwp_status_label.setText("🟡 한글 연결 중... (허용 창 확인)")
         self._start_hwp_foreground_polling()
         if hasattr(self.window, "toast"):
-            self.window.toast.show_message(toast_message, toast_icon)
-            self.window.toast.show_message(HWP_PERMISSION_HINT, "⚠️")
+            # 시작 메시지에 허용 창 힌트를 합쳐 토스트 스택을 아끼고 가독성을 유지
+            combined = f"{toast_message}\n{HWP_PERMISSION_HINT}"
+            self.window.toast.show_message(combined, toast_icon)
 
-    def collect_tasks(self) -> PlannedConversion:
+    def collect_tasks(self, *, require_folder_cache: bool = False) -> PlannedConversion:
         is_folder_mode = self.window.folder_radio.isChecked()
         folder_file_paths = None
         if is_folder_mode:
@@ -93,6 +132,28 @@ class ConversionController:
                 folder_path=self.window.folder_entry.text(),
                 include_sub=self.window.include_sub_check.isChecked(),
             )
+            if folder_file_paths is None and require_folder_cache:
+                # wait 직후 시그널 드레인 재시도
+                QApplication.processEvents()
+                folder_file_paths = self.window.file_selection_controller.get_folder_scan_cache(
+                    folder_path=self.window.folder_entry.text(),
+                    include_sub=self.window.include_sub_check.isChecked(),
+                )
+            # 폴더 모드: UI 스레드 동기 재스캔 금지 (캐시 필수)
+            if folder_file_paths is None:
+                raise ValueError(
+                    "폴더 스캔 결과가 아직 준비되지 않았습니다.\n"
+                    "미리보기 스캔이 끝난 뒤 다시 시도하세요."
+                )
+            # 캐시 신선도: 디스크에서 사라진 파일이 많으면 재스캔 유도
+            ok, reason = self.window.file_selection_controller.validate_folder_scan_cache_freshness(
+                folder_file_paths
+            )
+            if not ok:
+                self.window.file_selection_controller.invalidate_folder_scan_cache()
+                raise ValueError(
+                    f"{reason}\n폴더를 다시 선택하거나 미리보기 스캔 후 변환하세요."
+                )
         return self.window.task_planner.build_tasks(
             is_folder_mode=is_folder_mode,
             format_type=self.state.selected_format,
@@ -103,8 +164,45 @@ class ConversionController:
             file_paths=self.window.file_store.paths,
             backup_enabled=self.window.backup_check.isChecked(),
             retry_count=self.window.retry_spin.value(),
-            folder_file_paths=folder_file_paths,
+            folder_file_paths=folder_file_paths if is_folder_mode else None,
         )
+
+    def _set_planning(self, planning: bool) -> None:
+        if hasattr(self.window, "appearance_controller"):
+            self.window.appearance_controller.set_planning_state(planning)
+        else:
+            self.state.is_planning = planning
+
+    def _ensure_folder_scan_ready(self) -> None:
+        """폴더 모드에서 유효 캐시가 없으면 비동기 스캔을 시작하고 완료를 기다린다."""
+        folder = self.window.folder_entry.text().strip()
+        if not folder:
+            raise ValueError("폴더를 선택하세요.")
+
+        cache = self.window.file_selection_controller.get_folder_scan_cache(
+            folder_path=folder,
+            include_sub=self.window.include_sub_check.isChecked(),
+        )
+        if cache is not None:
+            return
+
+        scan_worker = self.state.scan_worker
+        scan_running = bool(
+            scan_worker
+            and getattr(scan_worker, "isRunning", lambda: False)()
+            and self.state.scan_mode == "folder_preview"
+        )
+        if not scan_running:
+            self.window.status_label.setText("폴더 스캔 시작 중...")
+            self.window.file_selection_controller.start_folder_preview_scan(folder)
+            QApplication.processEvents()
+
+        self.window.status_label.setText("폴더 스캔 완료 대기 중...")
+        if not self.window.file_selection_controller.wait_for_active_scan(FOLDER_SCAN_WAIT_MS):
+            raise ValueError(
+                "폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요."
+            )
+        self._waited_for_folder_scan = True
 
     def adjust_output_paths(self, plan: PlannedConversion, *, overwrite: bool) -> int:
         return self.window.task_planner.resolve_output_conflicts(
@@ -130,32 +228,45 @@ class ConversionController:
             raise ValueError(f"출력 폴더에 쓰기 권한이 없습니다:\n{output_folder}")
 
     def start_conversion(self) -> None:
+        planning_held = False
         try:
-            if self.is_conversion_active():
-                self.window.status_label.setText("변환이 이미 진행 중입니다")
+            if self.is_conversion_active() or self.state.is_planning:
+                msg = (
+                    "작업 준비가 이미 진행 중입니다"
+                    if self.state.is_planning
+                    else "변환이 이미 진행 중입니다"
+                )
+                self.window.status_label.setText(msg)
                 if hasattr(self.window, "toast"):
-                    self.window.toast.show_message("변환이 이미 진행 중입니다", "⚠️")
+                    self.window.toast.show_message(msg, "⚠️")
                 return
+
+            # processEvents 재진입 방지: 스캔 대기·계획 수립 전 구간 잠금
+            self._set_planning(True)
+            planning_held = True
+            self._waited_for_folder_scan = False
 
             if self.state.scan_worker and self.state.scan_worker.isRunning():
                 if self.state.scan_mode == "add_files":
-                    QMessageBox.warning(self.window, "경고", "파일 스캔이 진행 중입니다. 스캔 완료 후 다시 시도하세요.")
-                    return
+                    raise ValueError("파일 스캔이 진행 중입니다. 스캔 완료 후 다시 시도하세요.")
                 # 폴더 미리보기는 취소하지 않고 완료를 기다려 캐시를 확보한다.
                 self.window.status_label.setText("폴더 스캔 완료 대기 중...")
-                QApplication.processEvents()
                 if not self.window.file_selection_controller.wait_for_active_scan(FOLDER_SCAN_WAIT_MS):
-                    QMessageBox.warning(
-                        self.window,
-                        "경고",
-                        "폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요.",
+                    raise ValueError(
+                        "폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요."
                     )
-                    return
+                self._waited_for_folder_scan = True
+
+            # 폴더 모드: 캐시 없으면 비동기 스캔 후 대기 (UI 스레드 동기 재스캔 금지)
+            if self.window.folder_radio.isChecked():
+                self._ensure_folder_scan_ready()
 
             self.validate_output_settings()
 
             task_collect_start = time.perf_counter()
-            plan = self.collect_tasks()
+            # 폴더 모드는 항상 캐시 필수 (콜드 경로도 위에서 스캔 완료)
+            require_cache = self.window.folder_radio.isChecked()
+            plan = self.collect_tasks(require_folder_cache=require_cache)
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     f"작업 목록 생성 완료: 실행={plan.runnable_count}개, 건너뜀={plan.skipped_count}개, "
@@ -177,6 +288,8 @@ class ConversionController:
             if not plan.tasks and plan.skipped_count:
                 self.state.plan = plan
                 self.window._save_settings()
+                self._set_planning(False)
+                planning_held = False
                 self.show_skipped_only_result(plan)
                 return
 
@@ -195,7 +308,9 @@ class ConversionController:
             self.state.tasks = plan.tasks
             self.window._save_settings()
 
+            # converting 이 planning 을 대체
             self.window._set_converting_state(True)
+            planning_held = False
             self.window.progress_bar.setMaximum(plan.runnable_count)
             self.window.progress_bar.setValue(0)
             self.state.conversion_start_time = time.time()
@@ -210,6 +325,9 @@ class ConversionController:
         except Exception as e:
             logger.exception("변환 시작 오류")
             QMessageBox.critical(self.window, "오류", f"오류 발생: {e}")
+        finally:
+            if planning_held:
+                self._set_planning(False)
 
     def is_conversion_active(self) -> bool:
         worker = self.state.worker
@@ -421,12 +539,6 @@ class ConversionController:
             toast_icon="🔁",
         )
 
-    def on_error_occurred(self, error_msg: str) -> None:
-        self._stop_hwp_foreground_polling()
-        self.window.toast.show_message("변환 중 오류 발생", "❌")
-        self.window.hwp_status_label.setText("🔴 한글 연결 오류")
-        QMessageBox.critical(self.window, "오류", f"변환 중 오류 발생:\n{error_msg}")
-
     def on_worker_finished(self) -> None:
         self._stop_hwp_foreground_polling()
         self.window._set_converting_state(False)
@@ -434,7 +546,10 @@ class ConversionController:
         self.window.progress_label.setText("0 / 0")
         self.window.status_label.setText("대기 중")
         summary = self.state.last_summary
-        if summary and any("강제 종료는 비활성화" in warning for warning in summary.warnings):
+        if summary and any(
+            "강제 종료는 비활성화" in warning or "스냅샷" in warning
+            for warning in summary.warnings
+        ):
             self.window.hwp_status_label.setText("🟡 프로세스 추적 불가 (강제 종료 제한)")
         elif summary and summary.failed_count:
             self.window.hwp_status_label.setText("🔴 마지막 작업 실패")
@@ -448,8 +563,10 @@ class ConversionController:
                 self.state.worker.progress_updated.disconnect()
                 self.state.worker.status_updated.disconnect()
                 self.state.worker.task_completed.disconnect()
-                self.state.worker.error_occurred.disconnect()
                 self.state.worker.finished.disconnect()
+                engine_status = getattr(self.state.worker, "engine_status_updated", None)
+                if engine_status is not None:
+                    engine_status.disconnect()
             except (TypeError, RuntimeError):
                 pass
 

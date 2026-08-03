@@ -2,14 +2,17 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
 
 # ===== Virtual environments =====
 .venv/
 venv/
 ENV/
 env/
+.env/
+.python-version
 
-# ===== Test/Lint caches (있을 수 있으니 선제 대응) =====
+# ===== Test/Lint caches =====
 .pytest_cache/
 .mypy_cache/
 .pyrightcache/
@@ -24,12 +27,18 @@ env/
 .coverage.*
 coverage.xml
 htmlcov/
+.cache/
 
 # ===== Packaging/Build =====
 build/
 dist/
 *.egg-info/
+.eggs/
 pip-wheel-metadata/
+# PyInstaller 경고/작업 잔여 (루트에 생길 수 있음)
+warn-*.txt
+*.pyz
+*.pyzw
 
 # ===== PyInstaller extras =====
 # (hwp_converter.spec 은 추적 — *.spec 를 통째로 ignore 하지 않음)
@@ -37,10 +46,13 @@ pip-wheel-metadata/
 *.manifest
 *.pkg
 *.toc
+# 런타임 DLL 원자 교체 임시 파일
+*.dll.tmp
 
 # ===== Local agent / tool caches (레포 루트) =====
 .agents/
 .grok/
+.claude/
 # Spec Kit 로컬 산출은 팀 정책에 따라 추적 가능 — 기본은 무시하지 않음
 # .specify/ 와 specs/ 는 기능 명세 작업 시 커밋할 수 있음
 
@@ -49,11 +61,15 @@ pip-wheel-metadata/
 *.bak
 *.tmp
 *.swp
+*~
 backup/
 hwp_com_smoke_*.json
 변환결과_*.csv
 변환결과_*.json
 변환실패_*.txt
+# 로컬 변환/스모크 산출 (경로 가변)
+**/변환결과*
+**/변환실패*
 
 # ===== OS / IDE =====
 .DS_Store
@@ -61,3 +77,12 @@ Thumbs.db
 Desktop.ini
 .vscode/
 .idea/
+*.code-workspace
+
+# ===== Windows / misc =====
+# 배포 exe 는 dist/ 에만 두고 루트 복사본 추적 방지
+/HWP변환기_*.exe
+/*.exe
+# 단, 보안 모듈 DLL 은 위 규칙에 걸리지 않음 (*.exe 만)
+ehthumbs.db
+$RECYCLE.BIN/

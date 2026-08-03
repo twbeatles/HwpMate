@@ -51,6 +51,7 @@ class MainWindowWidgets:
     format_cards: dict[str, FormatCard]
     overwrite_check: QCheckBox
     backup_check: QCheckBox
+    auto_accept_security_check: QCheckBox
     retry_spin: QSpinBox
     start_btn: QPushButton
     cancel_btn: QPushButton
@@ -367,6 +368,16 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
     window.backup_check.setChecked(window.config.get("backup_enabled", True))
     options_layout.addWidget(window.backup_check)
 
+    window.auto_accept_security_check = QCheckBox("보안 허용 창 「모두 허용」 자동 시도")
+    window.auto_accept_security_check.setToolTip(
+        "보안 모듈 등록에 실패한 환경에서 한글 「모두 허용」 창을 best-effort 로 클릭합니다. "
+        "모듈이 정상 등록되면 자동으로 생략됩니다. 기업 정책에 따라 끌 수 있습니다."
+    )
+    window.auto_accept_security_check.setChecked(
+        window.config.get("auto_accept_security_dialog", True)
+    )
+    options_layout.addWidget(window.auto_accept_security_check)
+
     retry_row = QHBoxLayout()
     retry_row.setSpacing(10)
     retry_label = QLabel("실패 시 재시도:")
@@ -464,6 +475,7 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
         format_cards=window.format_cards,
         overwrite_check=window.overwrite_check,
         backup_check=window.backup_check,
+        auto_accept_security_check=window.auto_accept_security_check,
         retry_spin=window.retry_spin,
         start_btn=window.start_btn,
         cancel_btn=window.cancel_btn,

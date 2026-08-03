@@ -51,11 +51,38 @@ class FileSelectionController:
         return True
 
     def wait_for_active_scan(self, wait_ms: int) -> bool:
-        """취소 없이 활성 스캔 종료를 대기한다."""
+        """취소 없이 활성 스캔 종료를 대기하고, 완료 시그널을 메인 루프에 드레인한다.
+
+        QThread.wait() 만 호출하면 scan_finished 슬롯이 아직 처리되지 않아
+        folder_scan_ready 캐시가 비어 있을 수 있다. 짧은 구간으로 나누어 대기하며
+        processEvents 로 캐시 갱신 슬롯을 실행한다.
+        """
+        from PyQt6.QtWidgets import QApplication
+
         worker = self.state.scan_worker
         if not worker or not worker.isRunning():
+            QApplication.processEvents()
             return True
-        return bool(worker.wait(wait_ms))
+
+        remaining = max(0, int(wait_ms))
+        slice_ms = 100
+        while remaining > 0 and worker.isRunning():
+            step = min(slice_ms, remaining)
+            if worker.wait(step):
+                break
+            QApplication.processEvents()
+            remaining -= step
+
+        # 스레드 종료 직후 큐에 쌓인 scan_finished / finished 슬롯 처리
+        for _ in range(5):
+            QApplication.processEvents()
+            if self.state.folder_scan_ready or not worker.isRunning():
+                # finished 후에도 ready 가 설정되도록 한 번 더
+                if not self.state.folder_scan_ready:
+                    QApplication.processEvents()
+                break
+
+        return not worker.isRunning()
 
     def start_scan(
         self,
@@ -110,6 +137,7 @@ class FileSelectionController:
 
     def invalidate_folder_scan_cache(self) -> None:
         self.state.folder_scan_ready = False
+        self.state.folder_scan_ready_at = None
         self.state.folder_scan_files = []
         self.state.folder_scan_accum = []
 
@@ -118,7 +146,10 @@ class FileSelectionController:
         *,
         folder_path: str,
         include_sub: bool,
+        max_age_seconds: float | None = None,
     ) -> list[str] | None:
+        from ...constants import FOLDER_SCAN_CACHE_MAX_AGE_SECONDS
+
         if not self.state.folder_scan_ready:
             return None
         folder_key = make_path_key(canonicalize_path(folder_path.strip()))
@@ -127,7 +158,55 @@ class FileSelectionController:
             return None
         if bool(include_sub) != bool(self.state.folder_scan_include_sub):
             return None
+
+        age_limit = (
+            FOLDER_SCAN_CACHE_MAX_AGE_SECONDS
+            if max_age_seconds is None
+            else max_age_seconds
+        )
+        ready_at = self.state.folder_scan_ready_at
+        if ready_at is not None and age_limit >= 0:
+            if (time.perf_counter() - ready_at) > age_limit:
+                logger.info(
+                    f"폴더 스캔 캐시 만료 ({age_limit:.0f}s 초과) — 재스캔 필요"
+                )
+                return None
+
         return list(self.state.folder_scan_files)
+
+    def validate_folder_scan_cache_freshness(
+        self,
+        paths: list[str],
+        *,
+        sample_size: int | None = None,
+    ) -> tuple[bool, str]:
+        """캐시 경로 샘플이 디스크에 존재하는지 검사. (ok, reason)."""
+        from ...constants import FOLDER_SCAN_CACHE_SAMPLE_SIZE
+
+        if not paths:
+            return False, "캐시가 비어 있습니다."
+
+        limit = FOLDER_SCAN_CACHE_SAMPLE_SIZE if sample_size is None else max(1, sample_size)
+        sample = paths[:limit]
+        missing = 0
+        for raw in sample:
+            try:
+                if not Path(raw).is_file():
+                    missing += 1
+            except OSError:
+                missing += 1
+
+        if missing == 0:
+            return True, ""
+
+        ratio = missing / len(sample)
+        # 샘플의 25% 이상 없으면 신선하지 않음
+        if ratio >= 0.25 or missing >= 3:
+            return (
+                False,
+                f"스캔 이후 파일이 변경된 것으로 보입니다 (샘플 {missing}/{len(sample)}개 없음).",
+            )
+        return True, ""
 
     def _count_preview_convertible(self, paths: list[str]) -> int:
         allowed = {
@@ -231,6 +310,7 @@ class FileSelectionController:
             else:
                 self.state.folder_scan_files = list(self.state.folder_scan_accum)
                 self.state.folder_scan_ready = True
+                self.state.folder_scan_ready_at = time.perf_counter()
                 self.state.scan_preview_count = self._count_preview_convertible(self.state.folder_scan_files)
                 if self.state.scan_preview_count == 0:
                     self.window.status_label.setText("⚠️ 현재 포맷으로 변환 가능한 파일이 없습니다")
@@ -375,6 +455,12 @@ class FileSelectionController:
     def _input_locked(self, message: str = "변환 중에는 입력을 변경할 수 없습니다") -> bool:
         worker = self.state.worker
         worker_running = bool(worker and getattr(worker, "isRunning", lambda: False)())
+        if self.state.is_planning:
+            msg = "작업 준비 중에는 입력을 변경할 수 없습니다"
+            self.window.status_label.setText(msg)
+            if hasattr(self.window, "toast"):
+                self.window.toast.show_message(msg, "⚠️")
+            return True
         if not (self.state.is_converting or worker_running):
             return False
         self.window.status_label.setText(message)

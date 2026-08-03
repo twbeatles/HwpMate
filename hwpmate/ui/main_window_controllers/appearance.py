@@ -65,7 +65,9 @@ class AppearanceController:
 
     def update_output_ui(self, *_: object) -> None:
         same_location = self.window.same_location_check.isChecked()
-        can_select_output = (not same_location) and (not self.state.is_converting)
+        can_select_output = (not same_location) and (
+            not self.state.is_converting and not self.state.is_planning
+        )
         self.window.output_entry.setEnabled(can_select_output)
         self.window.output_btn.setEnabled(can_select_output)
 
@@ -77,38 +79,57 @@ class AppearanceController:
     def set_converting_state(self, converting: bool) -> None:
         if converting:
             self.window._cancel_active_scan()
+            # 변환 시작 시 계획 잠금은 해제 (converting 이 잠금 역할)
+            self.state.is_planning = False
 
         self.state.is_converting = converting
-        self.window.start_btn.setEnabled(not converting)
-        self.window.cancel_btn.setEnabled(converting)
-        if hasattr(self.window, "lifecycle_controller"):
-            self.window.lifecycle_controller.set_command_actions_enabled(not converting)
-
         if not converting:
             self.state.force_kill_pending = False
             self.window.cancel_btn.setText("⏹️ 취소")
 
-        self.window.folder_radio.setEnabled(not converting)
-        self.window.files_radio.setEnabled(not converting)
+        self.apply_busy_ui()
+
+    def set_planning_state(self, planning: bool) -> None:
+        """스캔 대기·작업 수집 중 입력/시작 재진입을 막는다."""
+        self.state.is_planning = planning
+        self.apply_busy_ui()
+
+    def apply_busy_ui(self) -> None:
+        """변환 중 또는 계획 중일 때 입력·시작을 잠근다."""
+        converting = self.state.is_converting
+        planning = self.state.is_planning
+        busy = converting or planning
+
+        self.window.start_btn.setEnabled(not busy)
+        # 취소는 실제 변환 중에만
+        self.window.cancel_btn.setEnabled(converting)
+        if hasattr(self.window, "lifecycle_controller"):
+            self.window.lifecycle_controller.set_command_actions_enabled(not busy)
+
+        self.window.folder_radio.setEnabled(not busy)
+        self.window.files_radio.setEnabled(not busy)
 
         for card in self.window.format_cards.values():
-            card.setEnabled(not converting)
+            card.setEnabled(not busy)
 
-        self.window.same_location_check.setEnabled(not converting)
-        self.window.overwrite_check.setEnabled(not converting)
-        self.window.backup_check.setEnabled(not converting)
-        self.window.retry_spin.setEnabled(not converting)
-        self.window.include_sub_check.setEnabled(not converting)
+        self.window.same_location_check.setEnabled(not busy)
+        self.window.overwrite_check.setEnabled(not busy)
+        self.window.backup_check.setEnabled(not busy)
+        auto_accept = getattr(self.window, "auto_accept_security_check", None)
+        if auto_accept is not None:
+            auto_accept.setEnabled(not busy)
+        self.window.retry_spin.setEnabled(not busy)
+        self.window.include_sub_check.setEnabled(not busy)
 
         if hasattr(self.window, "drop_area"):
-            self.window.drop_area.setEnabled(not converting)
+            self.window.drop_area.setEnabled(not busy)
         if hasattr(self.window, "add_btn"):
-            self.window.add_btn.setEnabled(not converting)
+            self.window.add_btn.setEnabled(not busy)
         if hasattr(self.window, "remove_btn"):
-            self.window.remove_btn.setEnabled(not converting)
+            self.window.remove_btn.setEnabled(not busy)
         if hasattr(self.window, "clear_btn"):
-            self.window.clear_btn.setEnabled(not converting)
+            self.window.clear_btn.setEnabled(not busy)
         if hasattr(self.window, "folder_btn"):
-            self.window.folder_btn.setEnabled(not converting)
+            self.window.folder_btn.setEnabled(not busy)
 
         self.update_output_ui()

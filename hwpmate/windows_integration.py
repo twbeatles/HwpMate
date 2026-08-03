@@ -28,11 +28,17 @@ def _event_type_bytes(event_type: Any) -> bytes:
     data = getattr(event_type, "data", None)
     if callable(data):
         try:
-            return bytes(data())
+            raw = data()
+            if isinstance(raw, (bytes, bytearray, memoryview)):
+                return bytes(raw)
+            if isinstance(raw, str):
+                return raw.encode("utf-8", errors="replace")
         except Exception:
             pass
+    if isinstance(event_type, str):
+        return event_type.encode("utf-8", errors="replace")
     try:
-        return bytes(event_type)
+        return bytes(event_type)  # type: ignore[arg-type]
     except Exception:
         return str(event_type).encode("utf-8", errors="replace")
 
@@ -244,7 +250,11 @@ def try_accept_hwp_security_dialog(pids: Optional[Set[int]] = None) -> bool:
         if not target_pids:
             return False
 
-        parent_hwnds = _list_top_level_hwnds_for_pids(target_pids)
+        # 메인 편집 창 전체 전면화는 포커스 탈취가 크므로 보안/대화상자 후보만 사용
+        parent_hwnds = _list_top_level_hwnds_for_pids(
+            target_pids,
+            security_dialogs_only=True,
+        )
         if not parent_hwnds:
             return False
 
@@ -266,18 +276,21 @@ def try_accept_hwp_security_dialog(pids: Optional[Set[int]] = None) -> bool:
                 buf = ctypes.create_unicode_buffer(length + 1)
                 user32.GetWindowTextW(hwnd, buf, length + 1)
                 text = buf.value.strip()
-                if text in _SECURITY_ACCEPT_BUTTON_TEXTS or (
-                    "모두" in text and "허용" in text
-                ):
-                    # 버튼 클래스인지 느슨히 확인
-                    cls = ctypes.create_unicode_buffer(64)
-                    user32.GetClassNameW(hwnd, cls, 64)
-                    class_name = cls.value.lower()
-                    if "button" in class_name or class_name.startswith("button"):
-                        user32.SendMessageW(hwnd, _BM_CLICK, 0, 0)
-                        clicked = True
-                        logger.info(f"한글 보안 대화상자 '모두 허용' 자동 클릭 시도: '{text}'")
-                        return False
+                # 정확 일치 우선, 느슨 매칭은 "모두"+"허용"이 모두 있을 때만
+                matched = text in _SECURITY_ACCEPT_BUTTON_TEXTS or (
+                    "모두" in text and "허용" in text and len(text) <= 24
+                )
+                if not matched:
+                    return True
+                # 버튼 클래스인지 확인 (오탐 축소)
+                cls = ctypes.create_unicode_buffer(64)
+                user32.GetClassNameW(hwnd, cls, 64)
+                class_name = cls.value.lower()
+                if "button" in class_name or class_name.startswith("button"):
+                    user32.SendMessageW(hwnd, _BM_CLICK, 0, 0)
+                    clicked = True
+                    logger.info(f"한글 보안 대화상자 '모두 허용' 자동 클릭 시도: '{text}'")
+                    return False
             except Exception:
                 pass
             return True
@@ -286,7 +299,6 @@ def try_accept_hwp_security_dialog(pids: Optional[Set[int]] = None) -> bool:
             user32.EnumChildWindows(parent, enum_child, 0)
             if clicked:
                 break
-            # 일부 대화상자는 별도 top-level 이므로 자기 자신 텍스트도 검사하지 않음
 
         return clicked
     except Exception as e:
@@ -428,11 +440,11 @@ class NativeDropFilter(QAbstractNativeEventFilter):
             logger.error(f"네이티브 드래그 앤 드롭 등록 실패: {e}")
             return False
     
-    def nativeEventFilter(self, eventType: Any, message: Any) -> Tuple[bool, int]:
+    def nativeEventFilter(self, eventType: Any, message: Any) -> Tuple[bool, Any]:
         """네이티브 Windows 이벤트 필터.
 
-        PyQt6 sip 바인딩은 두 번째 반환값이 int 여야 한다. None 을 넘기면
-        onefile/frozen 실행에서 QtCore.pyd 접근 위반(0xC0000005)이 날 수 있다.
+        런타임 sip 은 두 번째 반환값으로 int 를 기대한다(None 이면 onefile AV 가능).
+        PyQt stub 은 voidptr 를 기대할 수 있어 반환 타입은 Any 로 둔다.
         """
         try:
             # Windows 메시지만 처리

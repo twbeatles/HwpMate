@@ -230,17 +230,14 @@ def test_conversion_worker_emits_failed_summary_when_initialize_fails(tmp_path: 
         skipped_tasks=[ConversionTask(skipped, skipped, status="건너뜀", error="이미 HWPX 형식입니다.")],
     )
     summaries = []
-    errors = []
     worker = ConversionWorker(
         plan,
         converter_factory=lambda: FailingInitConverter(results={"a.hwp": (True, None)}),
     )
     worker.task_completed.connect(lambda summary: summaries.append(summary))
-    worker.error_occurred.connect(lambda error: errors.append(error))
 
     worker.run()
 
-    assert errors == []
     assert len(summaries) == 1
     summary = summaries[0]
     assert summary.failed_count == 1
@@ -311,17 +308,14 @@ def test_conversion_worker_emits_summary_for_unexpected_worker_errors(tmp_path: 
         tasks=[ConversionTask(input_file, input_file.with_suffix(".pdf"))],
     )
     summaries = []
-    errors = []
     worker = ConversionWorker(
         plan,
         converter_factory=lambda: RaisingConverter(results={"a.hwp": (True, None)}),
     )
     worker.task_completed.connect(lambda summary: summaries.append(summary))
-    worker.error_occurred.connect(lambda error: errors.append(error))
 
     worker.run()
 
-    assert errors == []
     assert summaries[0].failed_count == 1
     assert "변환 워커 오류" in summaries[0].failed_tasks[0].detail
 

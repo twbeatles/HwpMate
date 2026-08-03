@@ -87,15 +87,28 @@ def require_pywin32() -> Tuple[Any, Any]:
     return pythoncom, win32_client
 
 
+# Toolhelp 스냅샷 연속 실패 추적 (모듈 전역, 프로세스 수명 동안)
+_snapshot_failure_count = 0
+_snapshot_last_error: str | None = None
+
+
+def get_snapshot_health() -> tuple[int, str | None]:
+    """(연속 실패 횟수, 마지막 오류 메시지) — UI/워커 경고용."""
+    return _snapshot_failure_count, _snapshot_last_error
+
+
 def _snapshot_hwp_pids() -> set[int]:
     """현재 실행 중인 한글 관련 프로세스 PID 집합 반환.
 
     tasklist 서브프로세스 대신 Toolhelp32 를 사용해 콘솔 창 플래시를 원천 차단한다.
     """
+    global _snapshot_failure_count, _snapshot_last_error
     try:
         kernel32 = ctypes.windll.kernel32
         snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
         if snapshot in (-1, 0xFFFFFFFF):
+            _snapshot_failure_count += 1
+            _snapshot_last_error = "CreateToolhelp32Snapshot invalid handle"
             return set()
 
         pids: set[int] = set()
@@ -103,6 +116,8 @@ def _snapshot_hwp_pids() -> set[int]:
             entry = _PROCESSENTRY32W()
             entry.dwSize = ctypes.sizeof(_PROCESSENTRY32W)
             if not kernel32.Process32FirstW(snapshot, ctypes.byref(entry)):
+                _snapshot_failure_count += 1
+                _snapshot_last_error = "Process32FirstW failed"
                 return set()
             while True:
                 image_name = entry.szExeFile.strip().lower()
@@ -110,10 +125,15 @@ def _snapshot_hwp_pids() -> set[int]:
                     pids.add(int(entry.th32ProcessID))
                 if not kernel32.Process32NextW(snapshot, ctypes.byref(entry)):
                     break
+            # 성공 시 연속 실패 카운터 리셋
+            _snapshot_failure_count = 0
+            _snapshot_last_error = None
             return pids
         finally:
             kernel32.CloseHandle(snapshot)
     except Exception as e:
+        _snapshot_failure_count += 1
+        _snapshot_last_error = str(e)
         logger.debug(f"한글 프로세스 스냅샷 수집 실패: {e}")
         return set()
 
@@ -186,6 +206,7 @@ class HWPConverter:
         self.security_module_registered: bool | None = None
         self.security_module_error: str | None = None
         self.process_tracking_warning: str | None = None
+        self.snapshot_unreliable: bool = False
         self.last_created_files: list[Path] = []
         self.last_output_size: int | None = None
         self.last_output_mtime: float | None = None
@@ -275,10 +296,20 @@ class HWPConverter:
 
                 hwp.SetMessageBoxMode(0x00000001)
                 time.sleep(0.2)
-                self.owned_pids = _snapshot_hwp_pids() - before_pids
+                after_pids = _snapshot_hwp_pids()
+                fail_count, fail_msg = get_snapshot_health()
+                self.snapshot_unreliable = fail_count > 0 and not after_pids and not before_pids
+                self.owned_pids = after_pids - before_pids
                 self.is_initialized = True
                 logger.info(f"한글 연결 성공: {progid}")
-                if self.owned_pids:
+                if self.snapshot_unreliable:
+                    detail = f" ({fail_msg})" if fail_msg else ""
+                    self.process_tracking_warning = (
+                        "한글 프로세스 스냅샷(Toolhelp) 수집에 실패했습니다"
+                        f"{detail}. 강제 종료와 창 전면화 범위가 제한될 수 있습니다."
+                    )
+                    logger.warning(self.process_tracking_warning)
+                elif self.owned_pids:
                     self.process_tracking_warning = None
                     logger.info(f"앱 소유 한글 프로세스 추적: {sorted(self.owned_pids)}")
                 else:

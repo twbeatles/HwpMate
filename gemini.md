@@ -45,6 +45,13 @@
 - 동일 형식만 선택된 경우도 결과 다이얼로그와 CSV/JSON 저장 흐름을 제공합니다.
 - 강제 종료는 시스템 전체 한글 프로세스가 아니라 앱이 직접 띄운 PID에만 허용합니다.
 
+### 보안 모듈·전면화·계획 잠금
+- `hwp_security_module`: 번들 DLL을 `%LOCALAPPDATA%\HwpMate\security`에 설치하고 SHA-256 검증 후 HKCU 레지스트리 등록.
+- `RegisterModule("FilePathCheckDLL", …)` 실패는 Summary 경고로 남깁니다. 조용히 숨기지 않습니다.
+- `HwpSecuritySession`: 소유 PID 우선 전면화. 「모두 허용」 자동 클릭은 엔진 상태 수신 후·모듈 등록 **실패** 시에만, 사용자 옵션으로 끌 수 있습니다.
+- 폴더 스캔 대기·작업 수집 중 `is_planning`으로 시작/입력/드롭 재진입을 막습니다.
+- 폴더 캐시는 만료·샘플 검증을 거치며, 없으면 UI 동기 재스캔 대신 비동기 스캔 후 변환합니다.
+
 ## 3. 현재 리포지토리 품질 기준
 
 - `pyright .` 가 0 오류여야 합니다.
@@ -56,12 +63,17 @@
 
 - `hwptopdf-hwpx_v4.py`: 실행 래퍼 엔트리포인트
 - `hwpmate/`: 운영 코드 전체
+- `hwpmate/services/hwp_converter.py`: HWP COM 변환
+- `hwpmate/services/hwp_security_module.py`: 보안 DLL 설치·무결성·레지스트리
+- `hwpmate/services/hwp_security_session.py`: 전면화/자동 클릭 세션 정책
+- `hwpmate/resources/security/`: 배포 필수 FilePathCheck DLL
 - `hwpmate/ui/main_window.py`: `MainWindow` import 경로를 유지하는 조립 루트와 호환 래퍼
 - `hwpmate/ui/main_window_controllers/`: 상태, 테마/표시, 파일 선택/스캔, 변환, 네이티브 드롭, 수명주기 컨트롤러
 - `hwpmate/ui/main_window_ui.py`: 콜백 객체 기반 메인 윈도우 레이아웃 빌더
-- `hwp_converter.spec`: PyInstaller 빌드 정의
+- `hwp_converter.spec`: PyInstaller 빌드 정의 (보안 DLL datas 포함)
 - `README.md`: 사용자 안내와 실행/빌드 방법
 - `PROJECT_STRUCTURE_ANALYSIS.md`: 현재 구조와 확장 포인트 분석
+- `PROJECT_AUDIT.md`: 기능 감사 리포트
 - `update_history.md`: 기능/유지보수 이력
 - `claude.md`, `gemini.md`: 협업 에이전트용 개발 가이드
 

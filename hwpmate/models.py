@@ -27,6 +27,8 @@ class AppConfig:
     overwrite: bool = False
     backup_enabled: bool = True
     retry_count: int = 1
+    # 보안 모듈 실패 시 「모두 허용」 대화상자 자동 클릭 (best-effort)
+    auto_accept_security_dialog: bool = True
     folder_path: str = ""
     output_path: str = ""
     last_folder: str = ""

@@ -64,7 +64,7 @@ def test_kill_owned_processes_skips_pid_not_in_live_hwp_snapshot(monkeypatch) ->
     converter = HWPConverter()
     converter.owned_pids = {111, 222}
     monkeypatch.setattr(converter_module, "_snapshot_hwp_pids", lambda: {222})
-    calls: list[list[str]] = []
+    calls: list[tuple[list[str], object | None]] = []
 
     def fake_run(args, **kwargs):
         calls.append((list(args), kwargs.get("creationflags")))

@@ -111,7 +111,7 @@ def test_try_accept_hwp_security_dialog_clicks_matching_button(monkeypatch) -> N
     monkeypatch.setattr(
         windows_integration,
         "_list_top_level_hwnds_for_pids",
-        lambda pids: [100],
+        lambda pids, **kwargs: [100],
     )
     monkeypatch.setattr(windows_integration, "_raise_hwnd_to_foreground", lambda hwnd: True)
 

@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import sys
 from pathlib import Path
 from typing import Optional
 
+from ..constants import SECURITY_MODULE_DLL_SHA256
 from ..logging_config import get_logger
 
 logger = get_logger(__name__)
 
 SECURITY_MODULE_DLL_NAME = "FilePathCheckerModuleExample.dll"
 SECURITY_MODULE_ALIAS = "FilePathCheckerModuleExample"
+EXPECTED_DLL_SHA256 = SECURITY_MODULE_DLL_SHA256.lower()
 # Automation(HWPFrame) 과 Ctrl 경로 모두 등록 (한컴 버전·ProgID 별 조회 위치 차이)
 REGISTRY_KEY_PATHS = (
     r"Software\HNC\HwpAutomation\Modules",
@@ -59,6 +62,27 @@ def _bundled_dll_candidates() -> list[Path]:
     return candidates
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_dll_integrity(path: Path, *, expected_sha256: str = EXPECTED_DLL_SHA256) -> None:
+    """DLL SHA-256 이 번들 기대값과 일치하는지 검증. 불일치 시 ValueError."""
+    actual = sha256_file(path)
+    if actual.lower() != expected_sha256.lower():
+        raise ValueError(
+            f"보안 모듈 DLL 무결성 검증 실패: {path} "
+            f"(expected={expected_sha256[:16]}…, actual={actual[:16]}…)"
+        )
+
+
 def find_bundled_security_dll() -> Optional[Path]:
     for path in _bundled_dll_candidates():
         try:
@@ -73,6 +97,7 @@ def install_security_dll() -> Path:
     """번들 DLL 을 영구 런타임 디렉터리에 복사하고 경로를 반환.
 
     한컴 Hwp 프로세스가 로드하므로 _MEIPASS(임시)가 아닌 LOCALAPPDATA 경로를 사용한다.
+    설치·재사용 전 SHA-256 무결성을 검증한다.
     """
     dest_dir = _runtime_security_dir()
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -81,28 +106,41 @@ def install_security_dll() -> Path:
     source = find_bundled_security_dll()
     if source is None:
         if dest.is_file() and dest.stat().st_size > 0:
-            logger.info(f"번들 DLL 없음 — 기존 설치본 사용: {dest}")
+            verify_dll_integrity(dest)
+            logger.info(f"번들 DLL 없음 — 기존 설치본 사용(무결성 확인): {dest}")
             return dest
         raise FileNotFoundError(
             f"보안 모듈 DLL 을 찾을 수 없습니다: {SECURITY_MODULE_DLL_NAME}. "
             "배포 빌드에 hwpmate/resources/security/ 가 포함됐는지 확인하세요."
         )
 
+    verify_dll_integrity(source)
+
     try:
-        need_copy = (
-            not dest.is_file()
-            or dest.stat().st_size != source.stat().st_size
-            or dest.stat().st_mtime < source.stat().st_mtime
-        )
+        need_copy = True
+        if dest.is_file() and dest.stat().st_size > 0:
+            try:
+                verify_dll_integrity(dest)
+                need_copy = (
+                    dest.stat().st_size != source.stat().st_size
+                    or dest.stat().st_mtime < source.stat().st_mtime
+                )
+            except ValueError:
+                # 기존 설치본이 변조·구버전이면 반드시 덮어쓴다.
+                need_copy = True
+                logger.warning(f"기존 보안 모듈 DLL 무결성 불일치 — 재설치: {dest}")
+
         if need_copy:
             # 실행 중 잠금 대비: 임시 파일 후 교체
             tmp = dest.with_suffix(".dll.tmp")
             shutil.copy2(source, tmp)
             tmp.replace(dest)
+            verify_dll_integrity(dest)
             logger.info(f"보안 모듈 DLL 설치: {source} -> {dest}")
     except OSError as e:
         if dest.is_file() and dest.stat().st_size > 0:
-            logger.warning(f"보안 모듈 DLL 복사 실패, 기존 파일 사용: {e}")
+            verify_dll_integrity(dest)
+            logger.warning(f"보안 모듈 DLL 복사 실패, 기존 파일 사용(무결성 확인): {e}")
             return dest
         raise
     return dest
@@ -177,6 +215,8 @@ def ensure_hwp_security_module(alias: str = SECURITY_MODULE_ALIAS) -> tuple[bool
         dll_path = install_security_dll()
         if not dll_path.is_file():
             return False, f"DLL 파일이 없습니다: {dll_path}", None
+        # 레지스트리 등록 직전 최종 무결성 확인 (변조 파일 등록 방지)
+        verify_dll_integrity(dll_path)
         registered_alias = write_security_module_registry(dll_path, alias=alias)
         verified = read_security_module_registry(registered_alias)
         if not verified or not Path(verified).is_file():
@@ -185,6 +225,7 @@ def ensure_hwp_security_module(alias: str = SECURITY_MODULE_ALIAS) -> tuple[bool
                 f"레지스트리 경로 검증 실패: alias={registered_alias}, path={verified!r}",
                 None,
             )
+        verify_dll_integrity(Path(verified))
         return True, f"DLL={verified}", registered_alias
     except Exception as e:
         logger.exception("보안 모듈 준비 실패")

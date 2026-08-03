@@ -25,6 +25,9 @@
 - `RegisterModule("FilePathCheckDLL", "FilePathCheckerModuleExample")`는 외부 자동화 경고 완화를 위해 유지합니다.
 - `SetMessageBoxMode(0x00000001)`도 함께 유지합니다.
 - 보안 모듈 등록 실패는 조용히 숨기지 말고 결과 경고와 로그에 남깁니다.
+- DLL은 `ensure_hwp_security_module`이 번들에서 `%LOCALAPPDATA%\HwpMate\security`로 설치하고 SHA-256 검증 후 레지스트리 등록합니다.
+- 「모두 허용」 자동 클릭은 모듈 등록 **실패** 시에만 보조로 쓰며, `engine_status` 수신 전·모듈 성공 시에는 금지합니다.
+- 변환 계획/스캔 대기 중에는 `is_planning`으로 시작·입력·드롭 재진입을 막습니다.
 
 ### 네이티브 드래그 앤 드롭
 - 관리자 권한 환경 호환을 위해 `NativeDropFilter`와 `WM_DROPFILES` 흐름을 유지합니다.
@@ -70,9 +73,11 @@
   - `config_repository.py`, `path_utils.py`, `models.py`: 설정/경로/데이터 모델 (`AppConfig`, `ConversionTask`, `PlannedConversion`, `ConversionSummary`)
   - `services/artifact_policy.py`: 이미지/HTML 보조 산출물 후보, 충돌, snapshot 대상 정책
   - `services/hwp_converter.py`: HWP COM 래퍼
+  - `services/hwp_security_module.py`: 한컴 FilePathCheck DLL 설치·SHA-256 검증·HKCU 레지스트리 등록
+  - `services/hwp_security_session.py`: 변환 세션 전면화/「모두 허용」 자동 클릭 정책
   - `services/file_selection_store.py`, `services/task_planner.py`: 파일 선택 상태와 작업 계획/건너뜀/출력 충돌 계산
   - `workers/file_scan_worker.py`, `workers/conversion_worker.py`: 비동기 스캔/변환 워커
-  - `windows_integration.py`: 관리자 권한 드롭 처리
+  - `windows_integration.py`: 관리자 권한 드롭·한글 창 전면화·보안 대화상자 best-effort 클릭
   - `ui/main_window.py`: `MainWindow` import 경로를 유지하는 조립 루트와 호환 래퍼
   - `ui/main_window_controllers/`: 상태, 테마/표시, 파일 선택/스캔, 변환, 네이티브 드롭, 수명주기 컨트롤러
   - `ui/theme.py`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs.py`: UI 컴포넌트 분리 (`PreflightDialog`, `ResultDialog` 포함)

@@ -33,7 +33,8 @@ class ConversionWorker(QThread):
     progress_updated = pyqtSignal(int, int, str)  # current, total, filename
     status_updated = pyqtSignal(str)
     task_completed = pyqtSignal(object)  # ConversionSummary
-    error_occurred = pyqtSignal(str)
+    # 보안 모듈 등록·소유 PID 등 UI 폴링 정책용 (initialize 직후)
+    engine_status_updated = pyqtSignal(object)
 
     _com_initialized = False
 
@@ -84,6 +85,7 @@ class ConversionWorker(QThread):
                 # 워커 스레드가 COM apartment 를 소유한다. 컨버터는 중복 CoInit/Uninit 하지 않는다.
                 converter.initialize(manage_com_apartment=False)
                 runtime_warnings = self._collect_converter_warnings(converter)
+                self._emit_engine_status(converter)
             except Exception as e:
                 logger.exception("한글 초기화 실패")
                 for task in self.tasks:
@@ -247,6 +249,17 @@ class ConversionWorker(QThread):
         task.output_mtime = getattr(converter, "last_output_mtime", None)
         task.save_format = getattr(converter, "last_save_format", None)
         task.progid_used = converter.progid_used
+
+    def _emit_engine_status(self, converter: ConverterEngine) -> None:
+        owned = getattr(converter, "owned_pids", None) or set()
+        payload = {
+            "security_module_registered": getattr(converter, "security_module_registered", None),
+            "owned_pids": sorted(int(pid) for pid in owned),
+            "snapshot_unreliable": bool(getattr(converter, "snapshot_unreliable", False)),
+            "process_tracking_warning": getattr(converter, "process_tracking_warning", None),
+            "progid_used": converter.progid_used,
+        }
+        self.engine_status_updated.emit(payload)
 
     def _collect_converter_warnings(self, converter: ConverterEngine) -> list[str]:
         warnings: list[str] = []

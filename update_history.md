@@ -11,6 +11,49 @@
 - 배포 산출물: `dist/HWP변환기_v8.7.exe`
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
 
+## 2026-08-03 문서·spec·gitignore 정합 및 배포
+
+- README 프로젝트 구조·기능 목록을 보안 모듈·계획 잠금·캐시 정책과 동기화
+- gemini.md 보안/계획 잠금 지침 보강, PROJECT_STRUCTURE_ANALYSIS 스냅샷 갱신
+- `hwp_converter.spec`에 `hwp_security_session` hiddenimport 및 이력 주석
+- `.gitignore`: PyInstaller warn, `*.dll.tmp`, `.claude/`, 루트 exe, 캐시 보강
+- HWP_COM_SMOKE 체크리스트에 planning·캐시 신선도 항목 추가
+
+## 2026-08-03 재감사 권장안 구현
+
+### 1단계
+- `is_planning` 계획 잠금: 스캔 대기·작업 수집 중 시작/입력/드롭 재진입 차단
+- `engine_status_received` 전·모듈 미실패 시 「모두 허용」 자동 클릭 금지
+
+### 2단계
+- 폴더 캐시 만료(`FOLDER_SCAN_CACHE_MAX_AGE_SECONDS`)·샘플 존재 검증
+- 설정 복원 폴더 자동 미리보기 스캔; 콜드 변환 시 비동기 스캔 후 대기 (UI 동기 재스캔 제거)
+- 프로세스 추적/스냅샷 실패 상태바 문구 보강
+- Claude.md / PROJECT_STRUCTURE_ANALYSIS 동기화
+
+### 3단계
+- 미사용 `error_occurred` 시그널 제거 (요약은 `task_completed` 단일 경로)
+- 계획 잠금·연결 구간 자동 클릭·캐시 신선도 회귀 테스트
+
+## 2026-08-03 감사 권장안 구현 (신뢰성·보안 UX)
+
+### 1단계
+- 폴더 스캔 `wait` 후 Qt 시그널 드레인 + 캐시 필수(동기 재스캔 race 제거)
+- 전면화/자동 클릭을 소유 PID 우선, 보안 대화상자 위주로 제한
+- 보안 모듈 등록 성공 시 「모두 허용」 자동 클릭 생략·폴링 간격 완화
+- pyright 타입 정리 (`QTimer`, nativeEventFilter, 테스트 어노테이션)
+
+### 2단계
+- 보안 모듈 DLL SHA-256 무결성 검증 후 레지스트리 등록
+- 자동 클릭 쿨다운·세션 상한, 버튼 매칭 강화
+- Toolhelp 스냅샷 연속 실패 시 결과/상태 경고
+- 시작 토스트에 허용 창 힌트 합침, 스모크 체크리스트 보강
+
+### 3단계
+- `HwpSecuritySession` 으로 폴링 정책 분리
+- 설정/UI: `auto_accept_security_dialog` (「모두 허용」 자동 시도)
+- 회귀 테스트: 세션 정책, 폴링 PID, 캐시 필수, DLL 무결성
+
 ## 2026-08-03 토스트 고대비 UI
 
 ### 변경

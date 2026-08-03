@@ -226,8 +226,8 @@ def test_retry_failed_tasks_builds_plan_and_starts_worker(
             self.progress_updated = type("S", (), {"connect": lambda *a, **k: None})()
             self.status_updated = type("S", (), {"connect": lambda *a, **k: None})()
             self.task_completed = type("S", (), {"connect": lambda *a, **k: None})()
-            self.error_occurred = type("S", (), {"connect": lambda *a, **k: None})()
             self.finished = type("S", (), {"connect": lambda *a, **k: None})()
+            self.engine_status_updated = type("S", (), {"connect": lambda *a, **k: None})()
 
         def start(self):
             started.append(self.plan)
@@ -241,6 +241,149 @@ def test_retry_failed_tasks_builds_plan_and_starts_worker(
     assert len(started) == 1
     assert started[0].runnable_count == 1  # type: ignore[attr-defined]
     assert window.is_converting is True
+
+
+def test_collect_tasks_requires_folder_cache_after_wait(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    window.folder_radio.setChecked(True)
+    window.folder_entry.setText("C:/docs")
+
+    monkeypatch.setattr(
+        window.file_selection_controller,
+        "get_folder_scan_cache",
+        lambda **kwargs: None,
+    )
+
+    with pytest.raises(ValueError, match="폴더 스캔 결과"):
+        window.conversion_controller.collect_tasks(require_folder_cache=True)
+
+
+def test_poll_uses_owned_pids_and_skips_auto_accept_when_module_ok(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    controller = window.conversion_controller
+    window.state.is_converting = True
+    session = window.state.security_session
+    session.owned_pids = {42}
+    session.security_module_registered = True
+    session.auto_accept_enabled = True
+
+    brought: list[object] = []
+    accepted: list[object] = []
+
+    import hwpmate.ui.main_window_controllers.conversion as conv_mod
+
+    monkeypatch.setattr(
+        conv_mod,
+        "bring_hwp_windows_to_foreground",
+        lambda pids: brought.append(pids) or 1,
+    )
+    monkeypatch.setattr(
+        conv_mod,
+        "try_accept_hwp_security_dialog",
+        lambda pids: accepted.append(pids) or True,
+    )
+
+    controller._poll_hwp_foreground()
+
+    assert brought == [{42}]
+    assert accepted == []
+
+
+def test_poll_auto_accept_when_module_failed(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    controller = window.conversion_controller
+    window.state.is_converting = True
+    session = window.state.security_session
+    session.owned_pids = {7}
+    session.security_module_registered = False
+    session.engine_status_received = True
+    session.auto_accept_enabled = True
+
+    accepted: list[object] = []
+
+    import hwpmate.ui.main_window_controllers.conversion as conv_mod
+
+    monkeypatch.setattr(conv_mod, "bring_hwp_windows_to_foreground", lambda pids: 0)
+    monkeypatch.setattr(
+        conv_mod,
+        "try_accept_hwp_security_dialog",
+        lambda pids: accepted.append(pids) or True,
+    )
+
+    controller._poll_hwp_foreground()
+
+    assert accepted == [{7}]
+    assert session.auto_accept_clicks == 1
+
+
+def test_poll_skips_auto_accept_before_engine_status(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    controller = window.conversion_controller
+    window.state.is_converting = True
+    session = window.state.security_session
+    session.owned_pids = set()
+    session.security_module_registered = None
+    session.engine_status_received = False
+    session.auto_accept_enabled = True
+
+    accepted: list[object] = []
+    import hwpmate.ui.main_window_controllers.conversion as conv_mod
+
+    monkeypatch.setattr(conv_mod, "bring_hwp_windows_to_foreground", lambda pids: 0)
+    monkeypatch.setattr(
+        conv_mod,
+        "try_accept_hwp_security_dialog",
+        lambda pids: accepted.append(pids) or True,
+    )
+
+    controller._poll_hwp_foreground()
+    assert accepted == []
+
+
+def test_start_conversion_blocked_while_planning(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    window.state.is_planning = True
+    window.conversion_controller.start_conversion()
+    assert window.worker is None
+    assert "준비" in window.status_label.text() or "진행" in window.status_label.text()
+
+
+def test_on_engine_status_updates_session(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    controller = window.conversion_controller
+    controller.on_engine_status_updated(
+        {
+            "security_module_registered": True,
+            "owned_pids": [99],
+            "snapshot_unreliable": False,
+        }
+    )
+    assert window.state.security_session.owned_pids == {99}
+    assert window.state.security_session.security_module_registered is True
+    assert window.state.security_session.engine_status_received is True
+
+
+def test_folder_cache_freshness_detects_missing_files(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    existing = tmp_path / "a.hwp"
+    existing.write_text("x", encoding="utf-8")
+    missing = tmp_path / "gone.hwp"
+    paths = [str(existing), str(missing), str(tmp_path / "b.hwp"), str(tmp_path / "c.hwp")]
+    ok, reason = window.file_selection_controller.validate_folder_scan_cache_freshness(paths)
+    assert ok is False
+    assert "변경" in reason or "없음" in reason
 
 
 def test_native_drop_controller_routes_file_mode_paths(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:

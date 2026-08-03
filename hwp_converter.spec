@@ -9,6 +9,7 @@ HWP 변환기 v8.7 - PyInstaller 빌드 설정
 2026-06-11 감사 개선(단일 인스턴스, artifact policy, busy guard) 이후에도
 추가 hidden import 또는 data 번들 없이 동일 빌드 구성이 동작함을 확인했습니다.
 2026-08-03: 한컴 보안승인 모듈 DLL 을 datas 로 번들 (배포 단일 exe 필수).
+2026-08-03: hwp_security_session·계획 잠금·캐시 정책 반영 — security 모듈 hiddenimport 유지.
 """
 
 from pathlib import Path
@@ -73,13 +74,14 @@ a = Analysis(
     datas=_SECURITY_DATAS,  # 보안 DLL — onefile 에 포함, 런타임에 LOCALAPPDATA 로 복사
     hiddenimports=[
         # 필수 pywin32 모듈
-        # 2026-06-11 기준 ui/main_window_controllers와 services/artifact_policy는 정적 import로 분석되므로
-        # 별도 hidden import 없이 빌드 검증 통과
+        # ui/main_window_controllers·artifact_policy·security_session 은 정적 import 경로
         'win32com.client',
         'win32api',
         'pythoncom',
         'pywintypes',
+        # 보안 모듈: 변환 경로에서 동적 성격이 있어 onefile 에서 명시 포함
         'hwpmate.services.hwp_security_module',
+        'hwpmate.services.hwp_security_session',
     ],
     hookspath=[],
     hooksconfig={},

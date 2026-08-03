@@ -7,5 +7,7 @@
 - 런타임: 앱이 `%LOCALAPPDATA%\HwpMate\security\` 로 복사 후  
   `HKCU\SOFTWARE\HNC\HwpAutomation\Modules` 에 경로를 등록하고  
   `RegisterModule("FilePathCheckDLL", "FilePathCheckerModuleExample")` 를 호출합니다.
+- 무결성: 설치·등록 전 SHA-256 검증  
+  (`hwpmate.constants.SECURITY_MODULE_DLL_SHA256` — 파일 교체 시 상수 동기화 필수)
 
 한컴 공개 자료이며, 임의 개작·재배포 시 한컴 라이선스를 확인하세요.
