@@ -8,6 +8,67 @@
 - 주 엔트리포인트: `hwptopdf-hwpx_v4.py`
 - 빌드 설정: `hwp_converter.spec`
 - 정적 검사 기준: `pyrightconfig.json`
+- 배포 산출물: `dist/HWP변환기_v8.7.exe`
+- 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
+
+## 2026-08-03 토스트 고대비 UI
+
+### 변경
+- `ToastWidget` 배경을 짙은 슬레이트(`rgba(15,23,42,0.97)`)로 통일하고 본문·아이콘을 **흰색 굵은 글씨**로 표시.
+- 성공/경고/오류/정보 아이콘별 **왼쪽 강조 테두리 색**과 그림자 효과로 시인성 강화.
+- 메시지 길이에 맞게 토스트 폭·높이 가변 (최대 약 440×140).
+- README에 토스트 시각 설계 기준을 명시.
+
+## 2026-08-03 보안승인 모듈 자동 설치 (팝업 근원 해결)
+
+### 원인
+- 파일 Open/Save 시 뜨는 허용 팝업은 UI 클릭 문제가 아니라 **한컴 FilePathCheckDLL 보안모듈(DLL+레지스트리)** 미설치가 근본 원인.
+- `RegisterModule` 예외만 없으면 “성공”으로 로깅했으나 레지스트리에 DLL 경로가 없으면 팝업이 계속 뜸.
+- 자동 「모두 허용」 폴링을 **연결 성공 직후 중지**해, 실제 팝업이 뜨는 Open 구간에서 동작하지 않음.
+
+### 수정
+- `FilePathCheckerModuleExample.dll` 번들 + `%LOCALAPPDATA%\HwpMate\security` 복사
+- `HKCU\SOFTWARE\HNC\HwpAutomation\Modules` 자동 등록 후 `RegisterModule`
+- 폴링을 변환 종료까지 유지, 전면화는 보안/대화상자 위주로 축소
+- PyInstaller `datas` 에 보안 DLL 포함
+
+## 2026-08-03 CMD 플래시 제거·보안 모듈 폴백
+
+### 근원
+- `_snapshot_hwp_pids` 가 `tasklist` 서브프로세스를 호출해 변환/전면화 폴링 중 **콘솔 창이 반복 플래시**됨.
+- `taskkill` 도 `CREATE_NO_WINDOW` 없이 호출됨.
+
+### 수정
+- PID 스냅샷을 **Toolhelp32** 로 교체 (외부 콘솔 프로세스 제거).
+- `taskkill` 에 `CREATE_NO_WINDOW` 적용.
+- 보안 모듈 `RegisterModule` 별칭 폴백 (`FilePathCheckerModuleExample` 등).
+- 「모두 허용」 버튼 **best-effort** 자동 클릭 (모듈 실패 시 보조, 주 경로는 보안 모듈).
+- UI Tip/결과 경고 문구 정리.
+
+## 2026-08-03 한글 허용 창 전면화·인쇄 설정 안내
+
+### UX
+- 변환 시작 후 UI 스레드에서 한글/허용·보안 창을 주기적으로 전면화해 작업 표시줄 뒤로 가려지지 않게 합니다.
+- 연결 상태 문구·토스트·상태바에 “허용 창 확인” 안내를 표시하고, 연결 성공 시 “연결 중” 고착을 해제합니다.
+- 사전 점검·사용법·프로그램 정보에 **인쇄/용지 설정에 따라 변환 결과가 달라질 수 있음**을 안내합니다.
+
+### 구현 위치
+- `windows_integration.bring_hwp_windows_to_foreground`
+- `ConversionController` 전면화 폴링 타이머
+- `constants.PRINT_SETTINGS_NOTICE` / `HWP_PERMISSION_HINT`
+
+## 2026-08-03 onefile 실행 크래시 수정
+
+### 원인
+- Windows 이벤트 로그: `QtCore.pyd` 접근 위반(`0xC0000005` / `0xC000041D`)
+- `NativeDropFilter.nativeEventFilter`가 sip에 `None` result를 반환해 frozen/onefile 실행 직후 종료
+- `hwp_converter.spec` 바이너리 필터가 `Qt6Network.dll`, `opengl32sw.dll`을 패키지에서 제거 (Qt6Gui 런타임 의존)
+
+### 수정
+- `nativeEventFilter` 반환을 항상 `(bool, int)`로 고정, `wintypes.MSG.from_address` 사용
+- 네이티브 드롭 필터 설치를 `QTimer.singleShot(0, ...)`로 지연
+- spec에서 `Qt6Network`/`opengl32sw` 유지, 위험한 stdlib exclude·UPX 비활성
+- `pyinstaller --noconfirm --clean hwp_converter.spec` 재빌드 후 10초 이상 생존 확인
 
 ## 2026-07-15 기능 감사 후속 개선
 

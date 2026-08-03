@@ -186,6 +186,23 @@ def test_worker_finished_preserves_failed_hwp_status(monkeypatch: pytest.MonkeyP
     assert "실패" in window.hwp_status_label.text()
 
 
+def test_on_status_updated_syncs_hwp_status_label(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    controller = window.conversion_controller
+
+    controller.on_status_updated("한글 프로그램 연결 중... 허용/보안 창이 뜨면 확인")
+    assert "허용 창" in window.hwp_status_label.text()
+    assert "연결 중" in window.status_label.text()
+
+    controller.on_status_updated("연결 성공: HWPFrame.HwpObject")
+    assert "연결됨" in window.hwp_status_label.text()
+    # 연결 성공 후에도 Open 구간 폴링을 유지해야 함 (중지하지 않음)
+    # 타이머가 없으면 그대로 None 허용
+
+    controller.on_status_updated("변환 중: sample.hwp")
+    assert "변환 중" in window.hwp_status_label.text()
+
+
 def test_retry_failed_tasks_builds_plan_and_starts_worker(
     monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
 ) -> None:

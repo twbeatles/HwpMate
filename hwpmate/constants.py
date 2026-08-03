@@ -51,3 +51,19 @@ HWP_PROGIDS = [
     "HwpObject.HwpObject",
     "HWPFrame.HwpObject",
 ]
+
+# 한글 COM 허용/보안 창이 작업 표시줄 뒤로 가려질 때 사용자 안내
+HWP_PERMISSION_HINT = (
+    "한글 허용·보안 확인 창이 뒤에 가려질 수 있습니다. "
+    "작업 표시줄의 한글 창을 확인해 주세요."
+)
+
+# PDF·이미지 등 인쇄 경로 산출물은 한글 인쇄/용지 설정에 좌우될 수 있음
+PRINT_SETTINGS_NOTICE = (
+    "PDF·이미지 등 일부 형식은 한컴오피스 인쇄/페이지/용지 설정에 따라 "
+    "레이아웃·여백·페이지 수가 달라질 수 있습니다. "
+    "변환 전 한글에서 인쇄 미리보기·용지 설정을 확인하세요."
+)
+
+# 연결 중 한글 창 전면화 폴링 간격 (ms) — Toolhelp 기반이라 콘솔 플래시 없음
+HWP_FOREGROUND_POLL_MS = 800

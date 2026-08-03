@@ -8,10 +8,19 @@ from typing import Any
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from ...constants import FOLDER_SCAN_WAIT_MS, WORKER_WAIT_TIMEOUT
+from ...constants import (
+    FOLDER_SCAN_WAIT_MS,
+    HWP_FOREGROUND_POLL_MS,
+    HWP_PERMISSION_HINT,
+    WORKER_WAIT_TIMEOUT,
+)
 from ...logging_config import get_logger
 from ...models import ConversionSummary, ConversionTask, PlannedConversion
 from ...path_utils import check_write_permission, is_valid_path_name
+from ...windows_integration import (
+    bring_hwp_windows_to_foreground,
+    try_accept_hwp_security_dialog,
+)
 from .state import MainWindowState
 
 logger = get_logger(__name__)
@@ -23,6 +32,58 @@ class ConversionController:
     def __init__(self, window: Any, state: MainWindowState) -> None:
         self.window = window
         self.state = state
+        self._security_dialog_auto_accepted = False
+
+    def _start_hwp_foreground_polling(self) -> None:
+        """Dispatch/Open 블로킹 중에도 UI 스레드에서 한글 창을 전면화한다."""
+        self._stop_hwp_foreground_polling()
+        self._security_dialog_auto_accepted = False
+        timer = QTimer(self.window)
+        timer.setInterval(HWP_FOREGROUND_POLL_MS)
+        timer.timeout.connect(self._poll_hwp_foreground)
+        self.state.hwp_foreground_timer = timer
+        timer.start()
+        # 즉시 1회 시도
+        self._poll_hwp_foreground()
+
+    def _stop_hwp_foreground_polling(self) -> None:
+        timer = self.state.hwp_foreground_timer
+        if timer is None:
+            return
+        try:
+            timer.stop()
+            timer.deleteLater()
+        except RuntimeError:
+            pass
+        self.state.hwp_foreground_timer = None
+
+    def _poll_hwp_foreground(self) -> None:
+        if not self.is_conversion_active():
+            self._stop_hwp_foreground_polling()
+            return
+        try:
+            # 파일 Open/Save 중에도 동작 (연결 성공 후 중지하지 않음)
+            bring_hwp_windows_to_foreground(None)
+            # 보안 모듈 미준비 환경: 「모두 허용」 반복 best-effort (파일마다 창이 다시 뜰 수 있음)
+            if try_accept_hwp_security_dialog(None):
+                self._security_dialog_auto_accepted = True
+        except Exception as e:
+            logger.debug(f"한글 창 전면화 폴링 오류: {e}")
+
+    def _begin_worker_ui(self, worker: Any, *, toast_message: str, toast_icon: str) -> None:
+        """워커 시그널 연결, 상태 표시, 전면화 폴링, 토스트."""
+        self.state.worker = worker
+        worker.progress_updated.connect(self.window._on_progress_updated)
+        worker.status_updated.connect(self.window._on_status_updated)
+        worker.task_completed.connect(self.window._on_task_completed)
+        worker.error_occurred.connect(self.window._on_error_occurred)
+        worker.finished.connect(self.window._on_worker_finished)
+        worker.start()
+        self.window.hwp_status_label.setText("🟡 한글 연결 중... (허용 창 확인)")
+        self._start_hwp_foreground_polling()
+        if hasattr(self.window, "toast"):
+            self.window.toast.show_message(toast_message, toast_icon)
+            self.window.toast.show_message(HWP_PERMISSION_HINT, "⚠️")
 
     def collect_tasks(self) -> PlannedConversion:
         is_folder_mode = self.window.folder_radio.isChecked()
@@ -139,19 +200,11 @@ class ConversionController:
             self.window.progress_bar.setValue(0)
             self.state.conversion_start_time = time.time()
             worker = self.window._create_conversion_worker(plan)
-            self.state.worker = worker
-            worker.progress_updated.connect(self.window._on_progress_updated)
-            worker.status_updated.connect(self.window._on_status_updated)
-            worker.task_completed.connect(self.window._on_task_completed)
-            worker.error_occurred.connect(self.window._on_error_occurred)
-            worker.finished.connect(self.window._on_worker_finished)
-            worker.start()
-            self.window.hwp_status_label.setText("🟡 한글 연결 중...")
 
             start_message = f"{plan.runnable_count}개 파일 변환 시작"
             if plan.skipped_count:
                 start_message += f" (건너뜀 {plan.skipped_count}개)"
-            self.window.toast.show_message(start_message, "🚀")
+            self._begin_worker_ui(worker, toast_message=start_message, toast_icon="🚀")
         except ValueError as e:
             QMessageBox.warning(self.window, "경고", str(e))
         except Exception as e:
@@ -265,11 +318,20 @@ class ConversionController:
 
     def on_status_updated(self, text: str) -> None:
         self.window.status_label.setText(text)
+        # 연결 성공 후에도 폴링을 유지한다.
+        # 보안 승인 창은 Open/SaveAs(파일 루프) 시점에 뜨므로 연결 직후 끄면 자동 클릭이 무력화된다.
+        if "연결 성공" in text:
+            self.window.hwp_status_label.setText("🟢 한글 연결됨")
+        elif "연결 중" in text or "허용" in text or "보안" in text:
+            self.window.hwp_status_label.setText("🟡 한글 연결 중... (허용 창 확인)")
+        elif text.startswith("변환 중") or text.startswith("재시도"):
+            self.window.hwp_status_label.setText("🟢 한글 변환 중")
 
     def on_task_completed(self, summary_obj: object) -> None:
         if not isinstance(summary_obj, ConversionSummary):
             return
 
+        self._stop_hwp_foreground_polling()
         summary = summary_obj
         self.state.last_summary = summary
         elapsed_str = f"{summary.elapsed_seconds:.1f}초" if summary.elapsed_seconds is not None else "알 수 없음"
@@ -353,22 +415,20 @@ class ConversionController:
         self.window.progress_bar.setValue(0)
         self.state.conversion_start_time = time.time()
         worker = self.window._create_conversion_worker(plan)
-        self.state.worker = worker
-        worker.progress_updated.connect(self.window._on_progress_updated)
-        worker.status_updated.connect(self.window._on_status_updated)
-        worker.task_completed.connect(self.window._on_task_completed)
-        worker.error_occurred.connect(self.window._on_error_occurred)
-        worker.finished.connect(self.window._on_worker_finished)
-        worker.start()
-        self.window.hwp_status_label.setText("🟡 한글 연결 중...")
-        self.window.toast.show_message(f"실패 {plan.runnable_count}개 재변환 시작", "🔁")
+        self._begin_worker_ui(
+            worker,
+            toast_message=f"실패 {plan.runnable_count}개 재변환 시작",
+            toast_icon="🔁",
+        )
 
     def on_error_occurred(self, error_msg: str) -> None:
+        self._stop_hwp_foreground_polling()
         self.window.toast.show_message("변환 중 오류 발생", "❌")
         self.window.hwp_status_label.setText("🔴 한글 연결 오류")
         QMessageBox.critical(self.window, "오류", f"변환 중 오류 발생:\n{error_msg}")
 
     def on_worker_finished(self) -> None:
+        self._stop_hwp_foreground_polling()
         self.window._set_converting_state(False)
         self.window.progress_bar.setValue(0)
         self.window.progress_label.setText("0 / 0")

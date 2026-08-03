@@ -77,7 +77,9 @@ class ConversionWorker(QThread):
         try:
             converter = self._converter_factory()
             self.converter = converter
-            self.status_updated.emit("한글 프로그램 연결 중...")
+            self.status_updated.emit(
+                "한글 프로그램 연결 중... 허용/보안 창이 뜨면 작업 표시줄을 확인해 주세요."
+            )
             try:
                 # 워커 스레드가 COM apartment 를 소유한다. 컨버터는 중복 CoInit/Uninit 하지 않는다.
                 converter.initialize(manage_com_apartment=False)
@@ -250,7 +252,11 @@ class ConversionWorker(QThread):
         warnings: list[str] = []
         if getattr(converter, "security_module_registered", None) is False:
             detail = getattr(converter, "security_module_error", None)
-            message = "한글 보안 모듈 등록에 실패했습니다."
+            message = (
+                "한글 보안 모듈 등록에 실패했습니다. "
+                "파일 접근 시 '모두 허용' 창이 뜰 수 있으며, "
+                "한컴 보안 모듈(FilePathCheckDLL) 등록이 근본 해결책입니다."
+            )
             if detail:
                 message += f" 상세: {detail}"
             warnings.append(message)

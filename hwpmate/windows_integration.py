@@ -4,6 +4,7 @@ import ctypes
 import logging
 import os
 import sys
+from ctypes import wintypes
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, ClassVar, List, Optional, Set, Tuple
@@ -17,6 +18,23 @@ logger = get_logger(__name__)
 
 NATIVE_DND_DISABLE_ENV = "HWPMATE_DISABLE_NATIVE_DND"
 NATIVE_DND_FORCE_ENV = "HWPMATE_FORCE_NATIVE_DND"
+WINDOWS_GENERIC_MSG = b"windows_generic_MSG"
+
+
+def _event_type_bytes(event_type: Any) -> bytes:
+    """PyQt6 버전별로 bytes / QByteArray 로 올 수 있는 eventType 을 정규화."""
+    if isinstance(event_type, (bytes, bytearray)):
+        return bytes(event_type)
+    data = getattr(event_type, "data", None)
+    if callable(data):
+        try:
+            return bytes(data())
+        except Exception:
+            pass
+    try:
+        return bytes(event_type)
+    except Exception:
+        return str(event_type).encode("utf-8", errors="replace")
 
 
 def _env_flag(name: str) -> bool:
@@ -52,6 +70,227 @@ def is_admin() -> bool:
         return ctypes.windll.shell32.IsUserAnAdmin()
     except Exception as e:
         logger.warning(f"관리자 권한 확인 실패: {e}")
+        return False
+
+
+_SECURITY_DIALOG_TITLE_HINTS = (
+    "보안",
+    "허용",
+    "접근",
+    "한/글",
+    "한글",
+    "hwp",
+    "automation",
+    "파일",
+)
+
+
+def _window_title(hwnd: int) -> str:
+    user32 = ctypes.windll.user32
+    length = user32.GetWindowTextLengthW(hwnd)
+    if length <= 0:
+        return ""
+    buf = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, buf, length + 1)
+    return buf.value.strip()
+
+
+def _list_top_level_hwnds_for_pids(
+    target_pids: Set[int],
+    *,
+    security_dialogs_only: bool = False,
+) -> list[int]:
+    """지정 PID 소유의 top-level 윈도우 HWND 목록을 반환."""
+    if not target_pids:
+        return []
+
+    user32 = ctypes.windll.user32
+    hwnds: list[int] = []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+    def enum_proc(hwnd: int, _lparam: int) -> bool:
+        try:
+            if not user32.IsWindow(hwnd):
+                return True
+            # 자식 컨트롤(WS_CHILD)은 제외. 소유된 대화상자(허용/보안 팝업)는 포함.
+            GWL_STYLE = -16
+            WS_CHILD = 0x40000000
+            style = user32.GetWindowLongW(hwnd, GWL_STYLE)
+            if style & WS_CHILD:
+                return True
+            pid = wintypes.DWORD(0)
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if int(pid.value) not in target_pids:
+                return True
+            if security_dialogs_only:
+                title = _window_title(hwnd).lower()
+                # 제목이 비어 있는 모달도 후보에 포함 (한컴 일부 대화상자)
+                if title:
+                    if not any(hint in title for hint in _SECURITY_DIALOG_TITLE_HINTS):
+                        # 표준 대화상자 클래스면 허용
+                        cls = ctypes.create_unicode_buffer(64)
+                        user32.GetClassNameW(hwnd, cls, 64)
+                        class_name = cls.value
+                        if class_name not in {"#32770", "HwpDialog", "ThunderRT6FormDC"}:
+                            if "dialog" not in class_name.lower():
+                                return True
+            hwnds.append(int(hwnd))
+        except Exception:
+            pass
+        return True
+
+    try:
+        user32.EnumWindows(enum_proc, 0)
+    except Exception as e:
+        logger.debug(f"EnumWindows 실패: {e}")
+    return hwnds
+
+
+def _raise_hwnd_to_foreground(hwnd: int) -> bool:
+    """단일 HWND 를 전면으로 올린다. 실패해도 False 만 반환."""
+    user32 = ctypes.windll.user32
+    SW_RESTORE = 9
+    HWND_TOPMOST = -1
+    HWND_NOTOPMOST = -2
+    SWP_NOMOVE = 0x0002
+    SWP_NOSIZE = 0x0001
+    SWP_SHOWWINDOW = 0x0040
+
+    try:
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, SW_RESTORE)
+        else:
+            user32.ShowWindow(hwnd, 5)  # SW_SHOW
+
+        flags = SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW
+        user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags)
+        user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, flags)
+        user32.BringWindowToTop(hwnd)
+        user32.SetForegroundWindow(hwnd)
+        return True
+    except Exception as e:
+        logger.debug(f"HWND 전면화 실패: hwnd={hwnd}, {e}")
+        return False
+
+
+def _resolve_hwp_target_pids(pids: Optional[Set[int]] = None) -> Set[int]:
+    if pids is not None:
+        return {int(p) for p in pids if int(p) > 0}
+    # 순환 import 방지: 프로세스 스냅샷은 hwp_converter 쪽 (Toolhelp, 콘솔 없음)
+    from .services.hwp_converter import _snapshot_hwp_pids
+
+    return set(_snapshot_hwp_pids())
+
+
+def bring_hwp_windows_to_foreground(pids: Optional[Set[int]] = None) -> int:
+    """
+    한글 관련 창(허용/보안 팝업 포함)을 전면으로 올린다.
+
+    Args:
+        pids: 대상 프로세스 PID. None 이면 실행 중인 Hwp/HwpCtrl 전체를 best-effort 로 탐색.
+
+    Returns:
+        전면화 시도에 성공한 창 개수 (best-effort).
+    """
+    try:
+        user32 = ctypes.windll.user32
+        try:
+            # ASFW_ANY = -1 — 다른 프로세스 창 전면화를 허용 (관리자 환경에서 완화)
+            user32.AllowSetForegroundWindow(-1)
+        except Exception:
+            pass
+
+        target_pids = _resolve_hwp_target_pids(pids)
+        if not target_pids:
+            return 0
+
+        # 메인 편집 창 전체 TOPMOST 반복은 스팸이 되므로 보안/대화상자 위주
+        raised = 0
+        for hwnd in _list_top_level_hwnds_for_pids(target_pids, security_dialogs_only=True):
+            if _raise_hwnd_to_foreground(hwnd):
+                raised += 1
+
+        if raised:
+            logger.debug(f"한글 보안/대화 창 전면화: pids={sorted(target_pids)}, raised={raised}")
+        return raised
+    except Exception as e:
+        logger.debug(f"한글 창 전면화 전체 실패: {e}")
+        return 0
+
+
+# 보안 승인 대화상자 버튼 문구 후보 (버전·언어 표기 차이)
+_SECURITY_ACCEPT_BUTTON_TEXTS = (
+    "모두 허용",
+    "모두 허용(&A)",
+    "모두허용",
+    "Allow all",
+    "Allow All",
+    "&Allow all",
+)
+
+_BM_CLICK = 0x00F5
+
+
+def try_accept_hwp_security_dialog(pids: Optional[Set[int]] = None) -> bool:
+    """
+    한글 보안 승인 대화상자의 「모두 허용」 버튼을 best-effort 로 클릭한다.
+
+    주 경로는 RegisterModule 보안 모듈이다. 모듈 실패 시 남는 UI 만 보조한다.
+    버튼 문구/창 구조가 버전마다 달라 실패할 수 있으며, 실패해도 변환을 중단하지 않는다.
+    """
+    try:
+        user32 = ctypes.windll.user32
+        target_pids = _resolve_hwp_target_pids(pids)
+        if not target_pids:
+            return False
+
+        parent_hwnds = _list_top_level_hwnds_for_pids(target_pids)
+        if not parent_hwnds:
+            return False
+
+        # 전면화 후 버튼 탐색
+        for parent in parent_hwnds:
+            _raise_hwnd_to_foreground(parent)
+
+        clicked = False
+
+        @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        def enum_child(hwnd: int, _lparam: int) -> bool:
+            nonlocal clicked
+            if clicked:
+                return False
+            try:
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length <= 0 or length > 64:
+                    return True
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                text = buf.value.strip()
+                if text in _SECURITY_ACCEPT_BUTTON_TEXTS or (
+                    "모두" in text and "허용" in text
+                ):
+                    # 버튼 클래스인지 느슨히 확인
+                    cls = ctypes.create_unicode_buffer(64)
+                    user32.GetClassNameW(hwnd, cls, 64)
+                    class_name = cls.value.lower()
+                    if "button" in class_name or class_name.startswith("button"):
+                        user32.SendMessageW(hwnd, _BM_CLICK, 0, 0)
+                        clicked = True
+                        logger.info(f"한글 보안 대화상자 '모두 허용' 자동 클릭 시도: '{text}'")
+                        return False
+            except Exception:
+                pass
+            return True
+
+        for parent in parent_hwnds:
+            user32.EnumChildWindows(parent, enum_child, 0)
+            if clicked:
+                break
+            # 일부 대화상자는 별도 top-level 이므로 자기 자신 텍스트도 검사하지 않음
+
+        return clicked
+    except Exception as e:
+        logger.debug(f"모두 허용 자동 클릭 실패: {e}")
         return False
 
 
@@ -116,19 +355,6 @@ class NativeDropFilter(QAbstractNativeEventFilter):
     files_dropped_callback: Optional[Callable[[List[str]], None]] = None
     
     WM_DROPFILES = 0x0233
-    
-    # MSG 구조체를 클래스 레벨로 정의 (반복 생성 방지)
-    # ctypes.wintypes를 직접 참조
-    class _MSG(ctypes.Structure):
-        import ctypes.wintypes as wintypes
-        _fields_ = [
-            ("hwnd", wintypes.HWND),
-            ("message", wintypes.UINT),
-            ("wParam", wintypes.WPARAM),
-            ("lParam", wintypes.LPARAM),
-            ("time", wintypes.DWORD),
-            ("pt", wintypes.POINT),
-        ]
     
     def __init__(self) -> None:
         super().__init__()
@@ -202,25 +428,30 @@ class NativeDropFilter(QAbstractNativeEventFilter):
             logger.error(f"네이티브 드래그 앤 드롭 등록 실패: {e}")
             return False
     
-    def nativeEventFilter(self, eventType: Any, message: Any) -> Tuple[bool, Any]:
-        """네이티브 Windows 이벤트 필터"""
+    def nativeEventFilter(self, eventType: Any, message: Any) -> Tuple[bool, int]:
+        """네이티브 Windows 이벤트 필터.
+
+        PyQt6 sip 바인딩은 두 번째 반환값이 int 여야 한다. None 을 넘기면
+        onefile/frozen 실행에서 QtCore.pyd 접근 위반(0xC0000005)이 날 수 있다.
+        """
         try:
             # Windows 메시지만 처리
-            if eventType != b"windows_generic_MSG":
-                return False, None
+            if _event_type_bytes(eventType) != WINDOWS_GENERIC_MSG:
+                return False, 0
             if message is None:
-                return False, None
-            
-            # 클래스 레벨 MSG 구조체 사용 (매번 재생성 방지)
-            # message는 sip.voidptr이므로 정수로 변환 후 MSG로 캐스팅
+                return False, 0
+
+            # message 는 sip.voidptr — 정수 주소로 변환 후 표준 MSG 레이아웃 사용
             msg_ptr = int(message)
-            msg = ctypes.cast(msg_ptr, ctypes.POINTER(self._MSG)).contents
-            
-            if msg.message == self.WM_DROPFILES:
+            if msg_ptr == 0:
+                return False, 0
+            msg = wintypes.MSG.from_address(msg_ptr)
+
+            if int(msg.message) == self.WM_DROPFILES:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug("WM_DROPFILES 메시지 수신!")
-                dropped_files = self._get_dropped_files(msg.wParam)
-                
+                dropped_files = self._get_dropped_files(int(msg.wParam))
+
                 if dropped_files and self.files_dropped_callback:
                     # 폴더 확장은 여기서 하지 않고 MainWindow 비동기 스캐너에서 처리
                     accepted_inputs = []
@@ -232,15 +463,15 @@ class NativeDropFilter(QAbstractNativeEventFilter):
                     if accepted_inputs:
                         logger.debug(f"네이티브 드롭 입력: {len(accepted_inputs)}개 경로")
                         self.files_dropped_callback(accepted_inputs)
-                
-                # 메시지 처리 완료
-                return True, None
-                
+
+                # 메시지 처리 완료 (result 는 반드시 int)
+                return True, 0
+
         except Exception as e:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"nativeEventFilter 오류: {e}")
-        
-        return False, None
+
+        return False, 0
     
     def _get_dropped_files(self, hDrop: int) -> List[str]:
         """WM_DROPFILES에서 파일 목록 추출"""

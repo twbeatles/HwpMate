@@ -67,8 +67,7 @@ def test_kill_owned_processes_skips_pid_not_in_live_hwp_snapshot(monkeypatch) ->
     calls: list[list[str]] = []
 
     def fake_run(args, **kwargs):
-        del kwargs
-        calls.append(list(args))
+        calls.append((list(args), kwargs.get("creationflags")))
 
         class Result:
             returncode = 0
@@ -78,7 +77,9 @@ def test_kill_owned_processes_skips_pid_not_in_live_hwp_snapshot(monkeypatch) ->
     monkeypatch.setattr(converter_module.subprocess, "run", fake_run)
 
     assert converter.kill_owned_processes() is True
-    assert calls == [["taskkill", "/PID", "222", "/F"]]
+    assert len(calls) == 1
+    assert calls[0][0] == ["taskkill", "/PID", "222", "/F"]
+    assert calls[0][1] == converter_module._CREATE_NO_WINDOW
     assert converter.owned_pids == set()
 
 

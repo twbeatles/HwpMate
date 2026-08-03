@@ -8,21 +8,42 @@ HWP 변환기 v8.7 - PyInstaller 빌드 설정
 2026-06-10 MainWindow 컨트롤러 분리 이후에도
 2026-06-11 감사 개선(단일 인스턴스, artifact policy, busy guard) 이후에도
 추가 hidden import 또는 data 번들 없이 동일 빌드 구성이 동작함을 확인했습니다.
+2026-08-03: 한컴 보안승인 모듈 DLL 을 datas 로 번들 (배포 단일 exe 필수).
 """
+
+from pathlib import Path
 
 block_cipher = None
 
+_SPEC_DIR = Path(SPECPATH) if "SPECPATH" in dir() else Path(".").resolve()
+_SECURITY_DLL = _SPEC_DIR / "hwpmate" / "resources" / "security" / "FilePathCheckerModuleExample.dll"
+_SECURITY_README = _SPEC_DIR / "hwpmate" / "resources" / "security" / "README.md"
+if not _SECURITY_DLL.is_file():
+    raise SystemExit(
+        f"배포 빌드 필수 파일 없음: {_SECURITY_DLL}\n"
+        "한컴 오토메이션 보안모듈 DLL 을 hwpmate/resources/security/ 에 두세요."
+    )
+
+_SECURITY_DATAS = [
+    (str(_SECURITY_DLL), "hwpmate/resources/security"),
+]
+if _SECURITY_README.is_file():
+    _SECURITY_DATAS.append((str(_SECURITY_README), "hwpmate/resources/security"))
+
+
 # 제외할 불필요한 모듈 목록 (경량화)
+# 주의: ssl / asyncio / concurrent 는 stdlib·Qt·로깅 경로에서 간접 사용될 수 있어 제외하지 않음
+# 주의: PyQt6.QtNetwork 파이썬 래퍼는 제외해도 되지만 Qt6Network.dll 바이너리는 반드시 유지
 EXCLUDES = [
     # 테스트/디버깅
     'pytest', 'unittest', 'test', 'tests',
     
-    # 사용하지 않는 PyQt6 모듈
+    # 사용하지 않는 PyQt6 모듈 (파이썬 바인딩만 제외 — 네이티브 DLL 필터와 별개)
     'PyQt6.QtWebEngine', 'PyQt6.QtWebEngineCore', 'PyQt6.QtWebEngineWidgets',
     'PyQt6.QtMultimedia', 'PyQt6.QtMultimediaWidgets',
     'PyQt6.QtBluetooth', 'PyQt6.QtNfc',
     'PyQt6.QtQuick', 'PyQt6.QtQuick3D', 'PyQt6.QtQml',
-    'PyQt6.QtSql', 'PyQt6.QtNetwork',
+    'PyQt6.QtSql',
     'PyQt6.QtOpenGL', 'PyQt6.QtOpenGLWidgets',
     'PyQt6.QtSvg', 'PyQt6.QtSvgWidgets',
     'PyQt6.QtPdf', 'PyQt6.QtPdfWidgets',
@@ -41,9 +62,7 @@ EXCLUDES = [
     'scipy', 'sklearn', 'tensorflow', 'torch',
     'tkinter', 'tk', 'tcl',
     'IPython', 'jupyter',
-    'cryptography', 'ssl',
-    'asyncio', 'concurrent',
-    'xml.etree', 'html.parser',
+    'cryptography',
     'lib2to3', 'distutils',
 ]
 
@@ -51,7 +70,7 @@ a = Analysis(
     ['hwptopdf-hwpx_v4.py'],
     pathex=[],
     binaries=[],
-    datas=[],  # 문서/설정/리포트 템플릿은 런타임 생성하므로 배포 번들에 포함하지 않음
+    datas=_SECURITY_DATAS,  # 보안 DLL — onefile 에 포함, 런타임에 LOCALAPPDATA 로 복사
     hiddenimports=[
         # 필수 pywin32 모듈
         # 2026-06-11 기준 ui/main_window_controllers와 services/artifact_policy는 정적 import로 분석되므로
@@ -60,6 +79,7 @@ a = Analysis(
         'win32api',
         'pythoncom',
         'pywintypes',
+        'hwpmate.services.hwp_security_module',
     ],
     hookspath=[],
     hooksconfig={},
@@ -72,15 +92,18 @@ a = Analysis(
 )
 
 # 불필요한 바이너리 제거 (경량화)
+# 중요: Qt6Network / opengl32sw / d3dcompiler 는 Qt6Gui·렌더링 런타임 의존성이라 제거하면
+# onefile 실행 직후 QtCore.pyd 에서 0xC0000005 접근 위반으로 즉시 종료됨.
+# (Analysis에는 수집되지만 과거 필터가 EXE/PKG 단계에서 탈락시켰음)
 a.binaries = [
-    b for b in a.binaries 
+    b for b in a.binaries
     if not any(x in b[0].lower() for x in [
         'qt6webengine', 'qt6multimedia', 'qt6quick',
-        'qt6qml', 'qt6sql', 'qt6network', 'qt6opengl',
-        'qt6svg', 'qt6pdf', 'qt6designer',
+        'qt6qml', 'qt6sql',
+        # qt6network / qt6opengl / qt6svg / opengl32sw / d3dcompiler 유지
+        'qt6designer',
         'qt6charts', 'qt6statemachine', 'qt6websockets',
         'qt6serialbus', 'qt6spatialaudio',
-        'd3dcompiler', 'opengl32sw',
     ])
 ]
 
@@ -97,7 +120,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,  # Windows에서는 strip 효과 제한적
-    upx=True,  # UPX 압축 활성화 (경량화)
+    upx=False,  # UPX는 Qt DLL 손상/미설치 환경 크래시 위험이 있어 비활성
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,  # GUI 모드 (콘솔 창 숨김)

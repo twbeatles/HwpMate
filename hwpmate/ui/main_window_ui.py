@@ -411,9 +411,13 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
     main_layout.addLayout(btn_layout)
 
     # 팁 메시지
-    tip_label = QLabel("💡 Tip: 변환 시작 시 나오는 팝업에서 '모두 허용'을 눌러주셔야 진행됩니다.")
+    tip_label = QLabel(
+        "💡 Tip: 앱이 한컴 보안승인 모듈을 자동 등록하면 파일별 허용 팝업 없이 진행됩니다. "
+        "모듈 실패 시에만 허용 창이 뜨며, 그때 '모두 허용'을 누르세요."
+    )
     tip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     tip_label.setStyleSheet("color: #ff9f43; font-weight: bold; margin-top: 5px;")
+    tip_label.setWordWrap(True)
     main_layout.addWidget(tip_label)
 
     # === 진행 상태 ===

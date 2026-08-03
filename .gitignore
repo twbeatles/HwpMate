@@ -32,10 +32,17 @@ dist/
 pip-wheel-metadata/
 
 # ===== PyInstaller extras =====
-# (spec 파일은 추적할 것이므로 *.spec 는 ignore 하지 않음)
+# (hwp_converter.spec 은 추적 — *.spec 를 통째로 ignore 하지 않음)
+# 보안 모듈 DLL 은 hwpmate/resources/security/ 에 커밋 (배포 번들 필수)
 *.manifest
 *.pkg
 *.toc
+
+# ===== Local agent / tool caches (레포 루트) =====
+.agents/
+.grok/
+# Spec Kit 로컬 산출은 팀 정책에 따라 추적 가능 — 기본은 무시하지 않음
+# .specify/ 와 specs/ 는 기능 명세 작업 시 커밋할 수 있음
 
 # ===== Logs / local artifacts =====
 *.log

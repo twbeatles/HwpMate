@@ -5,6 +5,7 @@ import sys
 from collections.abc import Iterable
 from typing import Optional
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QCloseEvent, QShowEvent
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -235,7 +236,9 @@ class MainWindow(QMainWindow):
         if a0 is None:
             return
         super().showEvent(a0)
-        self.native_drop_controller.initialize_native_drag_drop()
+        # showEvent 재진입/첫 paint 중 native filter 설치 시 QtCore AV 를 피하기 위해
+        # 이벤트 루프 한 틱 뒤로 미룬다.
+        QTimer.singleShot(0, self.native_drop_controller.initialize_native_drag_drop)
 
     def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
         if a0 is None:

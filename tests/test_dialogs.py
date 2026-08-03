@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hwpmate.models import ConversionSummary, ConversionTask
-from hwpmate.ui.dialogs import write_failed_list, write_results_csv, write_results_json
+from hwpmate.constants import HWP_PERMISSION_HINT, PRINT_SETTINGS_NOTICE
+from hwpmate.models import ConversionSummary, ConversionTask, PlannedConversion
+from hwpmate.ui.dialogs import PreflightDialog, write_failed_list, write_results_csv, write_results_json
 
 
 def build_summary(tmp_path: Path) -> ConversionSummary:
@@ -65,6 +66,25 @@ def test_write_results_csv_contains_all_statuses(tmp_path: Path) -> None:
     assert "취소됨" in text
     assert "backup/b.hwp" in text.replace("\\", "/")
     assert not list(tmp_path.glob(".results.csv.*.tmp"))
+
+
+def test_preflight_dialog_includes_print_and_permission_notices(qapp, tmp_path: Path) -> None:
+    del qapp
+    from PyQt6.QtWidgets import QTextEdit
+
+    input_file = tmp_path / "doc.hwp"
+    input_file.write_text("x", encoding="utf-8")
+    plan = PlannedConversion(
+        format_type="PDF",
+        same_location=True,
+        output_path="",
+        tasks=[ConversionTask(input_file, tmp_path / "doc.pdf")],
+    )
+    dialog = PreflightDialog(plan)
+    body = "\n".join(widget.toPlainText() for widget in dialog.findChildren(QTextEdit))
+    assert PRINT_SETTINGS_NOTICE in body
+    assert HWP_PERMISSION_HINT in body
+    dialog.close()
 
 
 def test_write_results_json_contains_summary_and_tasks(tmp_path: Path) -> None:

@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..logging_config import get_logger
+from ..constants import HWP_PERMISSION_HINT, PRINT_SETTINGS_NOTICE
 from ..models import ConversionSummary, ConversionTask, PlannedConversion
 from ..path_utils import check_write_permission
 from ..services.hwp_converter import get_registered_hwp_progids
@@ -139,6 +140,8 @@ class PreflightDialog(QDialog):
         warnings = list(plan.warnings)
         if blocking_errors:
             warnings.extend(f"변환 시작 차단: {error}" for error in blocking_errors)
+        warnings.append(PRINT_SETTINGS_NOTICE)
+        warnings.append(HWP_PERMISSION_HINT)
         warnings.append(
             "강제 종료는 앱이 새로 띄운 한글 프로세스에만 적용됩니다. "
             "이미 한글이 실행 중이면 프로세스 추적이 실패할 수 있으니 변환 전 다른 한글 창을 닫는 것을 권장합니다."

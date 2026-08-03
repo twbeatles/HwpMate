@@ -32,3 +32,5 @@ class MainWindowState:
     close_after_worker: bool = False
     drag_drop_initialized: bool = False
     selected_format: str = "PDF"
+    # 한글 허용/보안 창 전면화 폴링 타이머 (UI 스레드, ConversionController 소유)
+    hwp_foreground_timer: object | None = None

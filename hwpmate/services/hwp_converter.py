@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import csv
-import io
+import ctypes
 import subprocess
 import time
+from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, Protocol, Tuple, cast
@@ -11,6 +11,10 @@ from typing import Any, Optional, Protocol, Tuple, cast
 from ..constants import DOCUMENT_LOAD_DELAY, FORMAT_TYPES, HWP_PROGIDS
 from ..logging_config import get_logger
 from .artifact_policy import iter_candidate_artifact_paths
+from .hwp_security_module import (
+    SECURITY_MODULE_ALIAS,
+    ensure_hwp_security_module,
+)
 
 logger = get_logger(__name__)
 
@@ -28,6 +32,34 @@ except ImportError:
     PYWIN32_AVAILABLE = False
 
 HWP_PROCESS_NAMES = {"hwp.exe", "hwpctrl.exe"}
+
+# 한컴 보안 모듈 RegisterModule 두 번째 인자 후보
+# (ensure_hwp_security_module 이 등록하는 별칭을 최우선)
+SECURITY_MODULE_ALIASES = (
+    SECURITY_MODULE_ALIAS,
+    "FilePathCheckerModule",
+    "SecurityModule",
+)
+
+# Windows: 콘솔 창 없이 자식 프로세스 실행
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+TH32CS_SNAPPROCESS = 0x00000002
+
+
+class _PROCESSENTRY32W(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", wintypes.DWORD),
+        ("cntUsage", wintypes.DWORD),
+        ("th32ProcessID", wintypes.DWORD),
+        ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+        ("th32ModuleID", wintypes.DWORD),
+        ("cntThreads", wintypes.DWORD),
+        ("th32ParentProcessID", wintypes.DWORD),
+        ("pcPriClassBase", ctypes.c_long),
+        ("dwFlags", wintypes.DWORD),
+        ("szExeFile", wintypes.WCHAR * 260),
+    ]
 
 
 @dataclass(frozen=True)
@@ -56,32 +88,31 @@ def require_pywin32() -> Tuple[Any, Any]:
 
 
 def _snapshot_hwp_pids() -> set[int]:
-    """현재 실행 중인 한글 관련 프로세스 PID 집합 반환."""
+    """현재 실행 중인 한글 관련 프로세스 PID 집합 반환.
+
+    tasklist 서브프로세스 대신 Toolhelp32 를 사용해 콘솔 창 플래시를 원천 차단한다.
+    """
     try:
-        result = subprocess.run(
-            ["tasklist", "/FO", "CSV", "/NH"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="ignore",
-            check=False,
-        )
-        if result.returncode != 0:
+        kernel32 = ctypes.windll.kernel32
+        snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+        if snapshot in (-1, 0xFFFFFFFF):
             return set()
 
-        reader = csv.reader(io.StringIO(result.stdout))
         pids: set[int] = set()
-        for row in reader:
-            if len(row) < 2:
-                continue
-            image_name = row[0].strip().lower()
-            if image_name not in HWP_PROCESS_NAMES:
-                continue
-            try:
-                pids.add(int(row[1]))
-            except ValueError:
-                continue
-        return pids
+        try:
+            entry = _PROCESSENTRY32W()
+            entry.dwSize = ctypes.sizeof(_PROCESSENTRY32W)
+            if not kernel32.Process32FirstW(snapshot, ctypes.byref(entry)):
+                return set()
+            while True:
+                image_name = entry.szExeFile.strip().lower()
+                if image_name in HWP_PROCESS_NAMES:
+                    pids.add(int(entry.th32ProcessID))
+                if not kernel32.Process32NextW(snapshot, ctypes.byref(entry)):
+                    break
+            return pids
+        finally:
+            kernel32.CloseHandle(snapshot)
     except Exception as e:
         logger.debug(f"한글 프로세스 스냅샷 수집 실패: {e}")
         return set()
@@ -184,6 +215,13 @@ class HWPConverter:
         else:
             self._com_apartment_owned = False
 
+        # DLL 설치 + HKCU\...\HwpAutomation\Modules 레지스트리 (RegisterModule 사전 조건)
+        prep_ok, prep_msg, prep_alias = ensure_hwp_security_module()
+        if prep_ok:
+            logger.info(f"보안 모듈 사전 준비 완료: {prep_msg}")
+        else:
+            logger.warning(f"보안 모듈 사전 준비 실패: {prep_msg}")
+
         errors = []
         for progid in HWP_PROGIDS:
             before_pids = _snapshot_hwp_pids()
@@ -192,14 +230,48 @@ class HWPConverter:
                 self.progid_used = progid
                 hwp = self.hwp
 
-                try:
-                    hwp.RegisterModule("FilePathCheckDLL", "FilePathCheckerModuleExample")
-                    self.security_module_registered = True
-                    self.security_module_error = None
-                except Exception as module_error:
-                    self.security_module_registered = False
-                    self.security_module_error = str(module_error)
-                    logger.warning(f"한글 보안 모듈 등록 실패: {module_error}")
+                module_errors: list[str] = []
+                self.security_module_registered = False
+                self.security_module_error = None
+                aliases: list[str] = []
+                if prep_alias:
+                    aliases.append(prep_alias)
+                for name in SECURITY_MODULE_ALIASES:
+                    if name not in aliases:
+                        aliases.append(name)
+
+                for alias in aliases:
+                    try:
+                        result = hwp.RegisterModule("FilePathCheckDLL", alias)
+                        if result is False or result == 0:
+                            module_errors.append(f"{alias}: RegisterModule returned {result!r}")
+                            continue
+                        # 레지스트리+DLL 사전 준비가 된 경우에만 "완전 성공" (팝업 억제 기대)
+                        if prep_ok:
+                            self.security_module_registered = True
+                            self.security_module_error = None
+                            logger.info(
+                                f"한글 보안 모듈 등록 성공: alias={alias}, result={result!r}"
+                            )
+                        else:
+                            self.security_module_registered = False
+                            self.security_module_error = (
+                                f"RegisterModule({alias}) 호출됨(result={result!r})이나 "
+                                f"레지스트리/DLL 미준비: {prep_msg}"
+                            )
+                            logger.warning(self.security_module_error)
+                        break
+                    except Exception as module_error:
+                        module_errors.append(f"{alias}: {module_error}")
+
+                if not self.security_module_registered and self.security_module_error is None:
+                    self.security_module_error = (
+                        f"prep={prep_msg}; " + ("; ".join(module_errors) or "알 수 없는 오류")
+                    )
+                    logger.warning(
+                        "한글 보안 모듈 등록 실패 (파일 접근 시 '모두 허용' 창이 뜰 수 있음): "
+                        f"{self.security_module_error}"
+                    )
 
                 hwp.SetMessageBoxMode(0x00000001)
                 time.sleep(0.2)
@@ -215,6 +287,13 @@ class HWPConverter:
                         "강제 종료는 비활성화됩니다. 변환 전 다른 한글 창을 닫으면 추적이 안정됩니다."
                     )
                     logger.info(self.process_tracking_warning)
+                # 허용/보안 팝업이 뒤에 가려지지 않도록 1회 전면화 (실패해도 연결 유지)
+                try:
+                    from ..windows_integration import bring_hwp_windows_to_foreground
+
+                    bring_hwp_windows_to_foreground(self.owned_pids or None)
+                except Exception as foreground_error:
+                    logger.debug(f"연결 직후 한글 창 전면화 실패: {foreground_error}")
                 return True
 
             except Exception as e:
@@ -244,6 +323,13 @@ class HWPConverter:
             self.last_output_size = None
             self.last_output_mtime = None
             self.last_save_format = None
+
+            # 일부 환경에서 Open 직전 재등록이 파일 경로 승인 훅을 안정화함
+            try:
+                alias = SECURITY_MODULE_ALIAS
+                hwp.RegisterModule("FilePathCheckDLL", alias)
+            except Exception as re_reg_error:
+                logger.debug(f"Open 전 RegisterModule 재호출 실패(무시): {re_reg_error}")
 
             open_result = hwp.Open(input_str, "", "forceopen:true")
             if open_result is False:
@@ -358,6 +444,7 @@ class HWPConverter:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     check=False,
+                    creationflags=_CREATE_NO_WINDOW,
                 )
                 if result.returncode == 0:
                     killed_any = True

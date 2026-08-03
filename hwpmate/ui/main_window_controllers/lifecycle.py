@@ -5,7 +5,14 @@ from typing import Any, Callable
 from PyQt6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PyQt6.QtWidgets import QLabel, QMenu, QMessageBox, QStyle, QSystemTrayIcon
 
-from ...constants import FORMAT_GROUPS, FORMAT_TYPES, VERSION, WORKER_WAIT_TIMEOUT
+from ...constants import (
+    FORMAT_GROUPS,
+    FORMAT_TYPES,
+    HWP_PERMISSION_HINT,
+    PRINT_SETTINGS_NOTICE,
+    VERSION,
+    WORKER_WAIT_TIMEOUT,
+)
 from ...logging_config import get_logger
 from ...models import AppConfig
 from .state import MainWindowState
@@ -164,6 +171,8 @@ class LifecycleController:
 {format_html}
 </ul>
 <p>이미지/HTML 변환은 한글 설치 버전에 따라 저장 방식이 다를 수 있으며, 기본 출력 파일과 같은 stem 기반 보조 산출물이 새로 생성·갱신되고 0바이트보다 클 때 성공으로 판단합니다.</p>
+<p>{PRINT_SETTINGS_NOTICE}</p>
+<p>{HWP_PERMISSION_HINT}</p>
 
 <p><b>3. 단축키</b></p>
 <ul>
@@ -198,6 +207,8 @@ class LifecycleController:
 {supported_formats}
 </ul>
 <p>이미지/HTML 변환 결과는 한글 설치 버전에 따라 차이가 있을 수 있으며, 앱은 기본 출력 파일과 같은 stem 기반 보조 산출물의 생성·갱신 여부(0바이트 초과)를 성공 기준으로 사용합니다.</p>
+<p>{PRINT_SETTINGS_NOTICE}</p>
+<p>{HWP_PERMISSION_HINT}</p>
 
 <p><b>요구사항:</b></p>
 <ul>
