@@ -6,6 +6,7 @@
 - 추가 보강 일자: 2026-03-18
 - v8.7 반영 일자: 2026-04-27
 - v9.0 반영 일자: 2026-08-04
+- 인쇄 설정·PDF 내보내기 전략 반영 일자: 2026-08-04
 - 기능 리스크 보강 일자: 2026-05-12
 - MainWindow 컨트롤러 리팩토링 반영 일자: 2026-06-10
 - 보안 세션·계획 잠금·DLL 무결성 반영 일자: 2026-08-03
@@ -64,7 +65,8 @@
 | `models.py` | `AppConfig`, `ConversionTask`, `PlannedConversion`, `ConversionSummary`, `FormatSpec` 데이터 모델 |
 | `services/file_selection_store.py` | 순서 유지 + 대소문자 비민감 중복 제거 |
 | `services/task_planner.py` | 모드별 작업 생성, 동일 형식 건너뜀 분리, 출력 충돌 해소 |
-| `services/hwp_converter.py` | COM 연결/문서 열기/SaveAs/정리·Toolhelp PID 담당 |
+| `services/hwp_converter.py` | COM 연결/문서 열기/인쇄 리셋/PDF 전략/SaveAs/정리·Toolhelp PID |
+| `services/hwp_print_settings.py` | PrintMethod=0 리셋, PrintToPDFEx/RunToPDF, 가상 프린터 탐지 (물리 Print Execute 금지) |
 | `services/hwp_security_module.py` | 보안승인 DLL 설치·SHA-256·HKCU 등록 |
 | `services/hwp_security_session.py` | 전면화/자동 클릭 세션 정책 |
 | `workers/file_scan_worker.py` | 파일/폴더를 비동기 배치 스캔 |
@@ -83,10 +85,12 @@
 ### 4.3 데이터/상태 모델
 - 설정 파일: `%USERPROFILE%\.hwp_converter_config.json`
 - 기본 설정 키:
-  - `config_version`, `theme`, `mode`, `format`, `include_sub`, `same_location`, `overwrite`
+  - `config_version` (3), `theme`, `mode`, `format`, `include_sub`, `same_location`, `overwrite`
   - `backup_enabled`, `retry_count`, `auto_accept_security_dialog`
+  - `pdf_export_mode` (`saveas_first` | `print_to_pdf_ex_first`)
 - 추가 저장 키:
   - `folder_path`, `output_path`, `last_folder`, `last_output`
+- 결과 감사 필드: `save_format`, `export_method`, `progid_used`, `output_size`, `output_mtime` 등
 - 런타임 주요 상태:
   - `self.file_list`, `self._file_set`
   - `MainWindowState.plan`, `tasks`, `last_summary`, `worker`, `scan_worker`
@@ -263,6 +267,7 @@
 - 공식 지원 Python 버전은 3.10 이상입니다.
 - 앱 버전과 PyInstaller 산출물 이름은 `9.0` / `HWP변환기_v9.0.exe`입니다.
 - README는 사용 방법·프로그램 설명 중심입니다.
+- PDF: 기본 `saveas_first`, 인쇄 방식 1쪽씩 best-effort, 물리 Print Execute 금지 (`hwp_print_settings`).
 - `.gitignore`는 `build/`, `dist/`, PyInstaller 중간 산출물, 캐시, `backup/`, COM 스모크/결과 리포트 산출물을 제외합니다.
 - 실제 한글 COM 동작은 자동 테스트와 별도로 `HWP_COM_SMOKE_TEST_CHECKLIST.md` 기준 수동 검증이 필요합니다.
 

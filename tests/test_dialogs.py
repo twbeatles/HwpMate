@@ -59,7 +59,7 @@ def test_write_results_csv_contains_all_statuses(tmp_path: Path) -> None:
     write_results_csv(output, summary)
     text = output.read_text(encoding="utf-8-sig")
 
-    assert "input_file,output_file,status,detail,retry_count,backup_file,backup_error,created_files,output_size,output_mtime,save_format,progid_used" in text
+    assert "input_file,output_file,status,detail,retry_count,backup_file,backup_error,created_files,output_size,output_mtime,save_format,export_method,progid_used" in text
     assert "성공" in text
     assert "실패" in text
     assert "건너뜀" in text

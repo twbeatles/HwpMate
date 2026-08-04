@@ -36,12 +36,13 @@ TOAST_FADE_DURATION = 300
 FEEDBACK_RESET_DELAY = 1500
 WORKER_WAIT_TIMEOUT = 3000
 
-DOCUMENT_LOAD_DELAY = 1.0
+# Open 직후 문서 로드 대기 (초). 과도한 대량 배치 지연을 줄이기 위해 0.5s.
+DOCUMENT_LOAD_DELAY = 0.5
 RETRY_DELAY_SECONDS = 1.0
 
 MAX_FILENAME_COUNTER = 1000
 MAX_RETRY_COUNT = 3
-CONFIG_VERSION = 2
+CONFIG_VERSION = 3
 SCAN_BATCH_SIZE = 100
 SCAN_CANCEL_WAIT_MS = 2000
 FOLDER_SCAN_WAIT_MS = 120_000
@@ -68,11 +69,14 @@ HWP_PERMISSION_HINT = (
     "작업 표시줄의 한글 창을 확인해 주세요."
 )
 
-# PDF·이미지 등 인쇄 경로 산출물은 한글 인쇄/용지 설정에 좌우될 수 있음
+# PDF·이미지 등 인쇄 경로 산출물 안내 (앱은 1쪽씩 기본 인쇄로 best-effort 초기화)
 PRINT_SETTINGS_NOTICE = (
-    "PDF·이미지 등 일부 형식은 한컴오피스 인쇄/페이지/용지 설정에 따라 "
-    "레이아웃·여백·페이지 수가 달라질 수 있습니다. "
-    "변환 전 한글에서 인쇄 미리보기·용지 설정을 확인하세요."
+    "PDF·이미지 변환 시 앱이 인쇄 방식을 기본(1쪽씩)으로 맞추려 시도합니다. "
+    "문서 편집 용지(대부분 A4)는 그대로 두고, 모아찍기 등만 해제하는 방향입니다. "
+    "기본 PDF 경로는 SaveAs(용지 품질 우선)이며, 설정 pdf_export_mode 로 "
+    "PrintToPDFEx 우선(모아찍기 완화)을 고를 수 있습니다. "
+    "물리 프린터 Print 실행은 사용하지 않습니다. "
+    "한글 버전·환경에 따라 일부 설정이 남을 수 있습니다."
 )
 
 # 연결 중 한글 창 전면화 폴링 간격 (ms) — Toolhelp 기반이라 콘솔 플래시 없음

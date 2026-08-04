@@ -15,8 +15,12 @@
 ## 2. 꼭 유지해야 하는 동작
 
 ### 변환 엔진 호환성
-- `Open` 이후 짧은 대기와 `SaveAs` 폴백은 실제 한글 버전 차이를 흡수하기 위한 장치입니다.
-- `Open()`/`SaveAs()`가 명시적으로 `False`를 반환하면 실패로 처리하며, 출력 산출물이 새로 생성되거나 갱신되고 0바이트보다 커야 성공입니다.
+- `Open` 이후 짧은 대기와 `SaveAs` 2→3 인자 폴백은 실제 한글 버전 차이를 흡수하기 위한 장치입니다.
+- `Open()`/`SaveAs()` 실패 판정은 `is_com_failure_result`(False/0)를 사용하며, 출력 산출물이 새로 생성되거나 갱신되고 0바이트보다 커야 성공입니다.
+- PDF/이미지는 변환 전 `PrintMethod=0`(1쪽씩) best-effort 리셋 (`hwp_print_settings`). 원본 디스크는 저장하지 않습니다.
+- PDF 기본 전략 `pdf_export_mode=saveas_first`(SaveAs → 실패 시 PrintToPDFEx/RunToPDF). 옵션 `print_to_pdf_ex_first`.
+- **금지:** `CreateAction("Print").Execute` (물리 프린터 오출력 위험).
+- 결과 CSV/JSON에 `export_method` 등 감사 필드를 포함합니다.
 - 이미지/HTML 계열은 기본 출력 파일 외에도 같은 stem 기반 보조 산출물을 함께 수집해 결과에 기록합니다.
 - 실패 자동 재시도는 기본 1회, 최대 3회입니다.
 - 출력 형식 정보는 `FORMAT_TYPES`를 기준으로 관리합니다.

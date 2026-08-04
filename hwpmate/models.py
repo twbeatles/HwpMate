@@ -18,7 +18,7 @@ class FormatSpec:
 
 @dataclass
 class AppConfig:
-    config_version: int = 2
+    config_version: int = 3
     theme: str = "dark"
     mode: str = "folder"
     format: str = "PDF"
@@ -29,6 +29,8 @@ class AppConfig:
     retry_count: int = 1
     # 보안 모듈 실패 시 「모두 허용」 대화상자 자동 클릭 (best-effort)
     auto_accept_security_dialog: bool = True
+    # PDF: saveas_first(용지 품질 우선) | print_to_pdf_ex_first(모아찍기 완화 우선)
+    pdf_export_mode: str = "saveas_first"
     folder_path: str = ""
     output_path: str = ""
     last_folder: str = ""
@@ -67,6 +69,8 @@ class ConversionTask:
     output_size: int | None = None
     output_mtime: float | None = None
     save_format: str | None = None
+    # saveas_2 | saveas_3 | print_to_pdf_ex | run_to_pdf
+    export_method: str | None = None
     progid_used: str | None = None
 
     def __post_init__(self) -> None:
@@ -95,6 +99,7 @@ class ConversionTask:
             "output_size": self.output_size if self.output_size is not None else "",
             "output_mtime": self.output_mtime if self.output_mtime is not None else "",
             "save_format": self.save_format or "",
+            "export_method": self.export_method or "",
             "progid_used": self.progid_used or "",
         }
 
@@ -118,6 +123,7 @@ class ConversionTask:
             output_size=self.output_size,
             output_mtime=self.output_mtime,
             save_format=self.save_format,
+            export_method=self.export_method,
             progid_used=self.progid_used,
         )
 
@@ -129,6 +135,7 @@ class PlannedConversion:
     output_path: str
     backup_enabled: bool = True
     retry_count: int = 1
+    pdf_export_mode: str = "saveas_first"
     tasks: list[ConversionTask] = field(default_factory=list)
     skipped_tasks: list[ConversionTask] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)

@@ -157,6 +157,178 @@ def test_cleanup_does_not_uninitialize_unowned_com_apartment(monkeypatch) -> Non
     assert converter.is_initialized is False
 
 
+def test_convert_file_pdf_saveas_first_skips_print_when_saveas_ok(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """기본 saveas_first: SaveAs 성공 시 PrintToPDFEx 를 호출하지 않는다."""
+    import hwpmate.services.hwp_converter as converter_module
+
+    monkeypatch.setattr(converter_module, "DOCUMENT_LOAD_DELAY", 0)
+    print_calls: list[object] = []
+
+    def fake_export(hwp, path, **kwargs):
+        del hwp, path, kwargs
+        print_calls.append(1)
+        return False, None
+
+    monkeypatch.setattr(converter_module, "try_export_pdf_via_print_to_pdf_ex", fake_export)
+    monkeypatch.setattr(converter_module, "apply_default_print_settings", lambda h: True)
+
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+    output = tmp_path / "a.pdf"
+    fake = FakeHwp()
+    converter = build_converter(fake)
+    converter.pdf_export_mode = "saveas_first"
+
+    success, error = converter.convert_file(source, output, "PDF")
+
+    assert success is True
+    assert error is None
+    assert len(fake.save_calls) == 1
+    assert print_calls == []
+    assert converter.last_export_method == "saveas_2"
+
+
+def test_convert_file_pdf_print_first_skips_saveas_when_print_ok(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """print_to_pdf_ex_first: PrintToPDFEx 성공 시 SaveAs 를 호출하지 않는다."""
+    import hwpmate.services.hwp_converter as converter_module
+
+    monkeypatch.setattr(converter_module, "DOCUMENT_LOAD_DELAY", 0)
+
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+    output = tmp_path / "a.pdf"
+    fake = FakeHwp()
+
+    def fake_export(hwp, path, **kwargs):
+        del hwp, kwargs
+        Path(path).write_bytes(b"%PDF-1.4 x")
+        return True, "print_to_pdf_ex"
+
+    monkeypatch.setattr(converter_module, "try_export_pdf_via_print_to_pdf_ex", fake_export)
+    monkeypatch.setattr(converter_module, "apply_default_print_settings", lambda h: True)
+
+    converter = build_converter(fake)
+    converter.pdf_export_mode = "print_to_pdf_ex_first"
+    success, error = converter.convert_file(source, output, "PDF")
+
+    assert success is True
+    assert error is None
+    assert not fake.save_calls
+    assert converter.last_export_method == "print_to_pdf_ex"
+    assert output.exists()
+
+
+def test_convert_file_pdf_saveas_first_falls_back_to_print(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import hwpmate.services.hwp_converter as converter_module
+
+    monkeypatch.setattr(converter_module, "DOCUMENT_LOAD_DELAY", 0)
+    monkeypatch.setattr(converter_module, "apply_default_print_settings", lambda h: True)
+
+    def fake_export(hwp, path, **kwargs):
+        del hwp, kwargs
+        Path(path).write_bytes(b"%PDF-1.4 fallback")
+        return True, "print_to_pdf_ex"
+
+    monkeypatch.setattr(converter_module, "try_export_pdf_via_print_to_pdf_ex", fake_export)
+
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+    output = tmp_path / "a.pdf"
+    fake = FakeHwp(save_results=[False, False], write_output=False)
+    converter = build_converter(fake)
+    converter.pdf_export_mode = "saveas_first"
+
+    success, error = converter.convert_file(source, output, "PDF")
+
+    assert success is True
+    assert error is None
+    assert converter.last_export_method == "print_to_pdf_ex"
+
+
+def test_convert_file_pdf_falls_back_to_saveas_when_print_to_pdf_ex_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import hwpmate.services.hwp_converter as converter_module
+
+    monkeypatch.setattr(converter_module, "DOCUMENT_LOAD_DELAY", 0)
+    monkeypatch.setattr(
+        converter_module,
+        "try_export_pdf_via_print_to_pdf_ex",
+        lambda h, p, **kw: (False, None),
+    )
+    monkeypatch.setattr(converter_module, "apply_default_print_settings", lambda h: True)
+
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+    output = tmp_path / "a.pdf"
+    fake = FakeHwp()
+    converter = build_converter(fake)
+    converter.pdf_export_mode = "print_to_pdf_ex_first"
+
+    success, error = converter.convert_file(source, output, "PDF")
+
+    assert success is True
+    assert error is None
+    assert len(fake.save_calls) == 1
+    assert fake.save_calls[0][1] == "PDF"
+    assert converter.last_export_method == "saveas_2"
+
+
+def test_convert_file_respects_cancel_check(tmp_path: Path, monkeypatch) -> None:
+    import hwpmate.services.hwp_converter as converter_module
+
+    monkeypatch.setattr(converter_module, "DOCUMENT_LOAD_DELAY", 0)
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+    output = tmp_path / "a.pdf"
+    fake = FakeHwp()
+
+    success, error = build_converter(fake).convert_file(
+        source, output, "PDF", cancel_check=lambda: True
+    )
+    assert success is False
+    assert error == "사용자 취소"
+    assert not fake.save_calls
+
+
+def test_convert_file_docx_skips_print_settings_control(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import hwpmate.services.hwp_converter as converter_module
+
+    monkeypatch.setattr(converter_module, "DOCUMENT_LOAD_DELAY", 0)
+    reset_calls: list[object] = []
+    monkeypatch.setattr(
+        converter_module,
+        "apply_default_print_settings",
+        lambda h: reset_calls.append(h) or True,
+    )
+    monkeypatch.setattr(
+        converter_module,
+        "try_export_pdf_via_print_to_pdf_ex",
+        lambda h, p: (_ for _ in ()).throw(AssertionError("PDF 경로 호출 금지")),
+    )
+
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+    output = tmp_path / "a.docx"
+    fake = FakeHwp()
+
+    success, error = build_converter(fake).convert_file(source, output, "DOCX")
+
+    assert success is True
+    assert error is None
+    assert reset_calls == []
+    assert len(fake.save_calls) == 1
+    assert fake.save_calls[0][1] == "OOXML"
+
+
 def test_convert_file_fails_when_open_returns_false(tmp_path: Path) -> None:
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")

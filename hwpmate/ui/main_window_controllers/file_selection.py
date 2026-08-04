@@ -147,6 +147,15 @@ class FileSelectionController:
         self.state.folder_scan_ready_at = None
         self.state.folder_scan_files = []
         self.state.folder_scan_accum = []
+        self.state.folder_scan_dir_mtime = None
+        self.state.folder_scan_file_count = 0
+
+    @staticmethod
+    def _dir_mtime(folder_path: str) -> float | None:
+        try:
+            return Path(folder_path).stat().st_mtime
+        except OSError:
+            return None
 
     def get_folder_scan_cache(
         self,
@@ -186,15 +195,36 @@ class FileSelectionController:
         paths: list[str],
         *,
         sample_size: int | None = None,
+        folder_path: str | None = None,
     ) -> tuple[bool, str]:
-        """캐시 경로 샘플이 디스크에 존재하는지 검사. (ok, reason).
+        """캐시 경로 샘플·폴더 mtime·파일 수로 신선도를 검사. (ok, reason).
 
         샘플은 앞·뒤·중간을 섞어 후반부 삭제·중간 누락도 잡도록 한다.
+        폴더 mtime 변경은 신규 파일 추가 등 변경 감지에 사용한다(NTFS best-effort).
         """
         from ...constants import FOLDER_SCAN_CACHE_SAMPLE_SIZE
 
         if not paths:
             return False, "캐시가 비어 있습니다."
+
+        # 파일 수 불일치 (스캔 직후 상태와 캐시 목록 길이)
+        cached_count = self.state.folder_scan_file_count
+        if cached_count > 0 and len(paths) != cached_count:
+            return (
+                False,
+                f"스캔 캐시 파일 수가 달라졌습니다 ({len(paths)} ≠ {cached_count}).",
+            )
+
+        # 폴더 mtime 변경 → 신규 파일/하위 변경 가능성
+        check_folder = (folder_path or self.state.folder_scan_folder or "").strip()
+        cached_mtime = self.state.folder_scan_dir_mtime
+        if check_folder and cached_mtime is not None:
+            current_mtime = self._dir_mtime(check_folder)
+            if current_mtime is not None and abs(current_mtime - cached_mtime) > 1e-6:
+                return (
+                    False,
+                    "스캔 이후 폴더가 변경된 것으로 보입니다 (디렉터리 수정 시각 변경).",
+                )
 
         limit = FOLDER_SCAN_CACHE_SAMPLE_SIZE if sample_size is None else max(1, sample_size)
         sample = self._sample_cache_paths(paths, limit)
@@ -368,6 +398,8 @@ class FileSelectionController:
                 self.state.folder_scan_files = list(self.state.folder_scan_accum)
                 self.state.folder_scan_ready = True
                 self.state.folder_scan_ready_at = time.perf_counter()
+                self.state.folder_scan_file_count = len(self.state.folder_scan_files)
+                self.state.folder_scan_dir_mtime = self._dir_mtime(self.state.folder_scan_folder)
                 self.state.scan_preview_count = self._count_preview_convertible(self.state.folder_scan_files)
                 if self.state.scan_preview_count == 0:
                     self.window.status_label.setText("⚠️ 현재 포맷으로 변환 가능한 파일이 없습니다")

@@ -11,6 +11,16 @@ from typing import Any, Optional, Protocol, Tuple, cast
 from ..constants import DOCUMENT_LOAD_DELAY, FORMAT_TYPES, HWP_PROGIDS
 from ..logging_config import get_logger
 from .artifact_policy import iter_candidate_artifact_paths
+from .hwp_print_settings import (
+    EXPORT_METHOD_SAVEAS_2,
+    EXPORT_METHOD_SAVEAS_3,
+    PDF_EXPORT_PRINT_TO_PDF_EX_FIRST,
+    PDF_EXPORT_SAVEAS_FIRST,
+    apply_default_print_settings,
+    normalize_pdf_export_mode,
+    try_export_pdf_via_print_to_pdf_ex,
+    uses_print_settings_control,
+)
 from .hwp_security_module import (
     SECURITY_MODULE_ALIAS,
     ensure_hwp_security_module,
@@ -223,6 +233,9 @@ class HWPConverter:
         self.last_output_size: int | None = None
         self.last_output_mtime: float | None = None
         self.last_save_format: str | None = None
+        self.last_export_method: str | None = None
+        # PDF 내보내기 전략 (saveas_first | print_to_pdf_ex_first)
+        self.pdf_export_mode: str = PDF_EXPORT_SAVEAS_FIRST
         # True only when this instance successfully called CoInitialize itself.
         self._com_apartment_owned = False
 
@@ -396,11 +409,30 @@ class HWPConverter:
         except Exception as e:
             logger.debug(f"한글 UI 억제 실패(무시): {e}")
 
-    def convert_file(self, input_path, output_path, format_type="PDF") -> Tuple[bool, Optional[str]]:
-        """단일 파일 변환."""
+    def convert_file(
+        self,
+        input_path,
+        output_path,
+        format_type="PDF",
+        *,
+        cancel_check: Any = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """단일 파일 변환.
+
+        cancel_check: 호출 시 취소 여부(bool)를 반환하는 콜백(선택).
+        PDF 전략은 self.pdf_export_mode (saveas_first | print_to_pdf_ex_first).
+        """
         hwp = self.hwp
         if not self.is_initialized or hwp is None:
             return False, "한글 객체가 초기화되지 않았습니다"
+
+        def _cancelled() -> bool:
+            if cancel_check is None:
+                return False
+            try:
+                return bool(cancel_check())
+            except Exception:
+                return False
 
         try:
             input_str = str(input_path)
@@ -410,6 +442,7 @@ class HWPConverter:
             self.last_output_size = None
             self.last_output_mtime = None
             self.last_save_format = None
+            self.last_export_method = None
 
             # 일부 환경에서 Open 직전 재등록이 파일 경로 승인 훅을 안정화함
             try:
@@ -417,6 +450,9 @@ class HWPConverter:
                 hwp.RegisterModule("FilePathCheckDLL", alias)
             except Exception as re_reg_error:
                 logger.debug(f"Open 전 RegisterModule 재호출 실패(무시): {re_reg_error}")
+
+            if _cancelled():
+                return False, "사용자 취소"
 
             open_result = hwp.Open(input_str, "", "forceopen:true")
             if is_com_failure_result(open_result):
@@ -429,35 +465,108 @@ class HWPConverter:
             # Open 후 메인 창이 다시 뜰 수 있어 best-effort 재숨김
             self._suppress_hwp_ui_flash()
 
+            if _cancelled():
+                try:
+                    hwp.Clear(option=1)
+                except Exception:
+                    pass
+                return False, "사용자 취소"
+
             format_info = FORMAT_TYPES.get(format_type, FORMAT_TYPES["PDF"])
             save_format = format_info["save_format"]
             self.last_save_format = save_format
 
+            # PDF·이미지: 문서에 남은 모아찍기 등 인쇄설정을 1쪽씩으로 best-effort 리셋
+            # (원본 디스크 파일은 저장하지 않음. 실패해도 변환은 계속)
+            format_key = str(format_type).upper()
+            if uses_print_settings_control(format_key):
+                try:
+                    if apply_default_print_settings(hwp):
+                        logger.debug(f"인쇄 설정 리셋 적용: format={format_key}")
+                    else:
+                        logger.debug(f"인쇄 설정 리셋 미적용(무시): format={format_key}")
+                except Exception as print_reset_error:
+                    logger.debug(f"인쇄 설정 리셋 예외(무시): {print_reset_error}")
+
             save_error = None
             before_artifacts = _snapshot_artifacts(output_file, format_type)
+            exported = False
+            pdf_mode = normalize_pdf_export_mode(self.pdf_export_mode)
 
-            try:
-                save_result = hwp.SaveAs(output_str, save_format)
-                if is_com_failure_result(save_result):
-                    raise RuntimeError(f"SaveAs 2-param returned failure: {save_result!r}")
-                logger.debug(f"SaveAs 2-param 성공: {output_str}")
-            except Exception as e1:
-                logger.debug(f"SaveAs 2-param 실패: {e1}")
-
+            def _try_print_to_pdf() -> bool:
+                """PrintToPDFEx/RunToPDF (물리 Print Execute 없음)."""
+                if _cancelled():
+                    return False
                 try:
-                    save_result = hwp.SaveAs(output_str, save_format, "")
-                    if is_com_failure_result(save_result):
-                        raise RuntimeError(f"SaveAs 3-param returned failure: {save_result!r}")
-                    logger.debug(f"SaveAs 3-param 성공: {output_str}")
-                except Exception as e2:
-                    save_error = f"2-param: {e1}, 3-param: {e2}"
-                    logger.error(f"모든 SaveAs 방식 실패: {save_error}")
+                    ok, method = try_export_pdf_via_print_to_pdf_ex(
+                        hwp,
+                        output_str,
+                        cancel_check=cancel_check,
+                    )
+                    if ok:
+                        self.last_save_format = "PDF"
+                        self.last_export_method = method
+                        logger.debug(
+                            f"PrintToPDF 경로 성공: method={method}, path={output_str}"
+                        )
+                        return True
+                except Exception as pdf_ex_error:
+                    logger.debug(f"PrintToPDF 경로 예외: {pdf_ex_error}")
+                return False
 
+            def _try_saveas() -> bool:
+                nonlocal save_error
+                if _cancelled():
+                    return False
+                try:
+                    save_result = hwp.SaveAs(output_str, save_format)
+                    if is_com_failure_result(save_result):
+                        raise RuntimeError(f"SaveAs 2-param returned failure: {save_result!r}")
+                    logger.debug(f"SaveAs 2-param 성공: {output_str}")
+                    self.last_export_method = EXPORT_METHOD_SAVEAS_2
+                    return True
+                except Exception as e1:
+                    logger.debug(f"SaveAs 2-param 실패: {e1}")
+                    if _cancelled():
+                        return False
                     try:
-                        hwp.Clear(option=1)
-                    except Exception:
-                        pass
-                    return False, save_error
+                        save_result = hwp.SaveAs(output_str, save_format, "")
+                        if is_com_failure_result(save_result):
+                            raise RuntimeError(f"SaveAs 3-param returned failure: {save_result!r}")
+                        logger.debug(f"SaveAs 3-param 성공: {output_str}")
+                        self.last_export_method = EXPORT_METHOD_SAVEAS_3
+                        return True
+                    except Exception as e2:
+                        save_error = f"2-param: {e1}, 3-param: {e2}"
+                        logger.error(f"모든 SaveAs 방식 실패: {save_error}")
+                        return False
+
+            # PDF 전략:
+            # - saveas_first(기본): 용지 품질 우선 → SaveAs 후 실패 시 PrintToPDFEx
+            # - print_to_pdf_ex_first: 모아찍기 완화 우선 → PrintToPDFEx 1패스 후 SaveAs
+            if format_key == "PDF":
+                if pdf_mode == PDF_EXPORT_PRINT_TO_PDF_EX_FIRST:
+                    if _try_print_to_pdf():
+                        exported = True
+                    elif _try_saveas():
+                        exported = True
+                else:
+                    if _try_saveas():
+                        exported = True
+                    elif _try_print_to_pdf():
+                        exported = True
+            else:
+                if _try_saveas():
+                    exported = True
+
+            if not exported:
+                try:
+                    hwp.Clear(option=1)
+                except Exception:
+                    pass
+                if _cancelled():
+                    return False, "사용자 취소"
+                return False, save_error or "내보내기 실패"
 
             after_artifacts = _snapshot_artifacts(output_file, format_type)
             primary_snapshot = after_artifacts.get(output_file)

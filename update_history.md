@@ -11,6 +11,23 @@
 - 배포 산출물: `dist/HWP변환기_v9.0.exe`
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
 
+## 2026-08-04 PROJECT_AUDIT 인쇄 경로 전면 개선
+
+- **물리 Print Execute 제거:** `CreateAction("Print").Execute` 폴백 삭제 (물리 프린터 오출력 방지).
+- **PDF 기본 전략:** `pdf_export_mode=saveas_first` (SaveAs → 실패 시 PrintToPDFEx/RunToPDF). 옵션 `print_to_pdf_ex_first`.
+- **감사 필드:** `export_method` (CSV/JSON), `CONFIG_VERSION=3`.
+- **PDF 검증:** `%PDF` 매직·최소 크기, 불완전 산출물 정리.
+- **취소 협력:** `convert_file(..., cancel_check=)` + 워커 `cancel_requested`.
+- **가상 프린터 탐지:** `win32print` Enum 우선, 후보 상한.
+- **폴더 캐시:** 디렉터리 mtime·파일 수로 신규 변경 감지.
+- `DOCUMENT_LOAD_DELAY` 0.5s. Claude.md/README/스모크 체크리스트 동기화.
+
+## 2026-08-04 PDF·이미지 인쇄 설정 best-effort 초기화
+
+- 변환 전 `PrintMethod=0`(자동/1쪽씩) 등 세션 인쇄 기본값을 best-effort로 맞춥니다 (`hwp_print_settings.py`).
+- 문서 편집 용지(A4 등 원본)는 강제 변경하지 않습니다.
+- 원본 HWP/HWPX 디스크 파일은 저장하지 않습니다 (`Clear`만).
+
 ## 2026-08-04 한글 COM UI 깜빡임 완화
 
 - 보안 대화상자 판별에서 메인 창 제목(`… - 한글`)에 걸리던 과도한 힌트(`한글`/`hwp` 등)를 제거했습니다.

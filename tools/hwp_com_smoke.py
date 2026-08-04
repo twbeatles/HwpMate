@@ -75,6 +75,7 @@ def main() -> int:
         task.output_size = converter.last_output_size
         task.output_mtime = converter.last_output_mtime
         task.save_format = converter.last_save_format
+        task.export_method = converter.last_export_method
         task.progid_used = converter.progid_used
 
         if converter.security_module_registered is False:

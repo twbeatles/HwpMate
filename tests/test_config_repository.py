@@ -45,19 +45,28 @@ def test_save_and_reload_preserves_known_keys(tmp_path: Path) -> None:
     assert reloaded.folder_path == "C:/work"
     assert reloaded.backup_enabled is True
     assert reloaded.retry_count == 1
+    assert reloaded.pdf_export_mode == "saveas_first"
 
 
 def test_save_replaces_config_atomically_without_leaving_temp_files(tmp_path: Path) -> None:
     config_file = tmp_path / "config.json"
     repo = ConfigRepository(config_file)
 
-    assert repo.save(AppConfig(theme="light", backup_enabled=False, retry_count=2)) is True
+    assert repo.save(
+        AppConfig(
+            theme="light",
+            backup_enabled=False,
+            retry_count=2,
+            pdf_export_mode="print_to_pdf_ex_first",
+        )
+    ) is True
 
     assert config_file.exists()
     assert not list(tmp_path.glob(".config.json.*.tmp"))
     reloaded = repo.load()
     assert reloaded.backup_enabled is False
     assert reloaded.retry_count == 2
+    assert reloaded.pdf_export_mode == "print_to_pdf_ex_first"
 
 
 def test_load_recovers_type_mismatches(tmp_path: Path) -> None:
@@ -92,6 +101,17 @@ def test_load_recovers_type_mismatches(tmp_path: Path) -> None:
     assert config.backup_enabled is False
     assert config.retry_count == 1
     assert config.folder_path == ""
+    assert config.pdf_export_mode == "saveas_first"
+
+
+def test_load_repairs_invalid_pdf_export_mode(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.json"
+    config_file.write_text(
+        '{"pdf_export_mode": "not-a-mode", "theme": "dark"}',
+        encoding="utf-8",
+    )
+    config = ConfigRepository(config_file).load()
+    assert config.pdf_export_mode == "saveas_first"
 
 
 def test_save_reports_failure_when_parent_is_not_directory(tmp_path: Path) -> None:

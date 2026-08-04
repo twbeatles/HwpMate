@@ -34,6 +34,11 @@
 
 - [ ] HWP -> PDF 1건이 성공하고 결과 PDF가 0바이트보다 크다.
 - [ ] HWPX -> PDF 1건이 성공하고 결과 PDF가 0바이트보다 크다.
+- [ ] (가능 시) 인쇄방식이 모아찍기로 저장된 샘플 HWP → PDF 시 1쪽씩(모아찍기 해제)으로 나오는지 확인.
+  - `pdf_export_mode=print_to_pdf_ex_first` 로 한 번, `saveas_first` 로 한 번 비교 권장.
+- [ ] 기본 프린터가 **물리 프린터**인 PC에서 대량 PDF 변환 시 **실제 출력 0건** (Print Execute 미사용 회귀).
+- [ ] 결과 JSON/CSV 에 `export_method` 필드가 채워지는지 확인 (`saveas_2` / `print_to_pdf_ex` 등).
+- [ ] (가능 시) 비규격/B4 용지 문서 → SaveAs 우선 시 용지 크기 유지 여부 기록.
 - [ ] HWP -> DOCX 1건이 성공한다.
 - [ ] HWPX -> HWP 1건이 성공한다.
 - [ ] 이미지 형식(PNG/JPG/BMP/GIF) 중 1개 이상을 변환하고, 현재 한글 버전에서 생성되는 출력 형태를 기록한다.

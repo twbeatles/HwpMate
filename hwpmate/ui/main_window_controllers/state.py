@@ -36,6 +36,9 @@ class MainWindowState:
     folder_scan_accum: list[str] = field(default_factory=list)
     folder_scan_ready: bool = False
     folder_scan_ready_at: float | None = None
+    # 캐시 시점 폴더 mtime·파일 수 (신규 파일/폴더 변경 감지)
+    folder_scan_dir_mtime: float | None = None
+    folder_scan_file_count: int = 0
     force_kill_pending: bool = False
     close_after_worker: bool = False
     # 계획(스캔 대기·작업 수립) 중 종료 요청. processEvents 재진입으로 창 파괴를 막고

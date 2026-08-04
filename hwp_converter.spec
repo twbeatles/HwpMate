@@ -10,6 +10,7 @@ HWP 변환기 v9.0 - PyInstaller 빌드 설정
 추가 hidden import 또는 data 번들 없이 동일 빌드 구성이 동작함을 확인했습니다.
 2026-08-03: 한컴 보안승인 모듈 DLL 을 datas 로 번들 (배포 단일 exe 필수).
 2026-08-03: hwp_security_session·계획 잠금·캐시 정책 반영 — security 모듈 hiddenimport 유지.
+2026-08-04: hwp_print_settings(PDF 인쇄 리셋·PrintToPDFEx) 정적 import — 추가 datas 불필요.
 """
 
 from pathlib import Path

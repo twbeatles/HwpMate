@@ -157,13 +157,21 @@ class ConversionController:
                 )
             # 캐시 신선도: 디스크에서 사라진 파일이 많으면 재스캔 유도
             ok, reason = self.window.file_selection_controller.validate_folder_scan_cache_freshness(
-                folder_file_paths
+                folder_file_paths,
+                folder_path=self.window.folder_entry.text(),
             )
             if not ok:
                 self.window.file_selection_controller.invalidate_folder_scan_cache()
                 raise ValueError(
                     f"{reason}\n폴더를 다시 선택하거나 미리보기 스캔 후 변환하세요."
                 )
+        pdf_export_mode = "saveas_first"
+        try:
+            pdf_export_mode = str(
+                self.window.config.get("pdf_export_mode", "saveas_first") or "saveas_first"
+            )
+        except Exception:
+            pass
         return self.window.task_planner.build_tasks(
             is_folder_mode=is_folder_mode,
             format_type=self.state.selected_format,
@@ -174,6 +182,7 @@ class ConversionController:
             file_paths=self.window.file_store.paths,
             backup_enabled=self.window.backup_check.isChecked(),
             retry_count=self.window.retry_spin.value(),
+            pdf_export_mode=pdf_export_mode,
             folder_file_paths=folder_file_paths if is_folder_mode else None,
         )
 
@@ -535,12 +544,20 @@ class ConversionController:
             QMessageBox.warning(self.window, "경고", "다시 변환할 실패 파일이 없습니다.")
             return
 
+        pdf_export_mode = "saveas_first"
+        try:
+            pdf_export_mode = str(
+                self.window.config.get("pdf_export_mode", "saveas_first") or "saveas_first"
+            )
+        except Exception:
+            pass
         plan = PlannedConversion(
             format_type=format_type,
             same_location=self.window.same_location_check.isChecked(),
             output_path=self.window.output_entry.text().strip(),
             backup_enabled=self.window.backup_check.isChecked(),
             retry_count=self.window.retry_spin.value(),
+            pdf_export_mode=pdf_export_mode,
             tasks=retry_tasks,
             warnings=warnings + ["실패 항목만 다시 변환합니다."],
         )

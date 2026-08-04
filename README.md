@@ -142,7 +142,9 @@
    앱이 한글을 자동으로 열고 저장합니다.
 2. **허용·보안 창**이 작업 표시줄 뒤에 가려질 수 있습니다.  
    안내 토스트가 뜨면 작업 표시줄의 한글 창을 확인해 주세요.
-3. **PDF·이미지** 결과는 한글의 인쇄/용지 설정에 따라 레이아웃이 달라질 수 있습니다.
+3. **PDF·이미지** 변환 시 앱이 인쇄 방식을 기본(1쪽씩)으로 맞추려 시도합니다. 문서 용지(대부분 A4)는 유지합니다.  
+   PDF 기본 경로는 **SaveAs(용지 품질 우선)** 이며, 설정 파일 `pdf_export_mode`를 `print_to_pdf_ex_first`로 바꾸면 모아찍기 완화를 우선합니다.  
+   물리 프린터로 인쇄 명령을 보내지는 않습니다. 한글 버전에 따라 일부 설정이 남을 수 있습니다.
 4. **같은 형식** 파일은 자동 건너뜀 처리됩니다.
 5. 폴더를 스캔할 때, 예전에 만든 **`backup` 하위 폴더**는 기본적으로 다시 스캔하지 않습니다.
 6. 프로그램을 **두 번 실행**하면, 이미 실행 중이라는 안내 후 새 창은 종료됩니다.
@@ -184,6 +186,15 @@ pyinstaller --noconfirm --clean hwp_converter.spec
 | 설정 | 사용자 홈의 `.hwp_converter_config.json` |
 | 로그 | `%LOCALAPPDATA%\HwpMate\logs` 또는 `~/.hwp_converter/logs` |
 | 잠금 파일 | `%LOCALAPPDATA%\HwpMate\HwpMate.lock` |
+
+설정 JSON 주요 키 예:
+
+| 키 | 기본값 | 설명 |
+|----|--------|------|
+| `pdf_export_mode` | `saveas_first` | PDF 내보내기: `saveas_first`(용지 품질) / `print_to_pdf_ex_first`(모아찍기 완화) |
+| `backup_enabled` | `true` | 원본 백업 |
+| `retry_count` | `1` | 실패 재시도(0~3) |
+| `auto_accept_security_dialog` | `true` | 보안 모듈 실패 시 「모두 허용」 보조 클릭 |
 
 ---
 

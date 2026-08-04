@@ -15,6 +15,14 @@
 - `HWPConverter.convert_file`의 2-인자 `SaveAs` 호출 후 3-인자 `SaveAs(..., "")`로 폴백하는 구조를 유지합니다.
 - 한글 버전에 따라 COM 인자 수가 달라질 수 있으므로, 단순화하거나 합치지 않습니다.
 
+### PDF 인쇄 설정·내보내기
+- PDF/이미지 변환 전 `apply_default_print_settings`로 `PrintMethod=0`(1쪽씩)을 best-effort 적용합니다. **원본 디스크 파일은 저장하지 않습니다.**
+- 기본 PDF 전략은 `pdf_export_mode=saveas_first`(용지 품질 우선: SaveAs → 실패 시 PrintToPDFEx/RunToPDF).
+- 모아찍기 완화를 우선하려면 `print_to_pdf_ex_first`(PrintToPDFEx → SaveAs 폴백).
+- **금지:** `CreateAction("Print").Execute` — 물리 프린터로 실제 출력이 나갈 수 있습니다. PDF 전용은 `PrintToPDFEx` / `RunToPDF` 만 허용합니다.
+- 결과 감사 필드 `export_method`(`saveas_2`/`saveas_3`/`print_to_pdf_ex`/`run_to_pdf`)를 유지합니다.
+- 구현: `hwpmate/services/hwp_print_settings.py`, `HWPConverter.convert_file`.
+
 ### COM 초기화
 - 메인 스레드와 워커 스레드에서 COM 초기화/해제를 분리합니다.
 - `ConversionWorker.run()`의 `pythoncom.CoInitialize()` / `CoUninitialize()` 호출을 제거하지 않습니다.
@@ -45,7 +53,8 @@
 ### 성공 판정과 재시도
 - `Open()` 또는 `SaveAs()`가 명시적으로 `False`를 반환하면 실패로 처리합니다.
 - `Open()`이 `False`를 반환한 경우에도 다음 파일에 상태가 전파되지 않도록 best-effort `Clear(option=1)` 정리를 유지합니다.
-- 2-인자/3-인자 `SaveAs` 폴백 후 출력 산출물이 새로 생성되거나 갱신되고 0바이트보다 클 때만 성공으로 집계합니다.
+- SaveAs 또는 PrintToPDFEx/RunToPDF 후 출력 산출물이 새로 생성되거나 갱신되고 0바이트보다 클 때만 성공으로 집계합니다 (PDF는 `%PDF` 매직 검증).
+- 결과 CSV/JSON에는 `retry_count`, `backup_file`, `backup_error`, `created_files`, `output_size`, `output_mtime`, `save_format`, `export_method`, `progid_used`가 포함됩니다.
 - 이미지/HTML 계열은 기본 출력 파일 외에도 같은 stem 기반 보조 산출물을 함께 수집해 성공 판정, 충돌 회피, 결과 저장에 반영합니다.
 - 실패 자동 재시도는 설정값 `retry_count`를 따르며 기본 1회, 최대 3회입니다.
 
@@ -53,7 +62,7 @@
 - `TaskPlanner.build_tasks`는 `PlannedConversion`을 만들고, 동일 형식 입력은 `skipped_tasks`로 분리합니다.
 - `ConversionWorker.task_completed`는 `ConversionSummary`를 전달하며, `성공/실패/건너뜀/취소됨` 집계를 분리합니다.
 - 동일 형식만 선택된 경우에도 변환 워커를 시작하지 않고 `건너뜀` 전용 결과 다이얼로그를 표시합니다.
-- `ResultDialog`와 결과 저장(CSV/JSON/TXT)은 이 집계를 기준으로 동작해야 하며, CSV/JSON에는 `retry_count`, `backup_file`, `backup_error`, `created_files`, `output_size`, `output_mtime`, `save_format`, `progid_used`가 포함됩니다.
+- `ResultDialog`와 결과 저장(CSV/JSON/TXT)은 이 집계를 기준으로 동작해야 하며, CSV/JSON 감사 필드는 위 성공 판정 절과 동일합니다.
 - 결과 TXT/CSV/JSON 저장은 임시 파일 작성 후 교체하는 원자 저장 흐름을 유지합니다.
 
 ### 단일 인스턴스와 설정 저장
@@ -72,7 +81,8 @@
   - `app_instance.py`: `QLockFile` 기반 단일 인스턴스 잠금
   - `config_repository.py`, `path_utils.py`, `models.py`: 설정/경로/데이터 모델 (`AppConfig`, `ConversionTask`, `PlannedConversion`, `ConversionSummary`)
   - `services/artifact_policy.py`: 이미지/HTML 보조 산출물 후보, 충돌, snapshot 대상 정책
-  - `services/hwp_converter.py`: HWP COM 래퍼
+  - `services/hwp_converter.py`: HWP COM 래퍼 (Open / 인쇄 리셋 / PDF 전략 / SaveAs 폴백)
+  - `services/hwp_print_settings.py`: PrintMethod 리셋, PrintToPDFEx/RunToPDF, 가상 프린터 탐지 (물리 Print Execute 금지)
   - `services/hwp_security_module.py`: 한컴 FilePathCheck DLL 설치·SHA-256 검증·HKCU 레지스트리 등록
   - `services/hwp_security_session.py`: 변환 세션 전면화/「모두 허용」 자동 클릭 정책
   - `services/file_selection_store.py`, `services/task_planner.py`: 파일 선택 상태와 작업 계획/건너뜀/출력 충돌 계산

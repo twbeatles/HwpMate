@@ -13,6 +13,7 @@ class StubConverter:
         self.owned = owned
         self.on_convert = on_convert
         self.progid_used = "Stub.Hwp"
+        self.pdf_export_mode = "saveas_first"
         self.cleaned = False
         self.kill_called = False
         self.manage_com_apartment_args: list[bool] = []
@@ -21,7 +22,8 @@ class StubConverter:
         self.manage_com_apartment_args.append(manage_com_apartment)
         return True
 
-    def convert_file(self, input_path, output_path, format_type="PDF"):
+    def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+        del cancel_check
         if self.on_convert is not None:
             self.on_convert(Path(input_path))
         return self.results[Path(input_path).name]
@@ -48,24 +50,27 @@ class SequenceConverter(StubConverter):
         super().__init__(results={})
         self.sequence = sequence
 
-    def convert_file(self, input_path, output_path, format_type="PDF"):
-        del input_path, output_path, format_type
+    def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+        del input_path, output_path, format_type, cancel_check
         return self.sequence.pop(0)
 
 
 class RaisingConverter(StubConverter):
-    def convert_file(self, input_path, output_path, format_type="PDF"):
-        del input_path, output_path, format_type
+    def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+        del input_path, output_path, format_type, cancel_check
         raise RuntimeError("worker boom")
 
 
 class ArtifactConverter(StubConverter):
-    def convert_file(self, input_path, output_path, format_type="PDF"):
-        result = super().convert_file(input_path, output_path, format_type)
+    def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+        result = super().convert_file(
+            input_path, output_path, format_type, cancel_check=cancel_check
+        )
         self.last_created_files = [Path(output_path)]
         self.last_output_size = 123
         self.last_output_mtime = 1777777777.0
         self.last_save_format = format_type
+        self.last_export_method = "saveas_2"
         return result
 
 
@@ -295,6 +300,7 @@ def test_conversion_worker_attaches_converter_artifacts(tmp_path: Path) -> None:
     assert task.created_files == [output]
     assert task.output_size == 123
     assert task.save_format == "PDF"
+    assert task.export_method == "saveas_2"
     assert task.progid_used == "Stub.Hwp"
 
 

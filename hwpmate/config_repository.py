@@ -9,6 +9,11 @@ from typing import Any
 from .constants import CONFIG_VERSION, FORMAT_TYPES, MAX_RETRY_COUNT
 from .logging_config import get_logger
 from .models import AppConfig
+from .services.hwp_print_settings import (
+    PDF_EXPORT_MODES,
+    PDF_EXPORT_SAVEAS_FIRST,
+    normalize_pdf_export_mode,
+)
 
 logger = get_logger(__name__)
 
@@ -30,7 +35,16 @@ class ConfigRepository:
             merged[key] = value
             repairs.append(key)
 
-        string_keys = {"theme", "mode", "format", "folder_path", "output_path", "last_folder", "last_output"}
+        string_keys = {
+            "theme",
+            "mode",
+            "format",
+            "folder_path",
+            "output_path",
+            "last_folder",
+            "last_output",
+            "pdf_export_mode",
+        }
         for key in string_keys:
             if not isinstance(merged.get(key), str):
                 repair(key, getattr(default_config, key))
@@ -41,6 +55,13 @@ class ConfigRepository:
             repair("mode", default_config.mode)
         if merged["format"] not in FORMAT_TYPES:
             repair("format", default_config.format)
+
+        pdf_mode = normalize_pdf_export_mode(
+            merged.get("pdf_export_mode"),
+            default=PDF_EXPORT_SAVEAS_FIRST,
+        )
+        if pdf_mode not in PDF_EXPORT_MODES or merged.get("pdf_export_mode") != pdf_mode:
+            repair("pdf_export_mode", pdf_mode)
 
         bool_keys = {
             "include_sub",

@@ -12,6 +12,7 @@ from ..logging_config import get_logger
 from ..constants import MAX_RETRY_COUNT, RETRY_DELAY_SECONDS
 from ..models import ConversionSummary, ConversionTask, PlannedConversion
 from ..services.hwp_converter import HWPConverter, pythoncom
+from ..services.hwp_print_settings import normalize_pdf_export_mode
 
 logger = get_logger(__name__)
 
@@ -20,8 +21,17 @@ class ConverterEngine(Protocol):
     @property
     def progid_used(self) -> str | None: ...
 
+    pdf_export_mode: str
+
     def initialize(self, *, manage_com_apartment: bool = True) -> bool: ...
-    def convert_file(self, input_path, output_path, format_type="PDF") -> tuple[bool, str | None]: ...
+    def convert_file(
+        self,
+        input_path,
+        output_path,
+        format_type="PDF",
+        *,
+        cancel_check=None,
+    ) -> tuple[bool, str | None]: ...
     def cleanup(self) -> None: ...
     def has_owned_processes(self) -> bool: ...
     def kill_owned_processes(self) -> bool: ...
@@ -84,6 +94,11 @@ class ConversionWorker(QThread):
             try:
                 # 워커 스레드가 COM apartment 를 소유한다. 컨버터는 중복 CoInit/Uninit 하지 않는다.
                 converter.initialize(manage_com_apartment=False)
+                # PDF 내보내기 전략 (SaveAs 우선 / PrintToPDFEx 우선)
+                if hasattr(converter, "pdf_export_mode"):
+                    converter.pdf_export_mode = normalize_pdf_export_mode(
+                        getattr(self.planned_conversion, "pdf_export_mode", None)
+                    )
                 runtime_warnings = self._collect_converter_warnings(converter)
                 self._emit_engine_status(converter)
             except Exception as e:
@@ -142,6 +157,7 @@ class ConversionWorker(QThread):
                         task.input_file,
                         task.output_file,
                         self.format_type,
+                        cancel_check=lambda: self.cancel_requested,
                     )
                     if success:
                         self._apply_converter_artifacts(task, converter)
@@ -245,6 +261,7 @@ class ConversionWorker(QThread):
         task.output_size = getattr(converter, "last_output_size", None)
         task.output_mtime = getattr(converter, "last_output_mtime", None)
         task.save_format = getattr(converter, "last_save_format", None)
+        task.export_method = getattr(converter, "last_export_method", None)
         task.progid_used = converter.progid_used
 
     def _build_summary(

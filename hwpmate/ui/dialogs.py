@@ -94,6 +94,7 @@ def write_results_csv(path: Path, summary: ConversionSummary) -> None:
                 "output_size",
                 "output_mtime",
                 "save_format",
+                "export_method",
                 "progid_used",
             ],
         )
@@ -136,6 +137,14 @@ class PreflightDialog(QDialog):
         info_layout.addWidget(QLabel(f"저장 위치 정책: {plan.output_policy_label}"))
         info_layout.addWidget(QLabel(f"원본 백업: {'사용' if plan.backup_enabled else '사용 안 함'}"))
         info_layout.addWidget(QLabel(f"실패 시 재시도: {plan.retry_count}회"))
+        if str(plan.format_type).upper() == "PDF":
+            mode = getattr(plan, "pdf_export_mode", "saveas_first") or "saveas_first"
+            mode_label = (
+                "SaveAs 우선 (용지 품질)"
+                if mode == "saveas_first"
+                else "PrintToPDFEx 우선 (모아찍기 완화)"
+            )
+            info_layout.addWidget(QLabel(f"PDF 내보내기: {mode_label}"))
         registered_progids = get_registered_hwp_progids()
         hwp_state = ", ".join(registered_progids) if registered_progids else "레지스트리에서 감지되지 않음"
         info_layout.addWidget(QLabel(f"한글 COM ProgID: {hwp_state}"))
