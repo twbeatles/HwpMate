@@ -79,15 +79,31 @@ def is_admin() -> bool:
         return False
 
 
+# 보안/허용 대화상자 제목 힌트.
+# "한글"/"한/글"/"hwp" 는 메인 편집 창 제목(예: "빈 문서 1 - 한글")에도 들어가
+# 전면화·숨김 판별이 깨지므로 넣지 않는다.
 _SECURITY_DIALOG_TITLE_HINTS = (
     "보안",
     "허용",
     "접근",
-    "한/글",
-    "한글",
-    "hwp",
     "automation",
-    "파일",
+    "allow all",
+    "allow",
+    "permission",
+    "파일 접근",
+    "매크로",
+    "신뢰",
+)
+
+_SECURITY_DIALOG_CLASSES = frozenset({"#32770", "HwpDialog", "ThunderRT6FormDC"})
+
+# 메인 편집 창 제목 패턴 (숨김 대상 판별 보조)
+_MAIN_WINDOW_TITLE_HINTS = (
+    "빈 문서",
+    " - 한글",
+    " - 한/글",
+    ".hwp",
+    ".hwpx",
 )
 
 
@@ -99,6 +115,46 @@ def _window_title(hwnd: int) -> str:
     buf = ctypes.create_unicode_buffer(length + 1)
     user32.GetWindowTextW(hwnd, buf, length + 1)
     return buf.value.strip()
+
+
+def _window_class_name(hwnd: int) -> str:
+    user32 = ctypes.windll.user32
+    cls = ctypes.create_unicode_buffer(64)
+    user32.GetClassNameW(hwnd, cls, 64)
+    return cls.value
+
+
+def is_likely_hwp_security_dialog(hwnd: int) -> bool:
+    """보안·허용·모달 대화상자 후보인지 판별 (메인 편집 창은 False).
+
+    전면화·자동 클릭 대상과, 메인 창 숨김 시 제외 대상을 공통으로 쓴다.
+    """
+    try:
+        user32 = ctypes.windll.user32
+        if not user32.IsWindow(hwnd):
+            return False
+
+        class_name = _window_class_name(hwnd)
+        class_l = class_name.lower()
+        if class_name in _SECURITY_DIALOG_CLASSES or "dialog" in class_l:
+            return True
+
+        title = _window_title(hwnd)
+        # 제목 없는 top-level 은 한컴 모달 후보로 취급 (숨기지 않고 전면화 후보)
+        if not title:
+            return True
+
+        title_l = title.lower()
+        if any(hint in title_l for hint in _SECURITY_DIALOG_TITLE_HINTS):
+            return True
+
+        # 메인 편집 창 패턴이면 보안 대화상자가 아님
+        if any(hint.lower() in title_l for hint in _MAIN_WINDOW_TITLE_HINTS):
+            return False
+
+        return False
+    except Exception:
+        return False
 
 
 def _list_top_level_hwnds_for_pids(
@@ -128,18 +184,8 @@ def _list_top_level_hwnds_for_pids(
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
             if int(pid.value) not in target_pids:
                 return True
-            if security_dialogs_only:
-                title = _window_title(hwnd).lower()
-                # 제목이 비어 있는 모달도 후보에 포함 (한컴 일부 대화상자)
-                if title:
-                    if not any(hint in title for hint in _SECURITY_DIALOG_TITLE_HINTS):
-                        # 표준 대화상자 클래스면 허용
-                        cls = ctypes.create_unicode_buffer(64)
-                        user32.GetClassNameW(hwnd, cls, 64)
-                        class_name = cls.value
-                        if class_name not in {"#32770", "HwpDialog", "ThunderRT6FormDC"}:
-                            if "dialog" not in class_name.lower():
-                                return True
+            if security_dialogs_only and not is_likely_hwp_security_dialog(int(hwnd)):
+                return True
             hwnds.append(int(hwnd))
         except Exception:
             pass
@@ -222,6 +268,54 @@ def bring_hwp_windows_to_foreground(pids: Optional[Set[int]] = None) -> int:
     except Exception as e:
         logger.debug(f"한글 창 전면화 전체 실패: {e}")
         return 0
+
+
+def hide_hwp_main_windows(pids: Optional[Set[int]] = None) -> int:
+    """
+    앱 소유 한글 프로세스의 메인 편집 창을 SW_HIDE 로 숨긴다.
+
+    보안·허용 대화상자는 숨기지 않는다 (전면화/자동 클릭 경로 유지).
+    Dispatch 기동 순간 플래시 자체는 막지 못하지만, 변환 중 메인 UI 노출을 줄인다.
+    """
+    try:
+        user32 = ctypes.windll.user32
+        SW_HIDE = 0
+        target_pids = _resolve_hwp_target_pids(pids)
+        if not target_pids:
+            return 0
+
+        hidden = 0
+        for hwnd in _list_top_level_hwnds_for_pids(target_pids, security_dialogs_only=False):
+            if is_likely_hwp_security_dialog(hwnd):
+                continue
+            try:
+                if not user32.IsWindowVisible(hwnd):
+                    continue
+                # ShowWindow 반환값은 "이전에 보였는지" 이므로 숨김 성공 여부와 무관.
+                # 호출 후 비가시이면 집계한다.
+                user32.ShowWindow(hwnd, SW_HIDE)
+                if not user32.IsWindowVisible(hwnd):
+                    hidden += 1
+            except Exception as e:
+                logger.debug(f"HWND 숨김 실패: hwnd={hwnd}, {e}")
+        if hidden:
+            logger.debug(f"한글 메인 창 숨김: pids={sorted(target_pids)}, hidden={hidden}")
+        return hidden
+    except Exception as e:
+        logger.debug(f"한글 메인 창 숨김 전체 실패: {e}")
+        return 0
+
+
+def suppress_hwp_ui_flash(pids: Optional[Set[int]] = None) -> tuple[int, int]:
+    """
+    메인 창 숨김 + 보안 대화상자 전면화를 한 번에 수행.
+
+    Returns:
+        (hidden_count, raised_security_count)
+    """
+    hidden = hide_hwp_main_windows(pids)
+    raised = bring_hwp_windows_to_foreground(pids)
+    return hidden, raised
 
 
 # 보안 승인 대화상자 버튼 문구 후보 (버전·언어 표기 차이)

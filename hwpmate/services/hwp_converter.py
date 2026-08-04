@@ -330,13 +330,8 @@ class HWPConverter:
                         "강제 종료는 비활성화됩니다. 변환 전 다른 한글 창을 닫으면 추적이 안정됩니다."
                     )
                     logger.info(self.process_tracking_warning)
-                # 허용/보안 팝업이 뒤에 가려지지 않도록 1회 전면화 (실패해도 연결 유지)
-                try:
-                    from ..windows_integration import bring_hwp_windows_to_foreground
-
-                    bring_hwp_windows_to_foreground(self.owned_pids or None)
-                except Exception as foreground_error:
-                    logger.debug(f"연결 직후 한글 창 전면화 실패: {foreground_error}")
+                # 메인 편집 창 숨김 + 보안/허용 팝업만 전면화 (실패해도 연결 유지)
+                self._suppress_hwp_ui_flash()
                 return True
 
             except Exception as e:
@@ -351,6 +346,55 @@ class HWPConverter:
                 pass
             self._com_apartment_owned = False
         raise Exception(f"한글 COM 객체 생성 실패\n\n시도한 ProgID:\n{error_detail}")
+
+    def _try_set_xhw_windows_visible(self, visible: bool) -> bool:
+        """XHwpWindows.Item(i).Visible 로 메인 창 표시 여부 설정 (버전 미지원 시 False)."""
+        hwp = self.hwp
+        if hwp is None:
+            return False
+        try:
+            xwindows = getattr(hwp, "XHwpWindows", None)
+            if xwindows is None:
+                return False
+            count_raw = getattr(xwindows, "Count", None)
+            try:
+                count = int(count_raw) if count_raw is not None else 1
+            except (TypeError, ValueError):
+                count = 1
+            if count < 1:
+                count = 1
+            any_ok = False
+            for index in range(count):
+                try:
+                    window = xwindows.Item(index)
+                    window.Visible = visible
+                    any_ok = True
+                except Exception:
+                    if index == 0:
+                        return False
+                    break
+            return any_ok
+        except Exception as e:
+            logger.debug(f"XHwpWindows.Visible={visible} 실패(무시): {e}")
+            return False
+
+    def _suppress_hwp_ui_flash(self) -> None:
+        """메인 편집 창 숨김 + 보안 대화상자 전면화 (best-effort, 변환 실패로 전파하지 않음)."""
+        try:
+            self._try_set_xhw_windows_visible(False)
+        except Exception as e:
+            logger.debug(f"COM Visible=False 실패(무시): {e}")
+        try:
+            from ..windows_integration import suppress_hwp_ui_flash
+
+            hidden, raised = suppress_hwp_ui_flash(self.owned_pids or None)
+            if hidden or raised:
+                logger.debug(
+                    f"한글 UI 억제: hidden={hidden}, security_raised={raised}, "
+                    f"pids={sorted(self.owned_pids) if self.owned_pids else None}"
+                )
+        except Exception as e:
+            logger.debug(f"한글 UI 억제 실패(무시): {e}")
 
     def convert_file(self, input_path, output_path, format_type="PDF") -> Tuple[bool, Optional[str]]:
         """단일 파일 변환."""
@@ -382,6 +426,8 @@ class HWPConverter:
                     pass
                 return False, f"문서 열기 실패: HWP Open이 실패를 반환했습니다 ({open_result!r})"
             time.sleep(DOCUMENT_LOAD_DELAY)
+            # Open 후 메인 창이 다시 뜰 수 있어 best-effort 재숨김
+            self._suppress_hwp_ui_flash()
 
             format_info = FORMAT_TYPES.get(format_type, FORMAT_TYPES["PDF"])
             save_format = format_info["save_format"]

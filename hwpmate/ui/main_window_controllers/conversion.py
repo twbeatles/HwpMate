@@ -18,6 +18,7 @@ from ...logging_config import get_logger
 from ...models import ConversionSummary, ConversionTask, PlannedConversion
 from ...path_utils import check_write_permission, is_valid_path_name
 from ...windows_integration import (
+    hide_hwp_main_windows,
     bring_hwp_windows_to_foreground,
     try_accept_hwp_security_dialog,
 )
@@ -104,7 +105,9 @@ class ConversionController:
             return
         target = session.target_pids()
         try:
-            # 파일 Open/Save 중에도 동작. 소유 PID 가 있으면 그 범위만.
+            # Open 등으로 메인 창이 다시 보이면 숨기고, 보안 대화상자만 전면화.
+            # 소유 PID 가 있으면 그 범위만 (없으면 best-effort 전체 HWP).
+            hide_hwp_main_windows(target)
             bring_hwp_windows_to_foreground(target)
             # 모듈 성공·설정 꺼짐·쿨다운이면 자동 클릭 생략
             if session.should_auto_accept() and try_accept_hwp_security_dialog(target):

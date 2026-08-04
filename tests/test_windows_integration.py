@@ -93,6 +93,126 @@ def test_bring_hwp_windows_to_foreground_raises_matching_hwnds(monkeypatch) -> N
     assert raised == [11, 22]
 
 
+def test_is_likely_hwp_security_dialog_excludes_main_editor_title(monkeypatch) -> None:
+    """메인 창 제목('… - 한글')은 보안 대화상자로 보지 않는다."""
+
+    class FakeUser32:
+        def IsWindow(self, hwnd):
+            return True
+
+        def GetClassNameW(self, hwnd, buf, size):
+            del size
+            buf.value = "HwpFrame"
+            return True
+
+        def GetWindowTextLengthW(self, hwnd):
+            return len("빈 문서 1 - 한글")
+
+        def GetWindowTextW(self, hwnd, buf, size):
+            del size
+            buf.value = "빈 문서 1 - 한글"
+            return True
+
+    import ctypes as ct
+
+    class Windll:
+        user32 = FakeUser32()
+
+    monkeypatch.setattr(ct, "windll", Windll())
+    assert windows_integration.is_likely_hwp_security_dialog(1) is False
+
+
+def test_is_likely_hwp_security_dialog_matches_security_title(monkeypatch) -> None:
+    class FakeUser32:
+        def IsWindow(self, hwnd):
+            return True
+
+        def GetClassNameW(self, hwnd, buf, size):
+            del size
+            buf.value = "SomeClass"
+            return True
+
+        def GetWindowTextLengthW(self, hwnd):
+            return len("보안 경고")
+
+        def GetWindowTextW(self, hwnd, buf, size):
+            del size
+            buf.value = "보안 경고"
+            return True
+
+    import ctypes as ct
+
+    class Windll:
+        user32 = FakeUser32()
+
+    monkeypatch.setattr(ct, "windll", Windll())
+    assert windows_integration.is_likely_hwp_security_dialog(1) is True
+
+
+def test_hide_hwp_main_windows_skips_security_dialogs(monkeypatch) -> None:
+    monkeypatch.setattr(
+        windows_integration,
+        "_resolve_hwp_target_pids",
+        lambda pids=None: {10},
+    )
+    monkeypatch.setattr(
+        windows_integration,
+        "_list_top_level_hwnds_for_pids",
+        lambda pids, **kwargs: [1, 2],
+    )
+    monkeypatch.setattr(
+        windows_integration,
+        "is_likely_hwp_security_dialog",
+        lambda hwnd: hwnd == 2,
+    )
+
+    class FakeUser32:
+        def __init__(self) -> None:
+            self.hide_calls: list[int] = []
+            self._visible = {1: True, 2: True}
+
+        def IsWindowVisible(self, hwnd):
+            return self._visible.get(hwnd, False)
+
+        def ShowWindow(self, hwnd, cmd):
+            if cmd == 0:
+                self.hide_calls.append(hwnd)
+                self._visible[hwnd] = False
+            return 1
+
+    import ctypes as ct
+
+    fake = FakeUser32()
+
+    class Windll:
+        user32 = fake
+
+    monkeypatch.setattr(ct, "windll", Windll())
+
+    hidden = windows_integration.hide_hwp_main_windows({10})
+    assert hidden == 1
+    assert fake.hide_calls == [1]
+
+
+def test_suppress_hwp_ui_flash_hides_then_raises(monkeypatch) -> None:
+    order: list[str] = []
+
+    monkeypatch.setattr(
+        windows_integration,
+        "hide_hwp_main_windows",
+        lambda pids=None: order.append("hide") or 3,
+    )
+    monkeypatch.setattr(
+        windows_integration,
+        "bring_hwp_windows_to_foreground",
+        lambda pids=None: order.append("raise") or 1,
+    )
+
+    hidden, raised = windows_integration.suppress_hwp_ui_flash({1})
+    assert (hidden, raised) == (3, 1)
+    assert order == ["hide", "raise"]
+
+
 def test_bring_hwp_windows_to_foreground_returns_zero_without_pids(monkeypatch) -> None:
     monkeypatch.setattr(
         "hwpmate.services.hwp_converter._snapshot_hwp_pids",

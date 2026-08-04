@@ -83,6 +83,57 @@ def test_kill_owned_processes_skips_pid_not_in_live_hwp_snapshot(monkeypatch) ->
     assert converter.owned_pids == set()
 
 
+def test_try_set_xhw_windows_visible_sets_all_items() -> None:
+    class FakeWindow:
+        def __init__(self) -> None:
+            self.Visible = True
+
+    class FakeXWindows:
+        def __init__(self) -> None:
+            self.Count = 2
+            self.items = [FakeWindow(), FakeWindow()]
+
+        def Item(self, index: int):
+            return self.items[index]
+
+    class FakeHwpWithWindows(FakeHwp):
+        def __init__(self) -> None:
+            super().__init__()
+            self.XHwpWindows = FakeXWindows()
+
+    fake = FakeHwpWithWindows()
+    converter = build_converter(fake)
+    assert converter._try_set_xhw_windows_visible(False) is True
+    assert all(w.Visible is False for w in fake.XHwpWindows.items)
+
+
+def test_suppress_hwp_ui_flash_calls_visible_and_windows_helper(monkeypatch) -> None:
+    import hwpmate.windows_integration as wi
+
+    fake = FakeHwp()
+    converter = build_converter(fake)
+    converter.owned_pids = {42}
+    visible_calls: list[bool] = []
+    helper_calls: list[set[int] | None] = []
+
+    monkeypatch.setattr(
+        converter,
+        "_try_set_xhw_windows_visible",
+        lambda visible: visible_calls.append(visible) or True,
+    )
+
+    def fake_suppress(pids=None):
+        helper_calls.append(pids)
+        return (1, 0)
+
+    monkeypatch.setattr(wi, "suppress_hwp_ui_flash", fake_suppress)
+
+    converter._suppress_hwp_ui_flash()
+
+    assert visible_calls == [False]
+    assert helper_calls == [{42}]
+
+
 def test_cleanup_does_not_uninitialize_unowned_com_apartment(monkeypatch) -> None:
     import hwpmate.services.hwp_converter as converter_module
 

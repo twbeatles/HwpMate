@@ -273,10 +273,16 @@ def test_poll_uses_owned_pids_and_skips_auto_accept_when_module_ok(
     session.auto_accept_enabled = True
 
     brought: list[object] = []
+    hidden: list[object] = []
     accepted: list[object] = []
 
     import hwpmate.ui.main_window_controllers.conversion as conv_mod
 
+    monkeypatch.setattr(
+        conv_mod,
+        "hide_hwp_main_windows",
+        lambda pids: hidden.append(pids) or 1,
+    )
     monkeypatch.setattr(
         conv_mod,
         "bring_hwp_windows_to_foreground",
@@ -290,6 +296,7 @@ def test_poll_uses_owned_pids_and_skips_auto_accept_when_module_ok(
 
     controller._poll_hwp_foreground()
 
+    assert hidden == [{42}]
     assert brought == [{42}]
     assert accepted == []
 
@@ -307,9 +314,15 @@ def test_poll_auto_accept_when_module_failed(
     session.auto_accept_enabled = True
 
     accepted: list[object] = []
+    hidden: list[object] = []
 
     import hwpmate.ui.main_window_controllers.conversion as conv_mod
 
+    monkeypatch.setattr(
+        conv_mod,
+        "hide_hwp_main_windows",
+        lambda pids: hidden.append(pids) or 0,
+    )
     monkeypatch.setattr(conv_mod, "bring_hwp_windows_to_foreground", lambda pids: 0)
     monkeypatch.setattr(
         conv_mod,
@@ -319,6 +332,7 @@ def test_poll_auto_accept_when_module_failed(
 
     controller._poll_hwp_foreground()
 
+    assert hidden == [{7}]
     assert accepted == [{7}]
     assert session.auto_accept_clicks == 1
 
@@ -337,8 +351,14 @@ def test_poll_skips_auto_accept_before_engine_status(
 
     accepted: list[object] = []
     brought: list[object] = []
+    hidden: list[object] = []
     import hwpmate.ui.main_window_controllers.conversion as conv_mod
 
+    monkeypatch.setattr(
+        conv_mod,
+        "hide_hwp_main_windows",
+        lambda pids: hidden.append(pids) or 0,
+    )
     monkeypatch.setattr(
         conv_mod,
         "bring_hwp_windows_to_foreground",
@@ -352,8 +372,9 @@ def test_poll_skips_auto_accept_before_engine_status(
 
     controller._poll_hwp_foreground()
     assert accepted == []
-    # engine_status 전 전면화도 생략
+    # engine_status 전 전면화·메인 숨김도 생략
     assert brought == []
+    assert hidden == []
 
 
 def test_start_conversion_blocked_while_planning(

@@ -11,6 +11,13 @@
 - 배포 산출물: `dist/HWP변환기_v9.0.exe`
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
 
+## 2026-08-04 한글 COM UI 깜빡임 완화
+
+- 보안 대화상자 판별에서 메인 창 제목(`… - 한글`)에 걸리던 과도한 힌트(`한글`/`hwp` 등)를 제거했습니다.
+- 연결·Open·전면화 폴링 시 메인 편집 창을 `XHwpWindows.Visible=False` + `SW_HIDE` 로 best-effort 숨깁니다.
+- 보안·허용 대화상자는 숨기지 않고 전면화/자동 클릭 경로를 유지합니다.
+- 기동 순간 1프레임 플래시·한컴 내부 스플래시는 완전 차단하지 않습니다 (COM 모델 한계).
+
 ## 2026-08-04 v9.0 릴리즈
 
 - 앱 버전·PyInstaller 산출물 이름을 `9.0` / `HWP변환기_v9.0.exe`로 올렸습니다.
