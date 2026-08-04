@@ -142,20 +142,18 @@ pyright .
 ### 이 저장소 상태
 
 - **프로젝트**: `HwpMate`
-- **Spec Kit 초기화**: `.specify/ 있음`
-- **에이전트 스킬**: Grok=True, Claude=True, Codex/Agy(.agents)=True
-- **활성 기능 디렉터리**: `specs/001-hwp-mate-reliability-ux` (포인터: `.specify/feature.json`)
-- **기능 제목**: HWP 메이트 · 신뢰성·UX 개선
-- **산출물**: spec=`yes`, plan=`True`, research/data-model/quickstart=`True`, tasks=`False`, converge=`False`
+- **Spec Kit 초기화**: `.specify/` 또는 `specs/` 가 **현재 트리에 없을 수 있음** (과거 포인터는 참고용). 기능 요구는 `README.md` / `Claude.md` / `PROJECT_AUDIT.md` 를 우선한다.
+- **에이전트 스킬**: Grok=True, Claude=True, Codex/Agy(.agents)=True 일 수 있음
+- **활성 기능 (참고)**: 과거 `specs/001-hwp-mate-reliability-ux` (신뢰성·UX). 디렉터리가 없으면 `/speckit-specify` 등으로 재생성
+- **검증 SSOT**: `pytest`, `pyright`, `PROJECT_AUDIT.md` 권장안 반영 상태
 
 ### 에이전트가 먼저 읽을 파일
 
-1. `specs/001-hwp-mate-reliability-ux/spec.md` — 무엇을/왜 (사용자 스토리, FR, 성공 기준)
-2. `specs/001-hwp-mate-reliability-ux/plan.md` — 기술 컨텍스트·구조 결정
-3. `specs/001-hwp-mate-reliability-ux/tasks.md` — 실행 가능 작업 목록 (`[x]`=이미 있음, `[ ]`=잔여)
-4. `specs/001-hwp-mate-reliability-ux/research.md`, `data-model.md`, `quickstart.md`, `contracts/` — 설계 보조
-5. `.specify/feature.json` — 현재 활성 feature path
-6. `.specify/memory/constitution.md` — 원칙(템플릿이면 advisory)
+1. `README.md` — 사용자 기능·실행·빌드
+2. `Claude.md` (이 파일) — 깨지면 안 되는 로직
+3. `PROJECT_AUDIT.md` — 기능 감사·잔여 리스크
+4. `PROJECT_STRUCTURE_ANALYSIS.md` — 아키텍처 스냅샷
+5. (있을 때만) `specs/<id>/spec.md`, `plan.md`, `tasks.md`, `.specify/feature.json`
 
 ### 권장 워크플로 (스킬 / 슬래시 커맨드)
 

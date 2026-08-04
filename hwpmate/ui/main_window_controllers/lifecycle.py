@@ -270,6 +270,32 @@ class LifecycleController:
 
     def close_event(self, event: QCloseEvent) -> None:
         logger.info("메인 윈도우 종료 이벤트 수신")
+
+        # 계획(스캔 대기·작업 수립) 중: processEvents 재진입으로 창을 파괴하지 않는다.
+        if self.state.is_planning:
+            if self.state.close_after_plan:
+                self.window.status_label.setText("작업 준비 취소 후 종료 대기 중...")
+                event.ignore()
+                return
+
+            reply = QMessageBox.question(
+                self.window,
+                "확인",
+                "작업 준비가 진행 중입니다. 취소하고 종료하시겠습니까?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+
+            self.state.close_requested = True
+            self.state.close_after_plan = True
+            # 스캔 취소를 시도하고, start_conversion 이 close_requested 를 보고 빠져나오게 한다.
+            self.window._cancel_active_scan(wait_ms=WORKER_WAIT_TIMEOUT)
+            self.window.status_label.setText("작업 준비 취소 후 종료 대기 중...")
+            event.ignore()
+            return
+
         if not self.window._cancel_active_scan(wait_ms=WORKER_WAIT_TIMEOUT):
             self.window.status_label.setText("파일 스캔 종료 대기 중...")
             event.ignore()

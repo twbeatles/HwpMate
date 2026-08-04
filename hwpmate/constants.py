@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .models import FormatSpec
 
-VERSION = "8.7"
+VERSION = "9.0"
 SUPPORTED_EXTENSIONS = (".hwp", ".hwpx")
 BACKUP_DIR_NAME = "backup"
 
@@ -47,8 +47,14 @@ SCAN_CANCEL_WAIT_MS = 2000
 FOLDER_SCAN_WAIT_MS = 120_000
 # 폴더 미리보기 캐시 최대 유효 시간 (초). 초과 시 변환 전 재스캔.
 FOLDER_SCAN_CACHE_MAX_AGE_SECONDS = 300
-# 캐시 신선도 샘플 검사 개수 (앞에서부터)
+# 캐시 신선도 샘플 검사 개수 (앞·뒤·중간 분산)
 FOLDER_SCAN_CACHE_SAMPLE_SIZE = 24
+
+# 사전 점검(Preflight) UI 부하 상한
+# 상세 목록에 표시할 최대 작업 수 (초과 분은 요약 한 줄)
+PREFLIGHT_DETAIL_MAX_TASKS = 80
+# 읽기 가능 여부(open) 심층 검사 상한 — 존재 여부는 전 건 검사
+PREFLIGHT_READ_CHECK_MAX_TASKS = 48
 
 HWP_PROGIDS = [
     "HWPControl.HwpCtrl.1",

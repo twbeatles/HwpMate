@@ -9,7 +9,7 @@ class FakeHwp:
     def __init__(
         self,
         *,
-        open_result=True,
+        open_result: bool | int = True,
         save_results=None,
         write_output: bool = True,
         output_content: bytes = b"x",
@@ -118,6 +118,29 @@ def test_convert_file_fails_when_open_returns_false(tmp_path: Path) -> None:
     assert error is not None and "문서 열기 실패" in error
     assert not fake.save_calls
     assert fake.clear_calls == [1]
+
+
+def test_convert_file_fails_when_open_returns_zero(tmp_path: Path) -> None:
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+    output = tmp_path / "a.pdf"
+    fake = FakeHwp(open_result=0)
+
+    success, error = build_converter(fake).convert_file(source, output, "PDF")
+
+    assert success is False
+    assert error is not None and "문서 열기 실패" in error
+    assert not fake.save_calls
+
+
+def test_is_com_failure_result_normalizes_false_and_zero() -> None:
+    from hwpmate.services.hwp_converter import is_com_failure_result
+
+    assert is_com_failure_result(False) is True
+    assert is_com_failure_result(0) is True
+    assert is_com_failure_result(True) is False
+    assert is_com_failure_result(1) is False
+    assert is_com_failure_result(None) is False
 
 
 def test_convert_file_falls_back_when_saveas_returns_false(tmp_path: Path) -> None:

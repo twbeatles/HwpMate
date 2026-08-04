@@ -101,8 +101,17 @@ class TaskPlanner:
                     if not output_folder.exists():
                         raise ValueError(f"출력 폴더가 존재하지 않습니다: {output_folder}")
 
-                    rel_path = input_file.relative_to(folder)
-                    output_file = output_folder / rel_path.parent / (input_file.stem + output_ext)
+                    try:
+                        rel_path = input_file.relative_to(folder)
+                        output_file = (
+                            output_folder / rel_path.parent / (input_file.stem + output_ext)
+                        )
+                    except ValueError:
+                        # 캐시 경로가 선택 폴더 트리 밖으로 해석되면 flat 저장 + 경고
+                        output_file = output_folder / (input_file.stem + output_ext)
+                        warnings.append(
+                            f"폴더 밖 경로로 보여 출력 하위 구조를 유지하지 않습니다: {input_file.name}"
+                        )
 
                 tasks.append(ConversionTask(input_file=input_file, output_file=output_file))
 

@@ -269,6 +269,7 @@ def test_poll_uses_owned_pids_and_skips_auto_accept_when_module_ok(
     session = window.state.security_session
     session.owned_pids = {42}
     session.security_module_registered = True
+    session.engine_status_received = True
     session.auto_accept_enabled = True
 
     brought: list[object] = []
@@ -335,9 +336,14 @@ def test_poll_skips_auto_accept_before_engine_status(
     session.auto_accept_enabled = True
 
     accepted: list[object] = []
+    brought: list[object] = []
     import hwpmate.ui.main_window_controllers.conversion as conv_mod
 
-    monkeypatch.setattr(conv_mod, "bring_hwp_windows_to_foreground", lambda pids: 0)
+    monkeypatch.setattr(
+        conv_mod,
+        "bring_hwp_windows_to_foreground",
+        lambda pids: brought.append(pids) or 0,
+    )
     monkeypatch.setattr(
         conv_mod,
         "try_accept_hwp_security_dialog",
@@ -346,6 +352,8 @@ def test_poll_skips_auto_accept_before_engine_status(
 
     controller._poll_hwp_foreground()
     assert accepted == []
+    # engine_status 전 전면화도 생략
+    assert brought == []
 
 
 def test_start_conversion_blocked_while_planning(
@@ -416,3 +424,42 @@ def test_native_drop_ignores_paths_while_converting(monkeypatch: pytest.MonkeyPa
 
     assert calls == []
     assert "변환 중" in window.status_label.text()
+
+
+def test_native_drop_ignores_paths_while_planning(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    dropped = tmp_path / "doc.hwp"
+    dropped.write_text("x", encoding="utf-8")
+    calls = []
+
+    window.files_radio.setChecked(True)
+    window.state.is_planning = True
+    monkeypatch.setattr(window, "_add_files", lambda files: calls.append(files))
+    monkeypatch.setattr(window.toast, "show_message", lambda *args, **kwargs: None)
+
+    window.native_drop_controller.on_native_files_dropped([str(dropped)])
+
+    assert calls == []
+    assert "준비" in window.status_label.text()
+
+
+def test_folder_cache_sample_includes_head_and_tail() -> None:
+    from hwpmate.ui.main_window_controllers.file_selection import FileSelectionController
+
+    paths = [f"p{i}.hwp" for i in range(100)]
+    sample = FileSelectionController._sample_cache_paths(paths, 24)
+    assert paths[0] in sample
+    assert paths[-1] in sample
+    assert len(sample) == 24
+    assert len(set(sample)) == 24
+
+
+def test_wait_for_active_scan_returns_false_when_close_requested(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    window.state.close_requested = True
+    window.state.scan_worker = None
+    assert window.file_selection_controller.wait_for_active_scan(1000) is False

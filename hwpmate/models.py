@@ -103,6 +103,24 @@ class ConversionTask:
         record["created_files"] = [str(path) for path in self.created_files]
         return record
 
+    def snapshot(self) -> "ConversionTask":
+        """워커→UI 전달용 독립 복사본 (공유 뮤테이션 방지)."""
+        return ConversionTask(
+            input_file=self.input_file,
+            output_file=self.output_file,
+            status=self.status,
+            error=self.error,
+            retry_count=self.retry_count,
+            backup_file=self.backup_file,
+            backup_error=self.backup_error,
+            conflict_original_output_file=self.conflict_original_output_file,
+            created_files=list(self.created_files),
+            output_size=self.output_size,
+            output_mtime=self.output_mtime,
+            save_format=self.save_format,
+            progid_used=self.progid_used,
+        )
+
 
 @dataclass
 class PlannedConversion:

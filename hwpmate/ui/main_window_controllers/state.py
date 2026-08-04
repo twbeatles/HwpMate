@@ -38,6 +38,10 @@ class MainWindowState:
     folder_scan_ready_at: float | None = None
     force_kill_pending: bool = False
     close_after_worker: bool = False
+    # 계획(스캔 대기·작업 수립) 중 종료 요청. processEvents 재진입으로 창 파괴를 막고
+    # start_conversion 이 정리된 뒤 close 를 이어간다.
+    close_requested: bool = False
+    close_after_plan: bool = False
     drag_drop_initialized: bool = False
     selected_format: str = "PDF"
     # 한글 허용/보안 창 전면화 폴링 타이머 (UI 스레드, ConversionController 소유)

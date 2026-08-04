@@ -47,6 +47,18 @@ _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 TH32CS_SNAPPROCESS = 0x00000002
 
 
+def is_com_failure_result(result: object) -> bool:
+    """COM Open/SaveAs 실패 반환값 정규화.
+
+    일부 환경은 False, 일부는 0 을 실패로 돌린다. identity 비교만 쓰면 0 을 놓친다.
+    """
+    if result is False:
+        return True
+    if result == 0 and not isinstance(result, bool):
+        return True
+    return False
+
+
 class _PROCESSENTRY32W(ctypes.Structure):
     _fields_ = [
         ("dwSize", wintypes.DWORD),
@@ -363,12 +375,12 @@ class HWPConverter:
                 logger.debug(f"Open 전 RegisterModule 재호출 실패(무시): {re_reg_error}")
 
             open_result = hwp.Open(input_str, "", "forceopen:true")
-            if open_result is False:
+            if is_com_failure_result(open_result):
                 try:
                     hwp.Clear(option=1)
                 except Exception:
                     pass
-                return False, "문서 열기 실패: HWP Open이 False를 반환했습니다"
+                return False, f"문서 열기 실패: HWP Open이 실패를 반환했습니다 ({open_result!r})"
             time.sleep(DOCUMENT_LOAD_DELAY)
 
             format_info = FORMAT_TYPES.get(format_type, FORMAT_TYPES["PDF"])
@@ -380,16 +392,16 @@ class HWPConverter:
 
             try:
                 save_result = hwp.SaveAs(output_str, save_format)
-                if save_result is False:
-                    raise RuntimeError("SaveAs 2-param returned False")
+                if is_com_failure_result(save_result):
+                    raise RuntimeError(f"SaveAs 2-param returned failure: {save_result!r}")
                 logger.debug(f"SaveAs 2-param 성공: {output_str}")
             except Exception as e1:
                 logger.debug(f"SaveAs 2-param 실패: {e1}")
 
                 try:
                     save_result = hwp.SaveAs(output_str, save_format, "")
-                    if save_result is False:
-                        raise RuntimeError("SaveAs 3-param returned False")
+                    if is_com_failure_result(save_result):
+                        raise RuntimeError(f"SaveAs 3-param returned failure: {save_result!r}")
                     logger.debug(f"SaveAs 3-param 성공: {output_str}")
                 except Exception as e2:
                     save_error = f"2-param: {e1}, 3-param: {e2}"

@@ -126,6 +126,36 @@ def test_close_event_waits_for_running_worker(monkeypatch, qapp) -> None:
     assert window.worker.cancel_called is True  # type: ignore[union-attr]
 
 
+def test_close_event_defers_while_planning(monkeypatch, qapp) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    window.state.is_planning = True
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(window, "_cancel_active_scan", lambda wait_ms=0: True)
+
+    event = QCloseEvent()
+    window.closeEvent(event)
+
+    assert not event.isAccepted()
+    assert window.state.close_requested is True
+    assert window.state.close_after_plan is True
+    assert "종료 대기" in window.status_label.text() or "취소" in window.status_label.text()
+
+
+def test_close_event_can_cancel_close_while_planning(monkeypatch, qapp) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    window.state.is_planning = True
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.No)
+
+    event = QCloseEvent()
+    window.closeEvent(event)
+
+    assert not event.isAccepted()
+    assert window.state.close_requested is False
+    assert window.state.close_after_plan is False
+
+
 def test_set_converting_state_keeps_output_button_disabled_for_same_location(monkeypatch, qapp) -> None:
     window, _ = create_window(monkeypatch, qapp)
     window.same_location_check.setChecked(True)

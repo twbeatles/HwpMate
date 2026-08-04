@@ -92,10 +92,9 @@ class ConversionWorker(QThread):
                     if task.status in {"대기", "진행중"}:
                         task.status = "실패"
                         task.error = f"한글 초기화 실패: {e}"
-                summary = ConversionSummary(
-                    format_type=self.format_type,
-                    tasks=list(self.tasks) + list(self.planned_conversion.skipped_tasks),
-                    warnings=list(self.planned_conversion.warnings) + self._collect_converter_warnings(converter),
+                summary = self._build_summary(
+                    warnings=list(self.planned_conversion.warnings)
+                    + self._collect_converter_warnings(converter),
                     elapsed_seconds=time.perf_counter() - start_ts,
                     progid_used=converter.progid_used,
                 )
@@ -176,9 +175,7 @@ class ConversionWorker(QThread):
                         task.error = "사용자 취소"
 
             self.progress_updated.emit(total, total, "완료" if not self.cancel_requested else "취소됨")
-            summary = ConversionSummary(
-                format_type=self.format_type,
-                tasks=list(self.tasks) + list(self.planned_conversion.skipped_tasks),
+            summary = self._build_summary(
                 warnings=list(self.planned_conversion.warnings) + runtime_warnings,
                 elapsed_seconds=time.perf_counter() - start_ts,
                 progid_used=converter.progid_used,
@@ -190,10 +187,10 @@ class ConversionWorker(QThread):
                 if task.status in {"대기", "진행중"}:
                     task.status = "취소됨" if self.cancel_requested else "실패"
                     task.error = "사용자 취소" if self.cancel_requested else f"변환 워커 오류: {e}"
-            summary = ConversionSummary(
-                format_type=self.format_type,
-                tasks=list(self.tasks) + list(self.planned_conversion.skipped_tasks),
-                warnings=list(self.planned_conversion.warnings) + runtime_warnings + [f"변환 워커 오류: {e}"],
+            summary = self._build_summary(
+                warnings=list(self.planned_conversion.warnings)
+                + runtime_warnings
+                + [f"변환 워커 오류: {e}"],
                 elapsed_seconds=time.perf_counter() - start_ts,
                 progid_used=converter.progid_used if converter is not None else None,
             )
@@ -249,6 +246,26 @@ class ConversionWorker(QThread):
         task.output_mtime = getattr(converter, "last_output_mtime", None)
         task.save_format = getattr(converter, "last_save_format", None)
         task.progid_used = converter.progid_used
+
+    def _build_summary(
+        self,
+        *,
+        warnings: list[str],
+        elapsed_seconds: float,
+        progid_used: str | None,
+    ) -> ConversionSummary:
+        """UI 스레드에 넘기기 전 작업 스냅샷을 복사한다."""
+        task_snapshots = [task.snapshot() for task in self.tasks]
+        skipped_snapshots = [
+            task.snapshot() for task in self.planned_conversion.skipped_tasks
+        ]
+        return ConversionSummary(
+            format_type=self.format_type,
+            tasks=task_snapshots + skipped_snapshots,
+            warnings=list(warnings),
+            elapsed_seconds=elapsed_seconds,
+            progid_used=progid_used,
+        )
 
     def _emit_engine_status(self, converter: ConverterEngine) -> None:
         owned = getattr(converter, "owned_pids", None) or set()

@@ -1,86 +1,126 @@
-# HwpMate
+# HwpMate (HWP 변환기)
 
-한컴오피스 한글(HWP/HWPX) 문서를 PDF, HWPX, DOCX, ODT, HTML, RTF, TXT와 이미지 형식으로 일괄 변환하는 Windows 전용 GUI 도구입니다. 현재 배포 대상 엔트리포인트는 루트의 얇은 래퍼 `hwptopdf-hwpx_v4.py`이며, 실제 구현은 `hwpmate/` 패키지 아래의 PyQt6 UI와 pywin32 기반 HWP COM 자동화 모듈로 분리되어 있습니다.
+**한글(HWP/HWPX) 문서를 다른 형식으로 한 번에 바꿔 주는 Windows 프로그램**입니다.
+
+폴더 통째로 넣거나, 파일만 골라서 PDF·Word·이미지 등으로 변환할 수 있습니다.  
+한컴오피스 한글이 PC에 설치되어 있어야 하며, **관리자 권한으로 실행**하는 것이 안전합니다.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
-![PyQt6](https://img.shields.io/badge/PyQt6-6.x-green.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows_10/11-lightgrey.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-## 주요 기능
+---
 
-| 분류 | 지원 형식 |
+## 이 프로그램이 하는 일
+
+| 할 수 있는 것 | 설명 |
+|---------------|------|
+| **일괄 변환** | 폴더 안(하위 폴더 포함 가능) HWP/HWPX를 한꺼번에 변환 |
+| **파일 선택 변환** | 원하는 파일만 골라 변환 |
+| **다양한 출력** | PDF, Word, 웹, 텍스트, 이미지 등 |
+| **사전 확인** | 변환 전에 대상 개수·건너뛸 파일·저장 위치를 한 번 더 확인 |
+| **원본 보호** | 변환 전 원본을 `backup` 폴더에 복사 (끌 수 있음) |
+| **실패 재시도** | 실패한 파일은 자동으로 다시 시도 (0~3회) |
+| **결과 저장** | 성공/실패/건너뜀 목록을 화면에서 보고, CSV·JSON·TXT로 저장 |
+
+### 바꿀 수 있는 형식
+
+| 종류 | 형식 |
+|------|------|
+| 문서 | PDF, HWP, HWPX, DOCX, ODT, HTML, RTF, TXT |
+| 이미지 | PNG, JPG, BMP, GIF |
+
+- 입력은 **`.hwp` / `.hwpx`** 입니다.
+- 이미 목표 형식과 같은 파일(예: PDF로 바꿀 때 이미 `.pdf`)은 **자동으로 건너뜁니다**.
+
+### 내부적으로 도와주는 일 (몰라도 사용 가능)
+
+- 한컴의 “파일 허용” 창이 덜 뜨도록 보안 모듈을 자동으로 준비합니다.
+- 허용 창이 뒤에 가려지면 앞으로 끌어 주고, 안내 메시지를 띄웁니다.
+- 같은 이름으로 덮어쓸 위험이 있으면 새 파일 이름으로 저장합니다.
+- 프로그램은 **한 번에 하나만** 실행됩니다. (이미 켜져 있으면 안내 후 종료)
+
+---
+
+## 준비물
+
+| 항목 | 필요 조건 |
 |------|-----------|
-| 문서 | `PDF`, `HWP`, `HWPX`, `DOCX`, `ODT`, `HTML`, `RTF`, `TXT` |
-| 이미지 | `PNG`, `JPG`, `BMP`, `GIF` |
+| PC | Windows 10 또는 11 (64-bit) |
+| 한글 | 한컴오피스 한글 **2018 이상** 설치 |
+| 권한 | **관리자 권한**으로 실행 (권장, 사실상 필수) |
 
-- 폴더 일괄 변환과 파일 개별 선택을 모두 지원합니다.
-- 관리자 권한 환경에서도 동작하는 네이티브 드래그 앤 드롭을 제공합니다.
-- 변환 시작 전 사전 점검 다이얼로그에서 실행 대상, 건너뜀, 출력 충돌 조정, 입력 파일/출력 폴더 상태, 백업/재시도 설정을 확인할 수 있습니다.
-- 한글 COM 허용·보안 창이 뒤에 가려질 수 있어, 변환 연결 중 한글 창 전면화와 안내 토스트를 제공합니다.
-- 프로세스 조회는 `tasklist` 대신 Win32 Toolhelp를 사용해 변환 중 콘솔 창이 뜨지 않습니다.
-- 한컴 오토메이션 보안승인 모듈(DLL)을 앱이 자동 설치·레지스트리 등록해 파일별 허용 팝업을 억제합니다. 설치 전 SHA-256 무결성을 검증합니다.
-- 모듈 준비에 실패할 때만 허용 창이 뜨며, 변환 중 보조로 '모두 허용' 자동 시도를 할 수 있습니다(옵션으로 끌 수 있음). 모듈 등록 성공 시 자동 클릭은 생략됩니다.
-- 토스트는 변환 시작·완료·경고 등 짧은 안내를 화면 우측 하단에 띄우며, 배경은 거의 불투명한 슬레이트 톤(`#0f172a`), 본문은 **흰색 굵은 글씨**로 가독성을 맞춥니다.
-- PDF·이미지 등 일부 형식은 한컴오피스 인쇄/용지 설정에 따라 결과가 달라질 수 있음을 사전 점검·도움말에 안내합니다.
-- 변환 전 원본을 `backup` 폴더에 자동 백업하며, 필요 시 백업을 끌 수 있습니다.
-- 실패한 파일은 기본 1회 자동 재시도하며, 재시도 횟수는 0~3회로 조정할 수 있습니다.
-- 동일 형식 변환(`HWP->HWP`, `HWPX->HWPX`)은 자동으로 건너뛰고 결과에 별도 집계합니다.
-- 다크/라이트 테마, 상태바, 시스템 트레이, **고대비 토스트 알림**(짙은 배경 + 흰색 굵은 글씨, 유형별 강조 테두리)을 포함한 현대적인 UI를 제공합니다.
-- 중복 파일 감지, 출력 경로 유효성 검사, 기존 파일 덮어쓰기와 배치 내부 출력 충돌 보호를 지원합니다.
-- 이미지/HTML 보조 산출물도 출력 충돌 회피와 성공 판정에 함께 반영합니다.
-- 실패 목록 TXT와 전체 결과 CSV/JSON 저장을 지원하며, 결과에는 산출 파일/크기/수정 시각/COM 형식 감사 정보가 포함됩니다.
-- 결과 TXT/CSV/JSON과 설정 파일은 임시 파일 작성 후 교체해 부분 저장 위험을 줄입니다.
-- 단일 인스턴스 잠금과 변환 중 입력/단축키/드롭 차단으로 중복 실행과 상태 꼬임을 줄입니다.
-- 폴더 스캔 대기·작업 계획 중(`is_planning`)에도 시작/입력/드롭 재진입을 막습니다.
-- 폴더 미리보기 캐시는 만료·샘플 존재 검증 후 사용하며, 캐시 없으면 비동기 스캔 후 변환합니다(UI 스레드 전체 재스캔 없음).
-- 강제 종료는 앱이 직접 띄운 한글 프로세스에만 제한적으로 적용합니다.
-- `pyright`·`pytest` 기준 정적 검사와 단위 테스트를 통과하도록 관리합니다.
+배포용 실행 파일을 쓰는 경우 Python은 필요 없습니다.  
+소스에서 실행할 때만 Python 3.10 이상이 필요합니다.
 
-## 실행 환경
+---
 
-| 항목 | 요구사항 |
-|------|----------|
-| 운영체제 | Windows 10/11 64-bit |
-| Python | 3.10 이상 |
-| 한글 | 한컴오피스 한글 2018 이상 |
-| 권한 | 관리자 권한 권장 및 사실상 필수 |
+## 사용 방법
 
-## 설치 및 실행
+### 1. 프로그램 실행
 
-```bash
-pip install PyQt6 pywin32
-python hwptopdf-hwpx_v4.py
-```
+1. `HWP변환기_v9.0.exe`를 **마우스 오른쪽 버튼 → 관리자 권한으로 실행**합니다.  
+   (소스 실행: 관리자 PowerShell에서 `python hwptopdf-hwpx_v4.py`)
+2. 관리자 권한 안내가 나오면 확인합니다.
 
-- Windows에서 관리자 권한으로 실행해야 HWP COM 자동화와 드래그 앤 드롭이 안정적으로 동작합니다.
-- 레거시 tkinter 구현은 `legacy/hwptopdf-hwpx v3.py`에 보관되며, 현재 유지보수와 빌드는 `v4` 기준으로 진행합니다.
+### 2. 모드 고르기
 
-## 빌드
+| 모드 | 언제 쓰나요 | 하는 일 |
+|------|-------------|---------|
+| **폴더 일괄 변환** | 폴더 안 문서를 통째로 변환할 때 | 폴더를 고르면 미리 스캔하고, 변환 가능한 개수를 보여 줍니다 |
+| **파일 개별 선택** | 몇 개만 골라 변환할 때 | 파일 추가 또는 드래그 앤 드롭으로 목록을 만듭니다 |
 
-```bash
-pyinstaller --noconfirm --clean hwp_converter.spec
-```
+### 3. 변환 형식 고르기
 
-- 실행 파일 이름은 `dist/HWP변환기_v8.7.exe` **단일 파일**입니다. 배포 시 이 exe만 복사하면 됩니다.
-- 빌드 전 `hwpmate/resources/security/FilePathCheckerModuleExample.dll` 이 있어야 합니다(없으면 spec 이 실패).
-- 한컴 보안승인 모듈 DLL은 exe 안에 포함되며, 최초 변환 시 `%LOCALAPPDATA%\HwpMate\security\` 로 풀린 뒤 레지스트리에 등록됩니다. 사용자 PC에 DLL을 따로 둘 필요는 없습니다.
-- `.spec` 은 루트 래퍼 `hwptopdf-hwpx_v4.py` 기준이며 `uac_admin=True` 로 관리자 권한을 요청합니다.
+화면의 형식 카드(PDF, DOCX, PNG 등)에서 **목표 형식**을 클릭합니다.
 
-## 개발 품질 기준
+### 4. 파일 또는 폴더 넣기
 
-```bash
-pyright .
-pytest
-```
+**폴더 모드**
 
-- `pyrightconfig.json`을 리포지토리 기준 타입체크 설정으로 사용합니다.
-- `.editorconfig`로 `utf-8`, `LF`, 최종 개행 규칙을 고정해 인코딩 및 줄바꿈 혼선을 줄입니다.
-- 실제 사용자 데이터와 로그는 리포지토리 바깥 사용자 디렉터리에 저장됩니다.
-  - 설정: `~/.hwp_converter_config.json`
-  - 로그: `~/.hwp_converter/logs` 또는 `%LOCALAPPDATA%\HwpMate\logs`
-  - 단일 인스턴스 잠금: `%LOCALAPPDATA%\HwpMate\HwpMate.lock`
-- 실제 한글 COM 스모크는 관리자 권한 PowerShell에서 `python tools/hwp_com_smoke.py --input <샘플.hwp> --format PDF --output-dir <출력폴더>`로 보조 확인할 수 있습니다.
+1. 「폴더 선택」을 누르거나, 폴더 **1개**를 창에 끌어다 놓습니다.
+2. 하위 폴더까지 포함할지 체크박스로 정합니다.
+3. 스캔이 끝나면 “변환 가능 N개” 같은 안내를 확인합니다.
+
+**파일 모드**
+
+1. 「파일 추가」를 누르거나, 파일·폴더를 끌어다 놓습니다.
+2. 목록에서 불필요한 항목은 `Delete`로 지울 수 있습니다.
+
+### 5. 저장 위치와 옵션
+
+| 옵션 | 의미 |
+|------|------|
+| **같은 위치에 저장** | 원본 옆(또는 같은 폴더 구조)에 결과 파일 생성 |
+| **출력 폴더 지정** | 결과를 다른 폴더에 모음 |
+| **덮어쓰기** | 같은 이름 파일이 있을 때 덮어쓸지 여부 (끄면 새 이름 사용) |
+| **원본 백업** | 변환 전 `backup` 폴더에 원본 복사 |
+| **실패 시 재시도** | 실패한 파일 재시도 횟수 (0~3) |
+| **허용 창 자동 클릭** | 보안 모듈이 실패했을 때만 「모두 허용」을 보조로 시도 (기본 켜짐, 끌 수 있음) |
+
+### 6. 변환 시작
+
+1. 「변환 시작」을 누르거나 `Ctrl+Enter`를 누릅니다.
+2. **사전 점검** 창에서 대상 수·경고·저장 위치를 확인합니다.
+3. 문제가 없으면 「변환 시작」으로 진행합니다.
+4. 진행 상황은 화면 아래 상태·진행 바로 확인할 수 있습니다.
+
+### 7. 결과 확인
+
+변환이 끝나면 결과 창이 열립니다.
+
+- 성공 / 실패 / 건너뜀 / 취소 개수를 볼 수 있습니다.
+- 실패만 다시 변환할 수 있습니다.
+- 실패 목록 TXT, 전체 결과 CSV/JSON 저장이 가능합니다.
+- 결과 폴더를 바로 열 수 있습니다.
+
+### 8. 취소
+
+- 변환 중 `Esc` 또는 「취소」로 중단을 요청합니다.
+- 응답이 없을 때는, **이 프로그램이 띄운 한글 프로세스만** 강제 종료할 수 있습니다.  
+  (이미 켜 두었던 다른 한글 창은 건드리지 않습니다.)
+
+---
 
 ## 단축키
 
@@ -90,63 +130,82 @@ pytest
 | `Ctrl+Shift+O` | 폴더 선택 |
 | `Ctrl+Enter` | 변환 시작 |
 | `Esc` | 변환 취소 |
-| `Delete` | 선택 파일 제거 |
-| `Ctrl+Delete` | 전체 파일 제거 |
+| `Delete` | 선택한 파일 제거 |
+| `Ctrl+Delete` | 목록 전체 제거 |
 | `F1` | 프로그램 정보 |
 
-## 프로젝트 구조
+---
 
-```text
-HwpMate/
-├── hwptopdf-hwpx_v4.py          # 배포/실행 래퍼
-├── legacy/
-│   └── hwptopdf-hwpx v3.py      # 레거시 참고용
-├── hwpmate/
-│   ├── app.py / bootstrap.py / app_instance.py
-│   ├── constants.py / config_repository.py / models.py
-│   ├── path_utils.py / logging_config.py
-│   ├── windows_integration.py  # 네이티브 DnD, 한글 창 전면화
-│   ├── resources/security/     # FilePathChecker 보안 모듈 DLL (빌드 필수)
-│   ├── services/
-│   │   ├── artifact_policy.py
-│   │   ├── hwp_converter.py
-│   │   ├── hwp_security_module.py   # DLL 설치·SHA-256·레지스트리
-│   │   ├── hwp_security_session.py  # 전면화/자동 클릭 정책
-│   │   ├── file_selection_store.py
-│   │   └── task_planner.py
-│   ├── workers/                # 스캔·변환 QThread
-│   └── ui/                     # MainWindow, 컨트롤러, 토스트, 다이얼로그
-├── tests/
-├── tools/
-│   └── hwp_com_smoke.py
-├── hwp_converter.spec
-├── pyrightconfig.json
-├── .editorconfig
-├── README.md
-├── HWP_COM_SMOKE_TEST_CHECKLIST.md
-├── PROJECT_STRUCTURE_ANALYSIS.md
-├── PROJECT_AUDIT.md
-├── update_history.md
-├── claude.md
-└── gemini.md
+## 사용 시 알아 두면 좋은 점
+
+1. **변환 중에는 한글 프로그램을 직접 조작하지 마세요.**  
+   앱이 한글을 자동으로 열고 저장합니다.
+2. **허용·보안 창**이 작업 표시줄 뒤에 가려질 수 있습니다.  
+   안내 토스트가 뜨면 작업 표시줄의 한글 창을 확인해 주세요.
+3. **PDF·이미지** 결과는 한글의 인쇄/용지 설정에 따라 레이아웃이 달라질 수 있습니다.
+4. **같은 형식** 파일은 자동 건너뜀 처리됩니다.
+5. 폴더를 스캔할 때, 예전에 만든 **`backup` 하위 폴더**는 기본적으로 다시 스캔하지 않습니다.
+6. 프로그램을 **두 번 실행**하면, 이미 실행 중이라는 안내 후 새 창은 종료됩니다.
+7. 변환 전 **다른 한글 창을 닫아 두면**, 강제 종료·창 추적이 더 안정적입니다.
+
+---
+
+## 실행 파일로 쓰기 / 소스에서 실행
+
+### 배포 실행 파일 (일반 사용자)
+
+- 파일 이름: `HWP변환기_v9.0.exe` (단일 파일)
+- 관리자 권한으로 실행하면 됩니다.
+- 보안 관련 DLL은 exe 안에 포함되어 있으며, 처음 변환할 때 사용자 폴더에 자동으로 설치됩니다.
+
+### 소스에서 실행 (개발·수정)
+
+```bash
+pip install PyQt6 pywin32
+python hwptopdf-hwpx_v4.py
 ```
 
-## 주의사항
+관리자 권한 PowerShell에서 실행하세요.
 
-1. 변환 중에는 한글 프로그램을 직접 조작하지 않는 편이 안전합니다.
-2. 출력 형식에 따라 한글 설치 버전별 COM 호환 차이가 있을 수 있으므로 `SaveAs` 폴백 로직을 유지해야 합니다.
-3. 이미지 변환(`PNG`, `JPG`, `BMP`, `GIF`)과 `HTML`은 한글 설치 버전별 저장 동작이 다를 수 있으며, 앱은 기본 출력 파일과 같은 stem 기반 보조 산출물의 생성/갱신 여부를 성공 기준과 충돌 회피 기준에 함께 사용합니다.
-4. 동일 형식 파일은 자동으로 건너뛰며, 결과 창과 결과 리포트에 `건너뜀`으로 표시됩니다.
-5. 테스트용 문서를 이 리포지토리 안에서 변환할 경우 `backup/` 폴더가 생성될 수 있으며, 이는 기본적으로 Git 추적 대상이 아닙니다. 폴더 스캔 시 하위 `backup/` 폴더는 기본 제외됩니다.
-6. 두 번째 앱 실행은 기존 인스턴스를 보호하기 위해 안내 후 종료됩니다.
+### 실행 파일 다시 만들기
 
-## 문서 안내
+```bash
+pyinstaller --noconfirm --clean hwp_converter.spec
+```
 
-- [update_history.md](update_history.md): 기능 변화와 유지보수 이력
-- [HWP_COM_SMOKE_TEST_CHECKLIST.md](HWP_COM_SMOKE_TEST_CHECKLIST.md): 실제 한글 COM 수동 검증 체크리스트
-- [PROJECT_STRUCTURE_ANALYSIS.md](PROJECT_STRUCTURE_ANALYSIS.md): 아키텍처와 확장 포인트 분석
-- [PROJECT_AUDIT.md](PROJECT_AUDIT.md): 기능 감사 리포트 (권장안 반영 상태 포함)
-- [claude.md](claude.md): Claude 계열 협업 가이드
-- [gemini.md](gemini.md): Gemini 계열 협업 가이드
+결과: `dist/HWP변환기_v9.0.exe`
+
+---
+
+## 설정·로그가 저장되는 곳
+
+| 종류 | 위치 |
+|------|------|
+| 설정 | 사용자 홈의 `.hwp_converter_config.json` |
+| 로그 | `%LOCALAPPDATA%\HwpMate\logs` 또는 `~/.hwp_converter/logs` |
+| 잠금 파일 | `%LOCALAPPDATA%\HwpMate\HwpMate.lock` |
+
+---
+
+## 더 자세한 문서 (개발·점검용)
+
+일반 사용에는 위 내용만으로 충분합니다. 아래는 개발·유지보수 참고용입니다.
+
+| 문서 | 내용 |
+|------|------|
+| [update_history.md](update_history.md) | 버전·변경 이력 |
+| [HWP_COM_SMOKE_TEST_CHECKLIST.md](HWP_COM_SMOKE_TEST_CHECKLIST.md) | 실제 한글 연동 수동 점검 |
+| [PROJECT_STRUCTURE_ANALYSIS.md](PROJECT_STRUCTURE_ANALYSIS.md) | 코드 구조·확장 포인트 |
+| [PROJECT_AUDIT.md](PROJECT_AUDIT.md) | 기능 감사·개선 이력 |
+| [claude.md](claude.md) / [gemini.md](gemini.md) | AI 협업 시 개발 규칙 |
+
+개발 품질 확인:
+
+```bash
+pyright .
+pytest
+```
+
+---
 
 MIT License

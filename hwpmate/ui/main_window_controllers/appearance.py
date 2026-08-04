@@ -131,5 +131,7 @@ class AppearanceController:
             self.window.clear_btn.setEnabled(not busy)
         if hasattr(self.window, "folder_btn"):
             self.window.folder_btn.setEnabled(not busy)
+        if hasattr(self.window, "theme_btn"):
+            self.window.theme_btn.setEnabled(not busy)
 
         self.update_output_ui()

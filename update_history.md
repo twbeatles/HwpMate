@@ -4,12 +4,42 @@
 
 ## 현재 상태
 
-- 앱 버전: `v8.7`
+- 앱 버전: `v9.0`
 - 주 엔트리포인트: `hwptopdf-hwpx_v4.py`
 - 빌드 설정: `hwp_converter.spec`
 - 정적 검사 기준: `pyrightconfig.json`
-- 배포 산출물: `dist/HWP변환기_v8.7.exe`
+- 배포 산출물: `dist/HWP변환기_v9.0.exe`
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
+
+## 2026-08-04 v9.0 릴리즈
+
+- 앱 버전·PyInstaller 산출물 이름을 `9.0` / `HWP변환기_v9.0.exe`로 올렸습니다.
+- README를 사용 방법·프로그램 설명 중심으로 개편했습니다.
+- PROJECT_AUDIT 권장안(계획 중 종료 가드, Preflight 부하 완화, 전면화 지연, 캐시 샘플 분산, COM Open=0 판정, 워커 스냅샷 등)을 반영했습니다.
+- 단위 테스트·pyright 기준을 유지한 채 GitHub 릴리즈 `v9.0`을 발행합니다.
+
+## 2026-08-04 PROJECT_AUDIT 권장안 구현
+
+### 1단계 (안전·재진입)
+- 계획 중(`is_planning`) 종료: `close_requested` / `close_after_plan` 으로 창 파괴 방지 후 계획 정리·재종료
+- `wait_for_active_scan` 이 `close_requested` 시 즉시 False
+- Preflight 대량 부하 완화: 상세 목록 상한, 읽기 심층 검사 샘플 상한
+
+### 2단계 (안정성)
+- `engine_status_received` 전 한글 창 전면화 폴링 no-op (연결 후 1회 폴)
+- 폴더 캐시 신선도 샘플을 앞·뒤·중간 분산
+- 폴더 밖 캐시 경로 시 `relative_to` flat 폴백 + 경고
+- COM Open/SaveAs 실패 판정에 `0` 포함 (`is_com_failure_result`)
+- busy 중 테마 버튼 잠금
+
+### 3단계 (구조·테스트·문서)
+- `ConversionTask.snapshot` + 워커 summary 복사본 emit
+- 회귀 테스트 보강 (close/planning, Open=0, Preflight 생략, 캐시 샘플 등)
+- Claude.md Spec Kit 포인터 정리, PROJECT_AUDIT 동기화
+
+### 보류 (의도적)
+- 전체 폴더 계획 수립 백그라운드 워커화 (대량 시 Preflight 완화로 우선 대응)
+- DLL Authenticode 서명 검증 (SHA-256 유지)
 
 ## 2026-08-03 문서·spec·gitignore 정합 및 배포
 

@@ -87,6 +87,31 @@ def test_preflight_dialog_includes_print_and_permission_notices(qapp, tmp_path: 
     dialog.close()
 
 
+def test_preflight_dialog_truncates_large_detail_list(qapp, tmp_path: Path) -> None:
+    del qapp
+    from PyQt6.QtWidgets import QTextEdit
+
+    from hwpmate.constants import PREFLIGHT_DETAIL_MAX_TASKS
+
+    tasks = []
+    for i in range(PREFLIGHT_DETAIL_MAX_TASKS + 20):
+        src = tmp_path / f"doc{i}.hwp"
+        src.write_text("x", encoding="utf-8")
+        tasks.append(ConversionTask(src, tmp_path / f"doc{i}.pdf"))
+
+    plan = PlannedConversion(
+        format_type="PDF",
+        same_location=True,
+        output_path="",
+        tasks=tasks,
+    )
+    dialog = PreflightDialog(plan)
+    body = "\n".join(widget.toPlainText() for widget in dialog.findChildren(QTextEdit))
+    assert "생략" in body
+    assert f"전체 {len(tasks)}개" in body
+    dialog.close()
+
+
 def test_write_results_json_contains_summary_and_tasks(tmp_path: Path) -> None:
     summary = build_summary(tmp_path)
     output = tmp_path / "results.json"

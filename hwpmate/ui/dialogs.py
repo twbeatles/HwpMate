@@ -23,7 +23,12 @@ from PyQt6.QtWidgets import (
 )
 
 from ..logging_config import get_logger
-from ..constants import HWP_PERMISSION_HINT, PRINT_SETTINGS_NOTICE
+from ..constants import (
+    HWP_PERMISSION_HINT,
+    PREFLIGHT_DETAIL_MAX_TASKS,
+    PREFLIGHT_READ_CHECK_MAX_TASKS,
+    PRINT_SETTINGS_NOTICE,
+)
 from ..models import ConversionSummary, ConversionTask, PlannedConversion
 from ..path_utils import check_write_permission
 from ..services.hwp_converter import get_registered_hwp_progids
@@ -136,10 +141,16 @@ class PreflightDialog(QDialog):
         info_layout.addWidget(QLabel(f"한글 COM ProgID: {hwp_state}"))
         layout.addWidget(info_group)
 
+        self._deep_read_skipped = 0
         blocking_errors = self._blocking_errors(plan)
         warnings = list(plan.warnings)
         if blocking_errors:
             warnings.extend(f"변환 시작 차단: {error}" for error in blocking_errors)
+        if self._deep_read_skipped > 0:
+            warnings.append(
+                f"입력 읽기 심층 검사는 앞쪽 {PREFLIGHT_READ_CHECK_MAX_TASKS}개만 수행했습니다 "
+                f"(나머지 {self._deep_read_skipped}개는 변환 시점에 확인)."
+            )
         warnings.append(PRINT_SETTINGS_NOTICE)
         warnings.append(HWP_PERMISSION_HINT)
         warnings.append(
@@ -183,10 +194,20 @@ class PreflightDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def _build_detail_text(self, plan: PlannedConversion) -> str:
+        """대상 상세. 대량 배치에서는 상위 N개만 표시해 UI freeze 를 줄인다.
+
+        상세 목록에서는 존재 여부만 확인하고 open() 심층 읽기는 하지 않는다.
+        """
         lines: list[str] = []
-        for index, task in enumerate(plan.all_tasks, start=1):
-            exists = task.input_file.exists()
-            readable = self._is_readable(task.input_file)
+        all_tasks = plan.all_tasks
+        total = len(all_tasks)
+        shown = all_tasks[:PREFLIGHT_DETAIL_MAX_TASKS]
+
+        for index, task in enumerate(shown, start=1):
+            try:
+                exists = task.input_file.is_file()
+            except OSError:
+                exists = False
             if task.status == "건너뜀":
                 action = "건너뜀"
             else:
@@ -194,18 +215,28 @@ class PreflightDialog(QDialog):
 
             lines.append(f"{index}. {task.input_file.name}")
             lines.append(f"   상태: {action}")
-            lines.append(f"   입력: {'존재' if exists else '없음'} / {'읽기 가능' if readable else '읽기 불가'}")
+            lines.append(f"   입력: {'존재' if exists else '없음'}")
             lines.append(f"   출력: {task.output_file}")
             if task.conflict_original_output_file is not None:
-                lines.append(f"   충돌 조정: {task.conflict_original_output_file} -> {task.output_file}")
+                lines.append(
+                    f"   충돌 조정: {task.conflict_original_output_file} -> {task.output_file}"
+                )
             if task.status == "건너뜀":
                 lines.append(f"   사유: {task.detail}")
             else:
                 lines.append(f"   백업: {'사용' if plan.backup_enabled else '사용 안 함'}")
             lines.append("")
+
+        if total > PREFLIGHT_DETAIL_MAX_TASKS:
+            lines.append(
+                f"... 외 {total - PREFLIGHT_DETAIL_MAX_TASKS}개 항목은 목록에서 생략했습니다 "
+                f"(전체 {total}개)."
+            )
+
         return "\n".join(lines).strip() or "대상 없음"
 
     def _is_readable(self, path: Path) -> bool:
+        """심층 읽기 검사 (open + 1바이트). 차단 오류 샘플에만 사용."""
         try:
             if not path.is_file():
                 return False
@@ -216,14 +247,31 @@ class PreflightDialog(QDialog):
             return False
 
     def _blocking_errors(self, plan: PlannedConversion) -> list[str]:
+        """차단 오류.
+
+        - 입력 존재 여부: 실행 대상 전 건 (is_file, 저비용)
+        - 읽기 가능 여부: 최대 PREFLIGHT_READ_CHECK_MAX_TASKS 건만 open 심층 검사
+        - 출력 쓰기: 출력 폴더 단위 중복 제거 후 검사
+        """
         errors: list[str] = []
         checked_output_dirs: set[str] = set()
+        deep_read_checked = 0
+        deep_read_skipped = 0
 
         for task in plan.tasks:
-            if not task.input_file.is_file():
+            try:
+                is_file = task.input_file.is_file()
+            except OSError:
+                is_file = False
+
+            if not is_file:
                 errors.append(f"입력 파일 없음: {task.input_file}")
-            elif not self._is_readable(task.input_file):
-                errors.append(f"입력 파일 읽기 불가: {task.input_file}")
+            elif deep_read_checked < PREFLIGHT_READ_CHECK_MAX_TASKS:
+                deep_read_checked += 1
+                if not self._is_readable(task.input_file):
+                    errors.append(f"입력 파일 읽기 불가: {task.input_file}")
+            else:
+                deep_read_skipped += 1
 
             output_dir = task.output_file.parent
             output_key = str(output_dir).lower()
@@ -233,6 +281,7 @@ class PreflightDialog(QDialog):
             if output_dir.exists() and not check_write_permission(output_dir):
                 errors.append(f"출력 폴더 쓰기 불가: {output_dir}")
 
+        self._deep_read_skipped = deep_read_skipped
         return errors
 
 

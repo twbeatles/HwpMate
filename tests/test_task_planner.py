@@ -56,6 +56,33 @@ def test_build_tasks_in_folder_mode_uses_cached_file_paths(tmp_path: Path) -> No
     assert plan.tasks[0].input_file.name == "a.hwp"
 
 
+def test_build_tasks_outside_folder_falls_back_to_flat_output(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    doc = outside / "a.hwp"
+    doc.write_text("x", encoding="utf-8")
+    output = tmp_path / "out"
+    output.mkdir()
+
+    planner = TaskPlanner()
+    plan = planner.build_tasks(
+        is_folder_mode=True,
+        format_type="PDF",
+        folder_path=str(source),
+        include_sub=True,
+        same_location=False,
+        output_path=str(output),
+        file_paths=[],
+        folder_file_paths=[str(doc)],
+    )
+
+    assert len(plan.tasks) == 1
+    assert plan.tasks[0].output_file == output / "a.pdf"
+    assert any("폴더 밖" in w for w in plan.warnings)
+
+
 def test_build_tasks_in_folder_mode_uses_relative_output_paths(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()

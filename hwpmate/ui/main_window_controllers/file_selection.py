@@ -56,17 +56,20 @@ class FileSelectionController:
         QThread.wait() 만 호출하면 scan_finished 슬롯이 아직 처리되지 않아
         folder_scan_ready 캐시가 비어 있을 수 있다. 짧은 구간으로 나누어 대기하며
         processEvents 로 캐시 갱신 슬롯을 실행한다.
+        종료 요청(close_requested)이 있으면 즉시 False 를 반환한다.
         """
         from PyQt6.QtWidgets import QApplication
 
         worker = self.state.scan_worker
         if not worker or not worker.isRunning():
             QApplication.processEvents()
-            return True
+            return not self.state.close_requested
 
         remaining = max(0, int(wait_ms))
         slice_ms = 100
         while remaining > 0 and worker.isRunning():
+            if self.state.close_requested:
+                return False
             step = min(slice_ms, remaining)
             if worker.wait(step):
                 break
@@ -75,6 +78,8 @@ class FileSelectionController:
 
         # 스레드 종료 직후 큐에 쌓인 scan_finished / finished 슬롯 처리
         for _ in range(5):
+            if self.state.close_requested:
+                return False
             QApplication.processEvents()
             if self.state.folder_scan_ready or not worker.isRunning():
                 # finished 후에도 ready 가 설정되도록 한 번 더
@@ -82,6 +87,8 @@ class FileSelectionController:
                     QApplication.processEvents()
                 break
 
+        if self.state.close_requested:
+            return False
         return not worker.isRunning()
 
     def start_scan(
@@ -180,14 +187,17 @@ class FileSelectionController:
         *,
         sample_size: int | None = None,
     ) -> tuple[bool, str]:
-        """캐시 경로 샘플이 디스크에 존재하는지 검사. (ok, reason)."""
+        """캐시 경로 샘플이 디스크에 존재하는지 검사. (ok, reason).
+
+        샘플은 앞·뒤·중간을 섞어 후반부 삭제·중간 누락도 잡도록 한다.
+        """
         from ...constants import FOLDER_SCAN_CACHE_SAMPLE_SIZE
 
         if not paths:
             return False, "캐시가 비어 있습니다."
 
         limit = FOLDER_SCAN_CACHE_SAMPLE_SIZE if sample_size is None else max(1, sample_size)
-        sample = paths[:limit]
+        sample = self._sample_cache_paths(paths, limit)
         missing = 0
         for raw in sample:
             try:
@@ -207,6 +217,53 @@ class FileSelectionController:
                 f"스캔 이후 파일이 변경된 것으로 보입니다 (샘플 {missing}/{len(sample)}개 없음).",
             )
         return True, ""
+
+    @staticmethod
+    def _sample_cache_paths(paths: list[str], limit: int) -> list[str]:
+        """앞·뒤·중간 구간에서 중복 없이 최대 limit 개 경로를 고른다."""
+        n = len(paths)
+        if n <= limit:
+            return list(paths)
+
+        head_n = max(1, limit // 3)
+        tail_n = max(1, limit // 3)
+        mid_n = max(0, limit - head_n - tail_n)
+
+        chosen: list[str] = []
+        seen: set[int] = set()
+
+        def _take(indices: list[int]) -> None:
+            for idx in indices:
+                if idx in seen or idx < 0 or idx >= n:
+                    continue
+                seen.add(idx)
+                chosen.append(paths[idx])
+
+        _take(list(range(head_n)))
+        _take(list(range(n - tail_n, n)))
+
+        if mid_n > 0 and n > head_n + tail_n:
+            mid_start = head_n
+            mid_end = n - tail_n
+            mid_span = mid_end - mid_start
+            if mid_span > 0:
+                if mid_span <= mid_n:
+                    _take(list(range(mid_start, mid_end)))
+                else:
+                    # 균등 간격 샘플 (결정적 — 테스트 안정)
+                    step = mid_span / mid_n
+                    _take([mid_start + int(i * step) for i in range(mid_n)])
+
+        # 부족하면 앞에서부터 보충
+        if len(chosen) < limit:
+            for idx in range(n):
+                if len(chosen) >= limit:
+                    break
+                if idx not in seen:
+                    seen.add(idx)
+                    chosen.append(paths[idx])
+
+        return chosen
 
     def _count_preview_convertible(self, paths: list[str]) -> int:
         allowed = {
