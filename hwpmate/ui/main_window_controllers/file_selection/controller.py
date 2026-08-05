@@ -1,3 +1,5 @@
+"""파일/폴더 선택·스캔 컨트롤러."""
+
 from __future__ import annotations
 
 import logging
@@ -9,11 +11,11 @@ from typing import Any
 from PyQt6.QtCore import QSignalBlocker
 from PyQt6.QtWidgets import QFileDialog, QMessageBox, QTableWidgetItem
 
-from ...constants import SCAN_BATCH_SIZE, SCAN_CANCEL_WAIT_MS, SUPPORTED_EXTENSIONS
-from ...logging_config import get_logger
-from ...path_utils import canonicalize_path, make_path_key
-from ...workers.file_scan_worker import FileScanWorker
-from .state import MainWindowState
+from ....constants import SCAN_BATCH_SIZE, SCAN_CANCEL_WAIT_MS, SUPPORTED_EXTENSIONS
+from ....logging_config import get_logger
+from ....path_utils import canonicalize_path, make_path_key
+from ....workers.file_scan_worker import FileScanWorker
+from ..state import MainWindowState
 
 logger = get_logger(__name__)
 
@@ -142,170 +144,6 @@ class FileSelectionController:
             allowed_exts=set(SUPPORTED_EXTENSIONS),
         )
 
-    def invalidate_folder_scan_cache(self) -> None:
-        self.state.folder_scan_ready = False
-        self.state.folder_scan_ready_at = None
-        self.state.folder_scan_files = []
-        self.state.folder_scan_accum = []
-        self.state.folder_scan_dir_mtime = None
-        self.state.folder_scan_file_count = 0
-
-    @staticmethod
-    def _dir_mtime(folder_path: str) -> float | None:
-        try:
-            return Path(folder_path).stat().st_mtime
-        except OSError:
-            return None
-
-    def get_folder_scan_cache(
-        self,
-        *,
-        folder_path: str,
-        include_sub: bool,
-        max_age_seconds: float | None = None,
-    ) -> list[str] | None:
-        from ...constants import FOLDER_SCAN_CACHE_MAX_AGE_SECONDS
-
-        if not self.state.folder_scan_ready:
-            return None
-        folder_key = make_path_key(canonicalize_path(folder_path.strip()))
-        cached_key = make_path_key(self.state.folder_scan_folder) if self.state.folder_scan_folder else ""
-        if folder_key != cached_key:
-            return None
-        if bool(include_sub) != bool(self.state.folder_scan_include_sub):
-            return None
-
-        age_limit = (
-            FOLDER_SCAN_CACHE_MAX_AGE_SECONDS
-            if max_age_seconds is None
-            else max_age_seconds
-        )
-        ready_at = self.state.folder_scan_ready_at
-        if ready_at is not None and age_limit >= 0:
-            if (time.perf_counter() - ready_at) > age_limit:
-                logger.info(
-                    f"폴더 스캔 캐시 만료 ({age_limit:.0f}s 초과) — 재스캔 필요"
-                )
-                return None
-
-        return list(self.state.folder_scan_files)
-
-    def validate_folder_scan_cache_freshness(
-        self,
-        paths: list[str],
-        *,
-        sample_size: int | None = None,
-        folder_path: str | None = None,
-    ) -> tuple[bool, str]:
-        """캐시 경로 샘플·폴더 mtime·파일 수로 신선도를 검사. (ok, reason).
-
-        샘플은 앞·뒤·중간을 섞어 후반부 삭제·중간 누락도 잡도록 한다.
-        폴더 mtime 변경은 신규 파일 추가 등 변경 감지에 사용한다(NTFS best-effort).
-        """
-        from ...constants import FOLDER_SCAN_CACHE_SAMPLE_SIZE
-
-        if not paths:
-            return False, "캐시가 비어 있습니다."
-
-        # 파일 수 불일치 (스캔 직후 상태와 캐시 목록 길이)
-        cached_count = self.state.folder_scan_file_count
-        if cached_count > 0 and len(paths) != cached_count:
-            return (
-                False,
-                f"스캔 캐시 파일 수가 달라졌습니다 ({len(paths)} ≠ {cached_count}).",
-            )
-
-        # 폴더 mtime 변경 → 신규 파일/하위 변경 가능성
-        check_folder = (folder_path or self.state.folder_scan_folder or "").strip()
-        cached_mtime = self.state.folder_scan_dir_mtime
-        if check_folder and cached_mtime is not None:
-            current_mtime = self._dir_mtime(check_folder)
-            if current_mtime is not None and abs(current_mtime - cached_mtime) > 1e-6:
-                return (
-                    False,
-                    "스캔 이후 폴더가 변경된 것으로 보입니다 (디렉터리 수정 시각 변경).",
-                )
-
-        limit = FOLDER_SCAN_CACHE_SAMPLE_SIZE if sample_size is None else max(1, sample_size)
-        sample = self._sample_cache_paths(paths, limit)
-        missing = 0
-        for raw in sample:
-            try:
-                if not Path(raw).is_file():
-                    missing += 1
-            except OSError:
-                missing += 1
-
-        if missing == 0:
-            return True, ""
-
-        ratio = missing / len(sample)
-        # 샘플의 25% 이상 없으면 신선하지 않음
-        if ratio >= 0.25 or missing >= 3:
-            return (
-                False,
-                f"스캔 이후 파일이 변경된 것으로 보입니다 (샘플 {missing}/{len(sample)}개 없음).",
-            )
-        return True, ""
-
-    @staticmethod
-    def _sample_cache_paths(paths: list[str], limit: int) -> list[str]:
-        """앞·뒤·중간 구간에서 중복 없이 최대 limit 개 경로를 고른다."""
-        n = len(paths)
-        if n <= limit:
-            return list(paths)
-
-        head_n = max(1, limit // 3)
-        tail_n = max(1, limit // 3)
-        mid_n = max(0, limit - head_n - tail_n)
-
-        chosen: list[str] = []
-        seen: set[int] = set()
-
-        def _take(indices: list[int]) -> None:
-            for idx in indices:
-                if idx in seen or idx < 0 or idx >= n:
-                    continue
-                seen.add(idx)
-                chosen.append(paths[idx])
-
-        _take(list(range(head_n)))
-        _take(list(range(n - tail_n, n)))
-
-        if mid_n > 0 and n > head_n + tail_n:
-            mid_start = head_n
-            mid_end = n - tail_n
-            mid_span = mid_end - mid_start
-            if mid_span > 0:
-                if mid_span <= mid_n:
-                    _take(list(range(mid_start, mid_end)))
-                else:
-                    # 균등 간격 샘플 (결정적 — 테스트 안정)
-                    step = mid_span / mid_n
-                    _take([mid_start + int(i * step) for i in range(mid_n)])
-
-        # 부족하면 앞에서부터 보충
-        if len(chosen) < limit:
-            for idx in range(n):
-                if len(chosen) >= limit:
-                    break
-                if idx not in seen:
-                    seen.add(idx)
-                    chosen.append(paths[idx])
-
-        return chosen
-
-    def _count_preview_convertible(self, paths: list[str]) -> int:
-        allowed = {
-            ext.lower()
-            for ext in self.window.task_planner.preview_allowed_extensions(self.state.selected_format)
-        }
-        count = 0
-        for path in paths:
-            if Path(path).suffix.lower() in allowed:
-                count += 1
-        return count
-
     def append_files_batch(self, files: list[str]) -> int:
         if not files:
             return 0
@@ -429,6 +267,191 @@ class FileSelectionController:
         worker.deleteLater()
         self._clear_scan_state()
 
+    def _clear_scan_state(self) -> None:
+        self.state.scan_worker = None
+        self.state.scan_mode = None
+        self.state.scan_started_at = None
+        self.state.scan_new_file_count = 0
+        self.state.scan_preview_count = 0
+        self.state.folder_scan_accum = []
+
+    def invalidate_folder_scan_cache(self) -> None:
+        self.state.folder_scan_ready = False
+        self.state.folder_scan_ready_at = None
+        self.state.folder_scan_files = []
+        self.state.folder_scan_accum = []
+        self.state.folder_scan_dir_mtime = None
+        self.state.folder_scan_file_count = 0
+
+    @staticmethod
+    def _dir_mtime(folder_path: str) -> float | None:
+        try:
+            return Path(folder_path).stat().st_mtime
+        except OSError:
+            return None
+
+    def get_folder_scan_cache(
+        self,
+        *,
+        folder_path: str,
+        include_sub: bool,
+        max_age_seconds: float | None = None,
+    ) -> list[str] | None:
+        from ....constants import FOLDER_SCAN_CACHE_MAX_AGE_SECONDS
+
+        if not self.state.folder_scan_ready:
+            return None
+        folder_key = make_path_key(canonicalize_path(folder_path.strip()))
+        cached_key = make_path_key(self.state.folder_scan_folder) if self.state.folder_scan_folder else ""
+        if folder_key != cached_key:
+            return None
+        if bool(include_sub) != bool(self.state.folder_scan_include_sub):
+            return None
+
+        age_limit = (
+            FOLDER_SCAN_CACHE_MAX_AGE_SECONDS
+            if max_age_seconds is None
+            else max_age_seconds
+        )
+        ready_at = self.state.folder_scan_ready_at
+        if ready_at is not None and age_limit >= 0:
+            if (time.perf_counter() - ready_at) > age_limit:
+                logger.info(
+                    f"폴더 스캔 캐시 만료 ({age_limit:.0f}s 초과) — 재스캔 필요"
+                )
+                return None
+
+        return list(self.state.folder_scan_files)
+
+    def validate_folder_scan_cache_freshness(
+        self,
+        paths: list[str],
+        *,
+        sample_size: int | None = None,
+        folder_path: str | None = None,
+    ) -> tuple[bool, str]:
+        """캐시 경로 샘플·폴더 mtime·파일 수로 신선도를 검사. (ok, reason).
+
+        샘플은 앞·뒤·중간을 섞어 후반부 삭제·중간 누락도 잡도록 한다.
+        폴더 mtime 변경은 신규 파일 추가 등 변경 감지에 사용한다(NTFS best-effort).
+        """
+        from ....constants import FOLDER_SCAN_CACHE_SAMPLE_SIZE
+
+        if not paths:
+            return False, "캐시가 비어 있습니다."
+
+        # 파일 수 불일치 (스캔 직후 상태와 캐시 목록 길이)
+        cached_count = self.state.folder_scan_file_count
+        if cached_count > 0 and len(paths) != cached_count:
+            return (
+                False,
+                f"스캔 캐시 파일 수가 달라졌습니다 ({len(paths)} ≠ {cached_count}).",
+            )
+
+        # 폴더 mtime 변경 → 신규 파일/하위 변경 가능성
+        check_folder = (folder_path or self.state.folder_scan_folder or "").strip()
+        cached_mtime = self.state.folder_scan_dir_mtime
+        if check_folder and cached_mtime is not None:
+            current_mtime = self._dir_mtime(check_folder)
+            if current_mtime is not None and abs(current_mtime - cached_mtime) > 1e-6:
+                return (
+                    False,
+                    "스캔 이후 폴더가 변경된 것으로 보입니다 (디렉터리 수정 시각 변경).",
+                )
+
+        limit = FOLDER_SCAN_CACHE_SAMPLE_SIZE if sample_size is None else max(1, sample_size)
+        sample = self._sample_cache_paths(paths, limit)
+        missing = 0
+        for raw in sample:
+            try:
+                if not Path(raw).is_file():
+                    missing += 1
+            except OSError:
+                missing += 1
+
+        if missing == 0:
+            return True, ""
+
+        ratio = missing / len(sample)
+        # 샘플의 25% 이상 없으면 신선하지 않음
+        if ratio >= 0.25 or missing >= 3:
+            return (
+                False,
+                f"스캔 이후 파일이 변경된 것으로 보입니다 (샘플 {missing}/{len(sample)}개 없음).",
+            )
+        return True, ""
+
+    @staticmethod
+    def _sample_cache_paths(paths: list[str], limit: int) -> list[str]:
+        """앞·뒤·중간 구간에서 중복 없이 최대 limit 개 경로를 고른다."""
+        n = len(paths)
+        if n <= limit:
+            return list(paths)
+
+        head_n = max(1, limit // 3)
+        tail_n = max(1, limit // 3)
+        mid_n = max(0, limit - head_n - tail_n)
+
+        chosen: list[str] = []
+        seen: set[int] = set()
+
+        def _take(indices: list[int]) -> None:
+            for idx in indices:
+                if idx in seen or idx < 0 or idx >= n:
+                    continue
+                seen.add(idx)
+                chosen.append(paths[idx])
+
+        _take(list(range(head_n)))
+        _take(list(range(n - tail_n, n)))
+
+        if mid_n > 0 and n > head_n + tail_n:
+            mid_start = head_n
+            mid_end = n - tail_n
+            mid_span = mid_end - mid_start
+            if mid_span > 0:
+                if mid_span <= mid_n:
+                    _take(list(range(mid_start, mid_end)))
+                else:
+                    # 균등 간격 샘플 (결정적 — 테스트 안정)
+                    step = mid_span / mid_n
+                    _take([mid_start + int(i * step) for i in range(mid_n)])
+
+        # 부족하면 앞에서부터 보충
+        if len(chosen) < limit:
+            for idx in range(n):
+                if len(chosen) >= limit:
+                    break
+                if idx not in seen:
+                    seen.add(idx)
+                    chosen.append(paths[idx])
+
+        return chosen
+
+    def _count_preview_convertible(self, paths: list[str]) -> int:
+        allowed = {
+            ext.lower()
+            for ext in self.window.task_planner.preview_allowed_extensions(self.state.selected_format)
+        }
+        count = 0
+        for path in paths:
+            if Path(path).suffix.lower() in allowed:
+                count += 1
+        return count
+
+    def refresh_folder_preview_count(self) -> None:
+        """포맷 변경 시 캐시된 전체 스캔에서 변환 가능 수만 다시 계산."""
+        if not self.state.folder_scan_ready:
+            return
+        self.state.scan_preview_count = self._count_preview_convertible(self.state.folder_scan_files)
+        if self.state.scan_preview_count == 0:
+            self.window.status_label.setText("⚠️ 현재 포맷으로 변환 가능한 파일이 없습니다")
+        else:
+            self.window.status_label.setText(
+                f"📁 변환 가능 {self.state.scan_preview_count}개 "
+                f"(스캔 전체 {len(self.state.folder_scan_files)}개)"
+            )
+
     def select_folder(self) -> None:
         if self._input_locked():
             return
@@ -520,27 +543,6 @@ class FileSelectionController:
         count = self.window.file_store.count
         self.window.file_count_label.setText(f"📄 파일: {count}개")
 
-    def refresh_folder_preview_count(self) -> None:
-        """포맷 변경 시 캐시된 전체 스캔에서 변환 가능 수만 다시 계산."""
-        if not self.state.folder_scan_ready:
-            return
-        self.state.scan_preview_count = self._count_preview_convertible(self.state.folder_scan_files)
-        if self.state.scan_preview_count == 0:
-            self.window.status_label.setText("⚠️ 현재 포맷으로 변환 가능한 파일이 없습니다")
-        else:
-            self.window.status_label.setText(
-                f"📁 변환 가능 {self.state.scan_preview_count}개 "
-                f"(스캔 전체 {len(self.state.folder_scan_files)}개)"
-            )
-
-    def _clear_scan_state(self) -> None:
-        self.state.scan_worker = None
-        self.state.scan_mode = None
-        self.state.scan_started_at = None
-        self.state.scan_new_file_count = 0
-        self.state.scan_preview_count = 0
-        self.state.folder_scan_accum = []
-
     def _input_locked(self, message: str = "변환 중에는 입력을 변경할 수 없습니다") -> bool:
         worker = self.state.worker
         worker_running = bool(worker and getattr(worker, "isRunning", lambda: False)())
@@ -556,3 +558,4 @@ class FileSelectionController:
         if hasattr(self.window, "toast"):
             self.window.toast.show_message(message, "⚠️")
         return True
+

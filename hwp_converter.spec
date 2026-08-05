@@ -11,6 +11,9 @@ HWP 변환기 v9.0 - PyInstaller 빌드 설정
 2026-08-03: 한컴 보안승인 모듈 DLL 을 datas 로 번들 (배포 단일 exe 필수).
 2026-08-03: hwp_security_session·계획 잠금·캐시 정책 반영 — security 모듈 hiddenimport 유지.
 2026-08-04: hwp_print_settings(PDF 인쇄 리셋·PrintToPDFEx) 정적 import — 추가 datas 불필요.
+2026-08-05: SOLID 패키지 분할 (hwp_converter/ · hwp_print_settings/ · windows_integration/
+  · ui/dialogs|theme|main_window_ui/ · controllers 패키지 · conversion_worker/).
+  공개 경로는 패키지 __init__ re-export. 정적 import 유지 — 핵심 패키지를 hiddenimports 에 명시.
 """
 
 from pathlib import Path
@@ -75,7 +78,7 @@ a = Analysis(
     datas=_SECURITY_DATAS,  # 보안 DLL — onefile 에 포함, 런타임에 LOCALAPPDATA 로 복사
     hiddenimports=[
         # 필수 pywin32 모듈
-        # ui/main_window_controllers·artifact_policy·security_session 은 정적 import 경로
+        # 컨트롤러·artifact_policy·보안 세션은 정적 import 경로
         'win32com.client',
         'win32api',
         'pythoncom',
@@ -83,6 +86,17 @@ a = Analysis(
         # 보안 모듈: 변환 경로에서 동적 성격이 있어 onefile 에서 명시 포함
         'hwpmate.services.hwp_security_module',
         'hwpmate.services.hwp_security_session',
+        # 2026-08-05 패키지 분할: onefile 수집 누락 방지용 핵심 패키지
+        'hwpmate.services.hwp_converter',
+        'hwpmate.services.hwp_print_settings',
+        'hwpmate.windows_integration',
+        'hwpmate.workers.conversion_worker',
+        'hwpmate.ui.dialogs',
+        'hwpmate.ui.theme',
+        'hwpmate.ui.main_window_ui',
+        'hwpmate.ui.main_window_controllers.conversion',
+        'hwpmate.ui.main_window_controllers.file_selection',
+        'hwpmate.ui.main_window_controllers.lifecycle',
     ],
     hookspath=[],
     hooksconfig={},

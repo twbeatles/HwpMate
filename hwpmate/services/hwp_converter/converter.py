@@ -1,17 +1,15 @@
+"""HWPConverter — COM 연결·단일 파일 변환·소유 프로세스 종료."""
+
 from __future__ import annotations
 
-import ctypes
 import subprocess
 import time
-from ctypes import wintypes
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Protocol, Tuple, cast
+from typing import Any, Optional, Tuple, cast
 
-from ..constants import DOCUMENT_LOAD_DELAY, FORMAT_TYPES, HWP_PROGIDS
-from ..logging_config import get_logger
-from .artifact_policy import iter_candidate_artifact_paths
-from .hwp_print_settings import (
+from ...constants import DOCUMENT_LOAD_DELAY, FORMAT_TYPES, HWP_PROGIDS
+from ...logging_config import get_logger
+from ..hwp_print_settings import (
     EXPORT_METHOD_SAVEAS_2,
     EXPORT_METHOD_SAVEAS_3,
     PDF_EXPORT_PRINT_TO_PDF_EX_FIRST,
@@ -21,27 +19,15 @@ from .hwp_print_settings import (
     try_export_pdf_via_print_to_pdf_ex,
     uses_print_settings_control,
 )
-from .hwp_security_module import (
+from ..hwp_security_module import (
     SECURITY_MODULE_ALIAS,
     ensure_hwp_security_module,
 )
+from .artifact_snapshot import _changed_artifacts, _snapshot_artifacts
+from .com_types import HwpAutomation, is_com_failure_result, pythoncom, require_pywin32
+from .process_snapshot import _snapshot_hwp_pids, get_snapshot_health
 
 logger = get_logger(__name__)
-
-pythoncom: Optional[Any] = None
-win32_client: Optional[Any] = None
-
-try:
-    import pythoncom as _pythoncom
-    from win32com import client as _win32_client
-
-    pythoncom = _pythoncom
-    win32_client = _win32_client
-    PYWIN32_AVAILABLE = True
-except ImportError:
-    PYWIN32_AVAILABLE = False
-
-HWP_PROCESS_NAMES = {"hwp.exe", "hwpctrl.exe"}
 
 # 한컴 보안 모듈 RegisterModule 두 번째 인자 후보
 # (ensure_hwp_security_module 이 등록하는 별칭을 최우선)
@@ -53,168 +39,6 @@ SECURITY_MODULE_ALIASES = (
 
 # Windows: 콘솔 창 없이 자식 프로세스 실행
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-
-TH32CS_SNAPPROCESS = 0x00000002
-
-
-def is_com_failure_result(result: object) -> bool:
-    """COM Open/SaveAs 실패 반환값 정규화.
-
-    일부 환경은 False, 일부는 0 을 실패로 돌린다. identity 비교만 쓰면 0 을 놓친다.
-    """
-    if result is False:
-        return True
-    if result == 0 and not isinstance(result, bool):
-        return True
-    return False
-
-
-class _PROCESSENTRY32W(ctypes.Structure):
-    _fields_ = [
-        ("dwSize", wintypes.DWORD),
-        ("cntUsage", wintypes.DWORD),
-        ("th32ProcessID", wintypes.DWORD),
-        ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
-        ("th32ModuleID", wintypes.DWORD),
-        ("cntThreads", wintypes.DWORD),
-        ("th32ParentProcessID", wintypes.DWORD),
-        ("pcPriClassBase", ctypes.c_long),
-        ("dwFlags", wintypes.DWORD),
-        ("szExeFile", wintypes.WCHAR * 260),
-    ]
-
-
-@dataclass(frozen=True)
-class _FileSnapshot:
-    size: int
-    mtime_ns: int
-    ctime_ns: int
-
-
-class HwpAutomation(Protocol):
-    """한글 COM 자동화 객체에서 사용하는 최소 인터페이스."""
-
-    def RegisterModule(self, module_name: str, module_name_alias: str) -> Any: ...
-    def SetMessageBoxMode(self, mode: int) -> Any: ...
-    def Open(self, path: str, format_name: str, options: str) -> Any: ...
-    def SaveAs(self, path: str, format_name: str, options: str = "") -> Any: ...
-    def Clear(self, option: int = 0) -> Any: ...
-    def Quit(self) -> Any: ...
-
-
-def require_pywin32() -> Tuple[Any, Any]:
-    """pywin32 모듈을 보장하고 반환."""
-    if pythoncom is None or win32_client is None:
-        raise RuntimeError("pywin32가 필요합니다. `pip install pywin32` 후 다시 실행하세요.")
-    return pythoncom, win32_client
-
-
-# Toolhelp 스냅샷 연속 실패 추적 (모듈 전역, 프로세스 수명 동안)
-_snapshot_failure_count = 0
-_snapshot_last_error: str | None = None
-
-
-def get_snapshot_health() -> tuple[int, str | None]:
-    """(연속 실패 횟수, 마지막 오류 메시지) — UI/워커 경고용."""
-    return _snapshot_failure_count, _snapshot_last_error
-
-
-def _snapshot_hwp_pids() -> set[int]:
-    """현재 실행 중인 한글 관련 프로세스 PID 집합 반환.
-
-    tasklist 서브프로세스 대신 Toolhelp32 를 사용해 콘솔 창 플래시를 원천 차단한다.
-    """
-    global _snapshot_failure_count, _snapshot_last_error
-    try:
-        kernel32 = ctypes.windll.kernel32
-        snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-        if snapshot in (-1, 0xFFFFFFFF):
-            _snapshot_failure_count += 1
-            _snapshot_last_error = "CreateToolhelp32Snapshot invalid handle"
-            return set()
-
-        pids: set[int] = set()
-        try:
-            entry = _PROCESSENTRY32W()
-            entry.dwSize = ctypes.sizeof(_PROCESSENTRY32W)
-            if not kernel32.Process32FirstW(snapshot, ctypes.byref(entry)):
-                _snapshot_failure_count += 1
-                _snapshot_last_error = "Process32FirstW failed"
-                return set()
-            while True:
-                image_name = entry.szExeFile.strip().lower()
-                if image_name in HWP_PROCESS_NAMES:
-                    pids.add(int(entry.th32ProcessID))
-                if not kernel32.Process32NextW(snapshot, ctypes.byref(entry)):
-                    break
-            # 성공 시 연속 실패 카운터 리셋
-            _snapshot_failure_count = 0
-            _snapshot_last_error = None
-            return pids
-        finally:
-            kernel32.CloseHandle(snapshot)
-    except Exception as e:
-        _snapshot_failure_count += 1
-        _snapshot_last_error = str(e)
-        logger.debug(f"한글 프로세스 스냅샷 수집 실패: {e}")
-        return set()
-
-
-def get_registered_hwp_progids() -> list[str]:
-    """레지스트리에서 확인 가능한 한글 COM ProgID 목록을 반환."""
-    try:
-        import winreg
-    except ImportError:
-        return []
-
-    registered: list[str] = []
-    for progid in HWP_PROGIDS:
-        try:
-            with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, progid):
-                registered.append(progid)
-        except OSError:
-            continue
-    return registered
-
-
-def _snapshot_file(path: Path) -> _FileSnapshot | None:
-    try:
-        stat = path.stat()
-        if not path.is_file():
-            return None
-        return _FileSnapshot(
-            size=stat.st_size,
-            mtime_ns=stat.st_mtime_ns,
-            ctime_ns=stat.st_ctime_ns,
-        )
-    except OSError:
-        return None
-
-
-def _iter_candidate_artifact_files(output_file: Path, format_type: str) -> list[Path]:
-    return iter_candidate_artifact_paths(output_file, format_type)
-
-
-def _snapshot_artifacts(output_file: Path, format_type: str) -> dict[Path, _FileSnapshot]:
-    snapshots: dict[Path, _FileSnapshot] = {}
-    for path in _iter_candidate_artifact_files(output_file, format_type):
-        snapshot = _snapshot_file(path)
-        if snapshot is not None:
-            snapshots[path] = snapshot
-    return snapshots
-
-
-def _changed_artifacts(
-    before: dict[Path, _FileSnapshot],
-    after: dict[Path, _FileSnapshot],
-) -> list[Path]:
-    changed: list[Path] = []
-    for path, snapshot in after.items():
-        if snapshot.size <= 0:
-            continue
-        if before.get(path) != snapshot:
-            changed.append(path)
-    return sorted(changed, key=lambda p: str(p).lower())
 
 
 class HWPConverter:
@@ -398,7 +222,7 @@ class HWPConverter:
         except Exception as e:
             logger.debug(f"COM Visible=False 실패(무시): {e}")
         try:
-            from ..windows_integration import suppress_hwp_ui_flash
+            from ...windows_integration import suppress_hwp_ui_flash
 
             hidden, raised = suppress_hwp_ui_flash(self.owned_pids or None)
             if hidden or raised:

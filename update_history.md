@@ -11,6 +11,20 @@
 - 배포 산출물: `dist/HWP변환기_v9.0.exe`
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
 
+## 2026-08-05 SOLID 패키지 분할 리팩토링
+
+- 대형 단일 모듈을 **기능별 패키지**로 분리 (동작 불변, 공개 import 경로 호환 re-export).
+- `services/hwp_converter/`: COM 타입, 프로세스 스냅샷, 산출물 스냅샷, ProgID, 변환기.
+- `services/hwp_print_settings/`: 상수, 모드, 프린터 탐지, 인쇄 리셋, PDF 내보내기.
+- `windows_integration/`: 관리자·DnD 정책, HWND 조회, 한글 창 제어, NativeDropFilter.
+- `ui/dialogs/`, `ui/theme/`, `ui/main_window_ui/`: 다이얼로그·테마 QSS·UI 빌더 분리.
+- `ui/main_window_controllers/{conversion,file_selection,lifecycle}/`: 컨트롤러 패키지.
+- `workers/conversion_worker/`: Protocol, 백업, 요약, 워커 루프.
+- `hwp_converter.spec`: 패키지 분할 이력·핵심 패키지 `hiddenimports` 보강.
+- `.gitignore`: 로컬 설정/로그/스모크 출력·일회성 분할 스크립트 패턴 보강.
+- 문서 동기화: `Claude.md`, `gemini.md`, `PROJECT_STRUCTURE_ANALYSIS.md`, `PROJECT_AUDIT.md`, `HWP_COM_SMOKE_TEST_CHECKLIST.md`.
+- 검증: `pytest` 132 passed, `pyright .` 0 errors.
+
 ## 2026-08-04 PROJECT_AUDIT 인쇄 경로 전면 개선
 
 - **물리 Print Execute 제거:** `CreateAction("Print").Execute` 폴백 삭제 (물리 프린터 오출력 방지).

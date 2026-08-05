@@ -1,3 +1,5 @@
+"""변환 컨트롤러."""
+
 from __future__ import annotations
 
 import logging
@@ -8,21 +10,21 @@ from typing import Any
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from ...constants import (
+from ....constants import (
     FOLDER_SCAN_WAIT_MS,
     HWP_FOREGROUND_POLL_MS,
     HWP_PERMISSION_HINT,
     WORKER_WAIT_TIMEOUT,
 )
-from ...logging_config import get_logger
-from ...models import ConversionSummary, ConversionTask, PlannedConversion
-from ...path_utils import check_write_permission, is_valid_path_name
-from ...windows_integration import (
+from ....logging_config import get_logger
+from ....models import ConversionSummary, ConversionTask, PlannedConversion
+from ....path_utils import check_write_permission, is_valid_path_name
+from ....windows_integration import (
     hide_hwp_main_windows,
     bring_hwp_windows_to_foreground,
     try_accept_hwp_security_dialog,
 )
-from .state import MainWindowState
+from ..state import MainWindowState
 
 logger = get_logger(__name__)
 
@@ -96,6 +98,7 @@ class ConversionController:
         self._poll_hwp_foreground()
 
     def _poll_hwp_foreground(self) -> None:
+        from hwpmate.ui.main_window_controllers import conversion as api
         if not self.is_conversion_active():
             self._stop_hwp_foreground_polling()
             return
@@ -107,32 +110,14 @@ class ConversionController:
         try:
             # Open 등으로 메인 창이 다시 보이면 숨기고, 보안 대화상자만 전면화.
             # 소유 PID 가 있으면 그 범위만 (없으면 best-effort 전체 HWP).
-            hide_hwp_main_windows(target)
-            bring_hwp_windows_to_foreground(target)
+            api.hide_hwp_main_windows(target)
+            api.bring_hwp_windows_to_foreground(target)
             # 모듈 성공·설정 꺼짐·쿨다운이면 자동 클릭 생략
-            if session.should_auto_accept() and try_accept_hwp_security_dialog(target):
+            if session.should_auto_accept() and api.try_accept_hwp_security_dialog(target):
                 session.note_auto_accept()
                 self._security_dialog_auto_accepted = True
         except Exception as e:
             logger.debug(f"한글 창 전면화 폴링 오류: {e}")
-
-    def _begin_worker_ui(self, worker: Any, *, toast_message: str, toast_icon: str) -> None:
-        """워커 시그널 연결, 상태 표시, 전면화 폴링, 토스트."""
-        self.state.worker = worker
-        worker.progress_updated.connect(self.window._on_progress_updated)
-        worker.status_updated.connect(self.window._on_status_updated)
-        worker.task_completed.connect(self.window._on_task_completed)
-        worker.finished.connect(self.window._on_worker_finished)
-        engine_status = getattr(worker, "engine_status_updated", None)
-        if engine_status is not None:
-            engine_status.connect(self.on_engine_status_updated)
-        worker.start()
-        self.window.hwp_status_label.setText("🟡 한글 연결 중... (허용 창 확인)")
-        self._start_hwp_foreground_polling()
-        if hasattr(self.window, "toast"):
-            # 시작 메시지에 허용 창 힌트를 합쳐 토스트 스택을 아끼고 가독성을 유지
-            combined = f"{toast_message}\n{HWP_PERMISSION_HINT}"
-            self.window.toast.show_message(combined, toast_icon)
 
     def collect_tasks(self, *, require_folder_cache: bool = False) -> PlannedConversion:
         is_folder_mode = self.window.folder_radio.isChecked()
@@ -251,6 +236,24 @@ class ConversionController:
         """종료 요청이 있으면 계획 경로를 중단한다."""
         if self.state.close_requested:
             raise ValueError("종료 요청으로 변환 시작이 취소되었습니다.")
+
+    def _begin_worker_ui(self, worker: Any, *, toast_message: str, toast_icon: str) -> None:
+        """워커 시그널 연결, 상태 표시, 전면화 폴링, 토스트."""
+        self.state.worker = worker
+        worker.progress_updated.connect(self.window._on_progress_updated)
+        worker.status_updated.connect(self.window._on_status_updated)
+        worker.task_completed.connect(self.window._on_task_completed)
+        worker.finished.connect(self.window._on_worker_finished)
+        engine_status = getattr(worker, "engine_status_updated", None)
+        if engine_status is not None:
+            engine_status.connect(self.on_engine_status_updated)
+        worker.start()
+        self.window.hwp_status_label.setText("🟡 한글 연결 중... (허용 창 확인)")
+        self._start_hwp_foreground_polling()
+        if hasattr(self.window, "toast"):
+            # 시작 메시지에 허용 창 힌트를 합쳐 토스트 스택을 아끼고 가독성을 유지
+            combined = f"{toast_message}\n{HWP_PERMISSION_HINT}"
+            self.window.toast.show_message(combined, toast_icon)
 
     def start_conversion(self) -> None:
         planning_held = False
@@ -623,3 +626,4 @@ class ConversionController:
         self.state.plan = None
         if self.state.close_after_worker:
             QTimer.singleShot(0, self.window.close)
+

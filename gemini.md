@@ -67,13 +67,17 @@
 
 - `hwptopdf-hwpx_v4.py`: 실행 래퍼 엔트리포인트
 - `hwpmate/`: 운영 코드 전체
-- `hwpmate/services/hwp_converter.py`: HWP COM 변환
+- `hwpmate/services/hwp_converter/`: HWP COM 변환 패키지 (공개 API re-export)
+- `hwpmate/services/hwp_print_settings/`: 인쇄 리셋·PrintToPDFEx/RunToPDF (물리 Print Execute 금지)
 - `hwpmate/services/hwp_security_module.py`: 보안 DLL 설치·무결성·레지스트리
 - `hwpmate/services/hwp_security_session.py`: 전면화/자동 클릭 세션 정책
 - `hwpmate/resources/security/`: 배포 필수 FilePathCheck DLL
+- `hwpmate/windows_integration/`: 관리자 DnD·한글 창·보안 대화상자
+- `hwpmate/workers/conversion_worker/`: 변환 워커·백업·요약 패키지
 - `hwpmate/ui/main_window.py`: `MainWindow` import 경로를 유지하는 조립 루트와 호환 래퍼
 - `hwpmate/ui/main_window_controllers/`: 상태, 테마/표시, 파일 선택/스캔, 변환, 네이티브 드롭, 수명주기 컨트롤러
-- `hwpmate/ui/main_window_ui.py`: 콜백 객체 기반 메인 윈도우 레이아웃 빌더
+- `hwpmate/ui/main_window_ui/`: 콜백 객체 기반 메인 윈도우 레이아웃 빌더
+- `hwpmate/ui/dialogs/`, `hwpmate/ui/theme/`: 사전 점검·결과 다이얼로그, 테마 QSS
 - `hwp_converter.spec`: PyInstaller 빌드 정의 (보안 DLL datas 포함)
 - `README.md`: 사용자 안내와 실행/빌드 방법
 - `PROJECT_STRUCTURE_ANALYSIS.md`: 현재 구조와 확장 포인트 분석

@@ -21,6 +21,13 @@
 - [ ] 폴더 모드에서 하위 폴더 포함 on/off에 따라 미리보기 파일 수가 바뀐다.
 - [ ] 관리자 권한 상태에서도 탐색기 드래그 앤 드롭이 동작한다.
 
+## 패키지 분할 회귀 확인 (2026-08-05)
+
+- [ ] 기존 import 경로로 앱/스모크가 기동된다 (`hwpmate.services.hwp_converter`, `windows_integration` 등).
+- [ ] PDF 변환 1건: SaveAs 폴백·`export_method` 감사 필드 정상.
+- [ ] 관리자 DnD·보안 전면화 경로가 패키지 분리 후에도 동작한다.
+- [ ] `pyinstaller hwp_converter.spec` 빌드 exe가 기동·변환 1건 성공한다.
+
 ## MainWindow 컨트롤러 분리 회귀 확인
 
 - [ ] 테마 전환, 형식 카드 선택, 폴더/파일 모드 전환이 즉시 UI에 반영된다.

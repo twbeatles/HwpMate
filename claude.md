@@ -21,7 +21,8 @@
 - 모아찍기 완화를 우선하려면 `print_to_pdf_ex_first`(PrintToPDFEx → SaveAs 폴백).
 - **금지:** `CreateAction("Print").Execute` — 물리 프린터로 실제 출력이 나갈 수 있습니다. PDF 전용은 `PrintToPDFEx` / `RunToPDF` 만 허용합니다.
 - 결과 감사 필드 `export_method`(`saveas_2`/`saveas_3`/`print_to_pdf_ex`/`run_to_pdf`)를 유지합니다.
-- 구현: `hwpmate/services/hwp_print_settings.py`, `HWPConverter.convert_file`.
+- 구현: `hwpmate/services/hwp_print_settings/` 패키지, `HWPConverter.convert_file`
+  (`services/hwp_converter/converter.py`).
 
 ### COM 초기화
 - 메인 스레드와 워커 스레드에서 COM 초기화/해제를 분리합니다.
@@ -81,17 +82,17 @@
   - `app_instance.py`: `QLockFile` 기반 단일 인스턴스 잠금
   - `config_repository.py`, `path_utils.py`, `models.py`: 설정/경로/데이터 모델 (`AppConfig`, `ConversionTask`, `PlannedConversion`, `ConversionSummary`)
   - `services/artifact_policy.py`: 이미지/HTML 보조 산출물 후보, 충돌, snapshot 대상 정책
-  - `services/hwp_converter.py`: HWP COM 래퍼 (Open / 인쇄 리셋 / PDF 전략 / SaveAs 폴백)
-  - `services/hwp_print_settings.py`: PrintMethod 리셋, PrintToPDFEx/RunToPDF, 가상 프린터 탐지 (물리 Print Execute 금지)
+  - `services/hwp_converter/`: HWP COM 래퍼 패키지 (Open / 인쇄 리셋 / PDF 전략 / SaveAs 폴백 / PID 스냅샷)
+  - `services/hwp_print_settings/`: PrintMethod 리셋, PrintToPDFEx/RunToPDF, 가상 프린터 탐지 (물리 Print Execute 금지)
   - `services/hwp_security_module.py`: 한컴 FilePathCheck DLL 설치·SHA-256 검증·HKCU 레지스트리 등록
   - `services/hwp_security_session.py`: 변환 세션 전면화/「모두 허용」 자동 클릭 정책
   - `services/file_selection_store.py`, `services/task_planner.py`: 파일 선택 상태와 작업 계획/건너뜀/출력 충돌 계산
-  - `workers/file_scan_worker.py`, `workers/conversion_worker.py`: 비동기 스캔/변환 워커
-  - `windows_integration.py`: 관리자 권한 드롭·한글 창 전면화·보안 대화상자 best-effort 클릭
+  - `workers/file_scan_worker.py`, `workers/conversion_worker/`: 비동기 스캔/변환 워커 패키지
+  - `windows_integration/`: 관리자 권한 드롭·한글 창 전면화·보안 대화상자 best-effort 클릭
   - `ui/main_window.py`: `MainWindow` import 경로를 유지하는 조립 루트와 호환 래퍼
-  - `ui/main_window_controllers/`: 상태, 테마/표시, 파일 선택/스캔, 변환, 네이티브 드롭, 수명주기 컨트롤러
-  - `ui/theme.py`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs.py`: UI 컴포넌트 분리 (`PreflightDialog`, `ResultDialog` 포함)
-  - `ui/main_window_ui.py`: `MainWindowCallbacks`로 시그널을 연결하는 메인 윈도우 레이아웃 빌더
+  - `ui/main_window_controllers/`: 상태, 테마/표시, 파일 선택/스캔, 변환, 네이티브 드롭, 수명주기 컨트롤러 (일부 패키지)
+  - `ui/theme/`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs/`: UI 컴포넌트 분리 (`PreflightDialog`, `ResultDialog` 포함)
+  - `ui/main_window_ui/`: `MainWindowCallbacks`로 시그널을 연결하는 메인 윈도우 레이아웃 빌더
 - `hwp_converter.spec`
   - PyInstaller 경량 빌드
   - `uac_admin=True` 유지

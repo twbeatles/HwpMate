@@ -360,9 +360,9 @@ def test_create_backup_avoids_name_collisions(tmp_path: Path, monkeypatch) -> No
         def now(cls):
             return real_datetime(2026, 3, 18, 12, 0, 0, 123456)
 
-    import hwpmate.workers.conversion_worker as worker_module
+    import hwpmate.workers.conversion_worker.backup as backup_module
 
-    monkeypatch.setattr(worker_module, "datetime", FrozenDateTime)
+    monkeypatch.setattr(backup_module, "datetime", FrozenDateTime)
     worker._create_backup(source)
     worker._create_backup(source)
 

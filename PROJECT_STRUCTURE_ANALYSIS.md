@@ -10,6 +10,7 @@
 - 기능 리스크 보강 일자: 2026-05-12
 - MainWindow 컨트롤러 리팩토링 반영 일자: 2026-06-10
 - 보안 세션·계획 잠금·DLL 무결성 반영 일자: 2026-08-03
+- SOLID 패키지 분할 반영 일자: 2026-08-05
 - 대상 저장소: `D:\github\HwpMate`
 - 분석 목적: "다양한 기능 추가"를 위한 현재 구조, 제약, 확장 포인트 파악
 
@@ -43,8 +44,13 @@
 | `PROJECT_AUDIT.md` | 추적 | 기능 감사 리포트·권장안 반영 상태 |
 | `hwpmate/resources/security/` | 추적 | FilePathCheck DLL + README (빌드 필수) |
 | `hwpmate/services/hwp_security_*.py` | 추적 | 보안 모듈 설치·세션 정책 |
+| `hwpmate/services/hwp_converter/` | 패키지 | COM 변환 엔진 (호환 re-export) |
+| `hwpmate/services/hwp_print_settings/` | 패키지 | 인쇄 리셋·PDF 내보내기 |
+| `hwpmate/windows_integration/` | 패키지 | OS 통합 (DnD·창 제어) |
+| `hwpmate/workers/conversion_worker/` | 패키지 | 변환 워커 |
+| `hwpmate/ui/{dialogs,theme,main_window_ui}/` | 패키지 | UI 다이얼로그·테마·레이아웃 빌더 |
 
-현재 구조는 `hwpmate/` 패키지 기준의 모듈 분리 아키텍처이며, 루트 래퍼와 기존 배포 흐름은 유지됩니다.
+현재 구조는 `hwpmate/` 기준 **기능별 하위 패키지** 아키텍처이며, 공개 import 경로는 `__init__.py` re-export로 유지하고 루트 래퍼·배포 흐름은 동일합니다.
 
 ## 4. 아키텍처 개요
 
@@ -65,22 +71,25 @@
 | `models.py` | `AppConfig`, `ConversionTask`, `PlannedConversion`, `ConversionSummary`, `FormatSpec` 데이터 모델 |
 | `services/file_selection_store.py` | 순서 유지 + 대소문자 비민감 중복 제거 |
 | `services/task_planner.py` | 모드별 작업 생성, 동일 형식 건너뜀 분리, 출력 충돌 해소 |
-| `services/hwp_converter.py` | COM 연결/문서 열기/인쇄 리셋/PDF 전략/SaveAs/정리·Toolhelp PID |
-| `services/hwp_print_settings.py` | PrintMethod=0 리셋, PrintToPDFEx/RunToPDF, 가상 프린터 탐지 (물리 Print Execute 금지) |
+| `services/hwp_converter/` | COM 연결·SaveAs/PDF 전략·Toolhelp PID (패키지; `com_types`/`process_snapshot`/`converter` 등) |
+| `services/hwp_print_settings/` | PrintMethod=0 리셋, PrintToPDFEx/RunToPDF, 가상 프린터 탐지 (물리 Print Execute 금지) |
 | `services/hwp_security_module.py` | 보안승인 DLL 설치·SHA-256·HKCU 등록 |
 | `services/hwp_security_session.py` | 전면화/자동 클릭 세션 정책 |
 | `workers/file_scan_worker.py` | 파일/폴더를 비동기 배치 스캔 |
-| `workers/conversion_worker.py` | 작업 리스트 순차 변환, 백업, 취소/요약 집계, engine_status 시그널 |
-| `windows_integration.py` | 네이티브 DnD·한글 보안 창 전면화·모두 허용 best-effort |
-| `ui/theme.py`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs.py` | 테마/토스트/위젯/사전 점검/결과 다이얼로그 |
+| `workers/conversion_worker/` | 순차 변환·백업·요약·engine_status (`worker`/`backup`/`summary`/`protocol`) |
+| `windows_integration/` | 관리자 DnD·한글 창 전면화/숨김·모두 허용·NativeDropFilter |
+| `ui/theme/`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs/` | 테마 QSS·토스트·위젯·사전 점검/결과 다이얼로그 |
 | `ui/main_window.py` | `MainWindow` import 경로를 유지하는 조립 루트와 호환 래퍼 |
-| `ui/main_window_ui.py` | 콜백 객체 기반 메인 윈도우 레이아웃 빌더 |
+| `ui/main_window_ui/` | 콜백 객체 기반 메인 윈도우 레이아웃 빌더 (`types`/`builder`) |
 | `ui/main_window_controllers/state.py` | `MainWindowState` 런타임 상태 모델 |
 | `ui/main_window_controllers/appearance.py` | 테마, 포맷 선택, 모드/출력 UI 활성 상태 |
-| `ui/main_window_controllers/file_selection.py` | 파일/폴더 선택, 파일 테이블, 비동기 스캔 수명주기 |
-| `ui/main_window_controllers/conversion.py` | 작업 계획, 사전 점검, 변환 워커, 결과/취소 처리 |
+| `ui/main_window_controllers/file_selection/` | 파일/폴더 선택, 파일 테이블, 비동기 스캔 수명주기 |
+| `ui/main_window_controllers/conversion/` | 작업 계획, 사전 점검, 변환 워커, 결과/취소 처리 |
 | `ui/main_window_controllers/native_drop.py` | 네이티브 WM_DROPFILES 초기화와 모드별 드롭 처리 |
-| `ui/main_window_controllers/lifecycle.py` | 메뉴, 단축키, 트레이, 설정 저장, 종료 이벤트 |
+| `ui/main_window_controllers/lifecycle/` | 메뉴, 단축키, 트레이, 설정 저장, 종료 이벤트 |
+
+> 공개 import 경로는 패키지 `__init__.py` re-export 로 유지됩니다.  
+> 예: `from hwpmate.services.hwp_converter import HWPConverter`, `from hwpmate.windows_integration import NativeDropFilter`
 
 ### 4.3 데이터/상태 모델
 - 설정 파일: `%USERPROFILE%\.hwp_converter_config.json`

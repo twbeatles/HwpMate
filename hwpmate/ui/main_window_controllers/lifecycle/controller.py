@@ -1,3 +1,5 @@
+"""메뉴·트레이·설정·종료 컨트롤러."""
+
 from __future__ import annotations
 
 from typing import Any, Callable
@@ -5,7 +7,7 @@ from typing import Any, Callable
 from PyQt6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PyQt6.QtWidgets import QLabel, QMenu, QMessageBox, QStyle, QSystemTrayIcon
 
-from ...constants import (
+from ....constants import (
     FORMAT_GROUPS,
     FORMAT_TYPES,
     HWP_PERMISSION_HINT,
@@ -13,9 +15,9 @@ from ...constants import (
     VERSION,
     WORKER_WAIT_TIMEOUT,
 )
-from ...logging_config import get_logger
-from ...models import AppConfig
-from .state import MainWindowState
+from ....logging_config import get_logger
+from ....models import AppConfig
+from ..state import MainWindowState
 
 logger = get_logger(__name__)
 
@@ -160,29 +162,29 @@ class LifecycleController:
         )
         usage_text = f"""<h3>HWP 변환기 사용법</h3>
 
-<p><b>1. 변환 모드 선택</b></p>
-<ul>
-<li>폴더 일괄 변환: 폴더 내 실제 변환 가능한 파일만 미리보기 후 변환</li>
-<li>파일 개별 선택: 원하는 파일만 선택하여 변환</li>
-</ul>
+    <p><b>1. 변환 모드 선택</b></p>
+    <ul>
+    <li>폴더 일괄 변환: 폴더 내 실제 변환 가능한 파일만 미리보기 후 변환</li>
+    <li>파일 개별 선택: 원하는 파일만 선택하여 변환</li>
+    </ul>
 
-<p><b>2. 변환 형식 선택</b></p>
-<ul>
-{format_html}
-</ul>
-<p>이미지/HTML 변환은 한글 설치 버전에 따라 저장 방식이 다를 수 있으며, 기본 출력 파일과 같은 stem 기반 보조 산출물이 새로 생성·갱신되고 0바이트보다 클 때 성공으로 판단합니다.</p>
-<p>{PRINT_SETTINGS_NOTICE}</p>
-<p>{HWP_PERMISSION_HINT}</p>
+    <p><b>2. 변환 형식 선택</b></p>
+    <ul>
+    {format_html}
+    </ul>
+    <p>이미지/HTML 변환은 한글 설치 버전에 따라 저장 방식이 다를 수 있으며, 기본 출력 파일과 같은 stem 기반 보조 산출물이 새로 생성·갱신되고 0바이트보다 클 때 성공으로 판단합니다.</p>
+    <p>{PRINT_SETTINGS_NOTICE}</p>
+    <p>{HWP_PERMISSION_HINT}</p>
 
-<p><b>3. 단축키</b></p>
-<ul>
-<li>Ctrl+O: 파일 추가</li>
-<li>Ctrl+Shift+O: 폴더 선택</li>
-<li>Ctrl+Enter: 변환 시작</li>
-<li>Esc: 변환 취소</li>
-<li>Delete: 선택 파일 제거</li>
-</ul>
-"""
+    <p><b>3. 단축키</b></p>
+    <ul>
+    <li>Ctrl+O: 파일 추가</li>
+    <li>Ctrl+Shift+O: 폴더 선택</li>
+    <li>Ctrl+Enter: 변환 시작</li>
+    <li>Esc: 변환 취소</li>
+    <li>Delete: 선택 파일 제거</li>
+    </ul>
+    """
         QMessageBox.information(self.window, "사용법", usage_text)
 
     def show_about(self) -> None:
@@ -191,42 +193,54 @@ class LifecycleController:
             for group, keys in FORMAT_GROUPS.items()
         )
         about_text = f"""<h2>HWP 변환기 v{VERSION}</h2>
-<p>HWP/HWPX 파일을 다양한 문서/이미지 형식으로 변환하는 프로그램</p>
+    <p>HWP/HWPX 파일을 다양한 문서/이미지 형식으로 변환하는 프로그램</p>
 
-<p><b>주요 기능:</b></p>
-<ul>
-<li>폴더 일괄 변환 / 파일 개별 선택</li>
-<li>모드별 드래그 앤 드롭 지원</li>
-<li>다크/라이트 테마</li>
-<li>사전 점검, 결과 리포트, 실패 목록 저장</li>
-<li>원본 백업 옵션과 실패 자동 재시도</li>
-</ul>
+    <p><b>주요 기능:</b></p>
+    <ul>
+    <li>폴더 일괄 변환 / 파일 개별 선택</li>
+    <li>모드별 드래그 앤 드롭 지원</li>
+    <li>다크/라이트 테마</li>
+    <li>사전 점검, 결과 리포트, 실패 목록 저장</li>
+    <li>원본 백업 옵션과 실패 자동 재시도</li>
+    </ul>
 
-<p><b>지원 형식:</b></p>
-<ul>
-{supported_formats}
-</ul>
-<p>이미지/HTML 변환 결과는 한글 설치 버전에 따라 차이가 있을 수 있으며, 앱은 기본 출력 파일과 같은 stem 기반 보조 산출물의 생성·갱신 여부(0바이트 초과)를 성공 기준으로 사용합니다.</p>
-<p>{PRINT_SETTINGS_NOTICE}</p>
-<p>{HWP_PERMISSION_HINT}</p>
+    <p><b>지원 형식:</b></p>
+    <ul>
+    {supported_formats}
+    </ul>
+    <p>이미지/HTML 변환 결과는 한글 설치 버전에 따라 차이가 있을 수 있으며, 앱은 기본 출력 파일과 같은 stem 기반 보조 산출물의 생성·갱신 여부(0바이트 초과)를 성공 기준으로 사용합니다.</p>
+    <p>{PRINT_SETTINGS_NOTICE}</p>
+    <p>{HWP_PERMISSION_HINT}</p>
 
-<p><b>요구사항:</b></p>
-<ul>
-<li>Windows 10/11</li>
-<li>한컴오피스 한글 2018 이상</li>
-<li>관리자 권한</li>
-</ul>
+    <p><b>요구사항:</b></p>
+    <ul>
+    <li>Windows 10/11</li>
+    <li>한컴오피스 한글 2018 이상</li>
+    <li>관리자 권한</li>
+    </ul>
 
-<p><b>데이터 저장 위치:</b></p>
-<ul>
-<li>설정: 사용자 홈 <code>.hwp_converter_config.json</code></li>
-<li>로그: <code>~/.hwp_converter/logs</code> 또는 <code>%LOCALAPPDATA%\\HwpMate\\logs</code></li>
-<li>단일 인스턴스 잠금: <code>%LOCALAPPDATA%\\HwpMate\\HwpMate.lock</code></li>
-</ul>
+    <p><b>데이터 저장 위치:</b></p>
+    <ul>
+    <li>설정: 사용자 홈 <code>.hwp_converter_config.json</code></li>
+    <li>로그: <code>~/.hwp_converter/logs</code> 또는 <code>%LOCALAPPDATA%\\HwpMate\\logs</code></li>
+    <li>단일 인스턴스 잠금: <code>%LOCALAPPDATA%\\HwpMate\\HwpMate.lock</code></li>
+    </ul>
 
-<p>© 2024-2026</p>
-"""
+    <p>© 2024-2026</p>
+    """
         QMessageBox.about(self.window, "프로그램 정보", about_text)
+
+    def set_command_actions_enabled(self, enabled: bool) -> None:
+        for action in (
+            self.add_files_action,
+            self.add_folder_action,
+            self.remove_selected_action,
+            self.clear_all_action,
+        ):
+            if action is not None:
+                action.setEnabled(enabled)
+        if self.start_shortcut is not None:
+            self.start_shortcut.setEnabled(enabled)
 
     def save_settings(self) -> bool:
         self.window.config["mode"] = "folder" if self.window.folder_radio.isChecked() else "files"
@@ -255,18 +269,6 @@ class LifecycleController:
                 self.window.toast.show_message("설정 저장에 실패했습니다", "⚠️")
             return False
         return True
-
-    def set_command_actions_enabled(self, enabled: bool) -> None:
-        for action in (
-            self.add_files_action,
-            self.add_folder_action,
-            self.remove_selected_action,
-            self.clear_all_action,
-        ):
-            if action is not None:
-                action.setEnabled(enabled)
-        if self.start_shortcut is not None:
-            self.start_shortcut.setEnabled(enabled)
 
     def close_event(self, event: QCloseEvent) -> None:
         logger.info("메인 윈도우 종료 이벤트 수신")
@@ -345,3 +347,4 @@ class LifecycleController:
             QMessageBox.warning(self.window, "설정 저장 실패", "현재 설정을 저장하지 못했습니다. 다음 실행에서 일부 설정이 복원되지 않을 수 있습니다.")
         logger.info("메인 윈도우 종료 허용")
         event.accept()
+

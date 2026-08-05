@@ -1,40 +1,28 @@
 from __future__ import annotations
 
-import shutil
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional, Protocol
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from ..logging_config import get_logger
-from ..constants import MAX_RETRY_COUNT, RETRY_DELAY_SECONDS
-from ..models import ConversionSummary, ConversionTask, PlannedConversion
-from ..services.hwp_converter import HWPConverter, pythoncom
-from ..services.hwp_print_settings import normalize_pdf_export_mode
+from ...logging_config import get_logger
+from ...constants import MAX_RETRY_COUNT, RETRY_DELAY_SECONDS
+from ...models import ConversionSummary, ConversionTask, PlannedConversion
+from ...services.hwp_converter import HWPConverter, pythoncom
+from ...services.hwp_print_settings import normalize_pdf_export_mode
 
 logger = get_logger(__name__)
 
 
-class ConverterEngine(Protocol):
-    @property
-    def progid_used(self) -> str | None: ...
-
-    pdf_export_mode: str
-
-    def initialize(self, *, manage_com_apartment: bool = True) -> bool: ...
-    def convert_file(
-        self,
-        input_path,
-        output_path,
-        format_type="PDF",
-        *,
-        cancel_check=None,
-    ) -> tuple[bool, str | None]: ...
-    def cleanup(self) -> None: ...
-    def has_owned_processes(self) -> bool: ...
-    def kill_owned_processes(self) -> bool: ...
+from .backup import create_backup
+from .protocol import ConverterEngine
+from .summary import (
+    apply_converter_artifacts,
+    build_summary as build_summary_fn,
+    collect_converter_warnings as collect_converter_warnings_fn,
+    engine_status_payload,
+)
 
 
 class ConversionWorker(QThread):
@@ -234,35 +222,10 @@ class ConversionWorker(QThread):
 
     def _create_backup(self, file_path: Path) -> Path:
         """파일 백업 생성"""
-        try:
-            backup_dir = file_path.parent / "backup"
-            backup_dir.mkdir(exist_ok=True)
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            backup_name = f"{file_path.stem}_{timestamp}{file_path.suffix}"
-            backup_path = backup_dir / backup_name
-            counter = 1
-
-            while backup_path.exists():
-                backup_name = f"{file_path.stem}_{timestamp}_{counter}{file_path.suffix}"
-                backup_path = backup_dir / backup_name
-                counter += 1
-
-            shutil.copy2(file_path, backup_path)
-            logger.debug(f"백업 생성 완료: {backup_path}")
-            return backup_path
-        except Exception as e:
-            logger.error(f"백업 생성 중 오류: {e}")
-            raise
+        return create_backup(file_path)
 
     def _apply_converter_artifacts(self, task: ConversionTask, converter: ConverterEngine) -> None:
-        created_files = getattr(converter, "last_created_files", [])
-        task.created_files = [Path(path) for path in created_files]
-        task.output_size = getattr(converter, "last_output_size", None)
-        task.output_mtime = getattr(converter, "last_output_mtime", None)
-        task.save_format = getattr(converter, "last_save_format", None)
-        task.export_method = getattr(converter, "last_export_method", None)
-        task.progid_used = converter.progid_used
+        apply_converter_artifacts(task, converter)
 
     def _build_summary(
         self,
@@ -272,43 +235,17 @@ class ConversionWorker(QThread):
         progid_used: str | None,
     ) -> ConversionSummary:
         """UI 스레드에 넘기기 전 작업 스냅샷을 복사한다."""
-        task_snapshots = [task.snapshot() for task in self.tasks]
-        skipped_snapshots = [
-            task.snapshot() for task in self.planned_conversion.skipped_tasks
-        ]
-        return ConversionSummary(
+        return build_summary_fn(
             format_type=self.format_type,
-            tasks=task_snapshots + skipped_snapshots,
-            warnings=list(warnings),
+            tasks=self.tasks,
+            planned=self.planned_conversion,
+            warnings=warnings,
             elapsed_seconds=elapsed_seconds,
             progid_used=progid_used,
         )
 
     def _emit_engine_status(self, converter: ConverterEngine) -> None:
-        owned = getattr(converter, "owned_pids", None) or set()
-        payload = {
-            "security_module_registered": getattr(converter, "security_module_registered", None),
-            "owned_pids": sorted(int(pid) for pid in owned),
-            "snapshot_unreliable": bool(getattr(converter, "snapshot_unreliable", False)),
-            "process_tracking_warning": getattr(converter, "process_tracking_warning", None),
-            "progid_used": converter.progid_used,
-        }
-        self.engine_status_updated.emit(payload)
+        self.engine_status_updated.emit(engine_status_payload(converter))
 
     def _collect_converter_warnings(self, converter: ConverterEngine) -> list[str]:
-        warnings: list[str] = []
-        if getattr(converter, "security_module_registered", None) is False:
-            detail = getattr(converter, "security_module_error", None)
-            message = (
-                "한글 보안 모듈 등록에 실패했습니다. "
-                "파일 접근 시 '모두 허용' 창이 뜰 수 있으며, "
-                "한컴 보안 모듈(FilePathCheckDLL) 등록이 근본 해결책입니다."
-            )
-            if detail:
-                message += f" 상세: {detail}"
-            warnings.append(message)
-
-        process_warning = getattr(converter, "process_tracking_warning", None)
-        if process_warning:
-            warnings.append(str(process_warning))
-        return warnings
+        return collect_converter_warnings_fn(converter)

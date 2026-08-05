@@ -24,6 +24,15 @@
 | §3.8 캐시 신규 파일 | 폴더 mtime·파일 수 감지 |
 | §3.9 문서 드리프트 | Claude.md / README / 스모크 동기화 |
 
+### 후속 정합 (2026-08-05)
+
+| 항목 | 조치 |
+|------|------|
+| SOLID 패키지 분할 | `hwp_converter/` · `hwp_print_settings/` · `windows_integration/` 등 (공개 import re-export) |
+| 문서 경로 표기 | Claude.md / gemini.md / PROJECT_STRUCTURE 패키지 경로로 갱신 |
+| `hwp_converter.spec` | 핵심 패키지 `hiddenimports` 명시 |
+| `.gitignore` | 로컬 설정·로그·스모크 출력·일회성 분할 스크립트 패턴 |
+
 ---
 
 ## 1. Executive Summary
@@ -47,7 +56,7 @@ HwpMate는 한컴 한글 COM으로 HWP/HWPX를 PDF·문서·이미지로 일괄 
 3. **Medium:** 파일당 다중 COM 시도(프린터 후보 × 메서드)로 **변환 지연·취소 지연·대화상자 노출** 가능.  
 4. **Medium:** `apply_default_print_settings`는 Execute 없이 속성만 건드려, SaveAs 폴백 시 **모아찍기가 그대로 남을 수 있다** (커뮤니티/한컴 포럼에서도 “속성만으로는 부족” 사례).  
 5. **Low–Medium:** 결과 CSV의 `save_format`이 항상 `PDF`라 **실제 내보내기 경로 감사가 불가능**.  
-6. **문서 드리프트:** `Claude.md` 서비스 목록·성공 판정 서술에 `hwp_print_settings` / PrintToPDFEx가 아직 없다.
+6. **문서 드리프트:** 감사 당시 `Claude.md`에 `hwp_print_settings` 미기재였으나 **2026-08-04~05 동기화·패키지 경로 반영으로 해소**.
 
 과거 감사의 High(계획 중 종료, Preflight 상한, Open=0 판정, relative_to 폴백 등)는 **상당 부분 코드에 반영된 상태**로 확인했다. 잔여는 §3 하단과 §4에 정리한다.
 
@@ -117,7 +126,7 @@ Open(forceopen)
 | README: PDF 1쪽씩 best-effort, 용지 유지 | **대체로 일치** (강제 A4 없음) |
 | Claude.md: SaveAs 2→3 폴백 유지 | **일치** (PrintToPDFEx 실패 후 폴백) |
 | Claude.md: 성공 = 산출물 생성·갱신·size>0 | **일치** (경로 무관하게 artifact 검증) |
-| Claude.md §3 서비스 목록 | **불일치** — `hwp_print_settings.py` 미기재 |
+| Claude.md §3 서비스 목록 | **해소(2026-08-05)** — `hwp_print_settings/`·`hwp_converter/` 패키지 경로 반영 |
 | Claude.md §2 성공 판정 서술 | **부분 불일치** — “SaveAs 폴백 후”만 명시, PrintToPDFEx 선행 미기재 |
 | Claude.md Spec Kit `specs/001-...` | **불일치** — 워크스페이스에 `specs/` 없을 수 있음 (문서 자체도 가능성 명시) |
 | 결과 CSV `save_format` | PrintToPDFEx 성공 시에도 `"PDF"` — **경로 구분 없음** |
@@ -131,7 +140,8 @@ Open(forceopen)
 
 ### 3.1 [신규] `CreateAction("Print").Execute` 물리 인쇄 가능성
 
-* **위치:** `hwpmate/services/hwp_print_settings.py` — `try_export_pdf_via_print_to_pdf_ex` (CreateAction `"Print"` 분기, 약 213–238행)
+* **위치(감사 당시):** `hwpmate/services/hwp_print_settings.py` — `try_export_pdf_via_print_to_pdf_ex` (CreateAction `"Print"` 분기).
+  **현행 경로:** `hwpmate/services/hwp_print_settings/pdf_export.py` (물리 Print Execute는 이후 제거됨 — 2026-08-04 이력).
 * **문제:** `PrintToPDFEx` 실패 후 `CreateAction("Print")`로 `Device=3`, `FileName`, `PrinterName`을 넣고 **`act.Execute(pset)`** 한다. 한글 버전·드라이버에 따라 Device/가상 프린터 무시 시 **기본 물리 프린터로 실제 인쇄 작업이 나갈 수 있다.** 일괄 변환 시 파일 수만큼 반복될 수 있다.
 * **영향:** 용지/토너 낭비, 네트워크 프린터 대량 출력, 사용자 신뢰 훼손. **발생 빈도는 환경 의존(추정)이나 영향 심각도는 Critical에 가깝다.**
 * **근거:**

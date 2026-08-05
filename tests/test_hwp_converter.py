@@ -59,11 +59,13 @@ def build_converter(fake_hwp: FakeHwp) -> HWPConverter:
 
 
 def test_kill_owned_processes_skips_pid_not_in_live_hwp_snapshot(monkeypatch) -> None:
-    import hwpmate.services.hwp_converter as converter_module
+    import hwpmate.services.hwp_converter.converter as converter_impl
+    import hwpmate.services.hwp_converter.process_snapshot as process_snapshot
 
     converter = HWPConverter()
     converter.owned_pids = {111, 222}
-    monkeypatch.setattr(converter_module, "_snapshot_hwp_pids", lambda: {222})
+    monkeypatch.setattr(process_snapshot, "_snapshot_hwp_pids", lambda: {222})
+    monkeypatch.setattr(converter_impl, "_snapshot_hwp_pids", lambda: {222})
     calls: list[tuple[list[str], object | None]] = []
 
     def fake_run(args, **kwargs):
@@ -74,12 +76,12 @@ def test_kill_owned_processes_skips_pid_not_in_live_hwp_snapshot(monkeypatch) ->
 
         return Result()
 
-    monkeypatch.setattr(converter_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(converter_impl.subprocess, "run", fake_run)
 
     assert converter.kill_owned_processes() is True
     assert len(calls) == 1
     assert calls[0][0] == ["taskkill", "/PID", "222", "/F"]
-    assert calls[0][1] == converter_module._CREATE_NO_WINDOW
+    assert calls[0][1] == converter_impl._CREATE_NO_WINDOW
     assert converter.owned_pids == set()
 
 
@@ -135,7 +137,7 @@ def test_suppress_hwp_ui_flash_calls_visible_and_windows_helper(monkeypatch) -> 
 
 
 def test_cleanup_does_not_uninitialize_unowned_com_apartment(monkeypatch) -> None:
-    import hwpmate.services.hwp_converter as converter_module
+    import hwpmate.services.hwp_converter.converter as converter_impl
 
     class FakePythoncom:
         def __init__(self) -> None:
@@ -145,7 +147,7 @@ def test_cleanup_does_not_uninitialize_unowned_com_apartment(monkeypatch) -> Non
             self.uninit_calls += 1
 
     fake = FakePythoncom()
-    monkeypatch.setattr(converter_module, "pythoncom", fake)
+    monkeypatch.setattr(converter_impl, "pythoncom", fake)
     converter = HWPConverter()
     converter.is_initialized = True
     converter.hwp = FakeHwp()
@@ -161,9 +163,9 @@ def test_convert_file_pdf_saveas_first_skips_print_when_saveas_ok(
     tmp_path: Path, monkeypatch
 ) -> None:
     """기본 saveas_first: SaveAs 성공 시 PrintToPDFEx 를 호출하지 않는다."""
-    import hwpmate.services.hwp_converter as converter_module
+    import hwpmate.services.hwp_converter.converter as converter_impl
 
-    monkeypatch.setattr(converter_module, "DOCUMENT_LOAD_DELAY", 0)
+    monkeypatch.setattr(converter_impl, "DOCUMENT_LOAD_DELAY", 0)
     print_calls: list[object] = []
 
     def fake_export(hwp, path, **kwargs):
@@ -171,8 +173,8 @@ def test_convert_file_pdf_saveas_first_skips_print_when_saveas_ok(
         print_calls.append(1)
         return False, None
 
-    monkeypatch.setattr(converter_module, "try_export_pdf_via_print_to_pdf_ex", fake_export)
-    monkeypatch.setattr(converter_module, "apply_default_print_settings", lambda h: True)
+    monkeypatch.setattr(converter_impl, "try_export_pdf_via_print_to_pdf_ex", fake_export)
+    monkeypatch.setattr(converter_impl, "apply_default_print_settings", lambda h: True)
 
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")
@@ -194,9 +196,9 @@ def test_convert_file_pdf_print_first_skips_saveas_when_print_ok(
     tmp_path: Path, monkeypatch
 ) -> None:
     """print_to_pdf_ex_first: PrintToPDFEx 성공 시 SaveAs 를 호출하지 않는다."""
-    import hwpmate.services.hwp_converter as converter_module
+    import hwpmate.services.hwp_converter.converter as converter_impl
 
-    monkeypatch.setattr(converter_module, "DOCUMENT_LOAD_DELAY", 0)
+    monkeypatch.setattr(converter_impl, "DOCUMENT_LOAD_DELAY", 0)
 
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")
@@ -208,8 +210,8 @@ def test_convert_file_pdf_print_first_skips_saveas_when_print_ok(
         Path(path).write_bytes(b"%PDF-1.4 x")
         return True, "print_to_pdf_ex"
 
-    monkeypatch.setattr(converter_module, "try_export_pdf_via_print_to_pdf_ex", fake_export)
-    monkeypatch.setattr(converter_module, "apply_default_print_settings", lambda h: True)
+    monkeypatch.setattr(converter_impl, "try_export_pdf_via_print_to_pdf_ex", fake_export)
+    monkeypatch.setattr(converter_impl, "apply_default_print_settings", lambda h: True)
 
     converter = build_converter(fake)
     converter.pdf_export_mode = "print_to_pdf_ex_first"
@@ -225,17 +227,17 @@ def test_convert_file_pdf_print_first_skips_saveas_when_print_ok(
 def test_convert_file_pdf_saveas_first_falls_back_to_print(
     tmp_path: Path, monkeypatch
 ) -> None:
-    import hwpmate.services.hwp_converter as converter_module
+    import hwpmate.services.hwp_converter.converter as converter_impl
 
-    monkeypatch.setattr(converter_module, "DOCUMENT_LOAD_DELAY", 0)
-    monkeypatch.setattr(converter_module, "apply_default_print_settings", lambda h: True)
+    monkeypatch.setattr(converter_impl, "DOCUMENT_LOAD_DELAY", 0)
+    monkeypatch.setattr(converter_impl, "apply_default_print_settings", lambda h: True)
 
     def fake_export(hwp, path, **kwargs):
         del hwp, kwargs
         Path(path).write_bytes(b"%PDF-1.4 fallback")
         return True, "print_to_pdf_ex"
 
-    monkeypatch.setattr(converter_module, "try_export_pdf_via_print_to_pdf_ex", fake_export)
+    monkeypatch.setattr(converter_impl, "try_export_pdf_via_print_to_pdf_ex", fake_export)
 
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")
@@ -254,15 +256,15 @@ def test_convert_file_pdf_saveas_first_falls_back_to_print(
 def test_convert_file_pdf_falls_back_to_saveas_when_print_to_pdf_ex_fails(
     tmp_path: Path, monkeypatch
 ) -> None:
-    import hwpmate.services.hwp_converter as converter_module
+    import hwpmate.services.hwp_converter.converter as converter_impl
 
-    monkeypatch.setattr(converter_module, "DOCUMENT_LOAD_DELAY", 0)
+    monkeypatch.setattr(converter_impl, "DOCUMENT_LOAD_DELAY", 0)
     monkeypatch.setattr(
-        converter_module,
+        converter_impl,
         "try_export_pdf_via_print_to_pdf_ex",
         lambda h, p, **kw: (False, None),
     )
-    monkeypatch.setattr(converter_module, "apply_default_print_settings", lambda h: True)
+    monkeypatch.setattr(converter_impl, "apply_default_print_settings", lambda h: True)
 
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")
@@ -281,9 +283,9 @@ def test_convert_file_pdf_falls_back_to_saveas_when_print_to_pdf_ex_fails(
 
 
 def test_convert_file_respects_cancel_check(tmp_path: Path, monkeypatch) -> None:
-    import hwpmate.services.hwp_converter as converter_module
+    import hwpmate.services.hwp_converter.converter as converter_impl
 
-    monkeypatch.setattr(converter_module, "DOCUMENT_LOAD_DELAY", 0)
+    monkeypatch.setattr(converter_impl, "DOCUMENT_LOAD_DELAY", 0)
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")
     output = tmp_path / "a.pdf"
@@ -300,17 +302,17 @@ def test_convert_file_respects_cancel_check(tmp_path: Path, monkeypatch) -> None
 def test_convert_file_docx_skips_print_settings_control(
     tmp_path: Path, monkeypatch
 ) -> None:
-    import hwpmate.services.hwp_converter as converter_module
+    import hwpmate.services.hwp_converter.converter as converter_impl
 
-    monkeypatch.setattr(converter_module, "DOCUMENT_LOAD_DELAY", 0)
+    monkeypatch.setattr(converter_impl, "DOCUMENT_LOAD_DELAY", 0)
     reset_calls: list[object] = []
     monkeypatch.setattr(
-        converter_module,
+        converter_impl,
         "apply_default_print_settings",
         lambda h: reset_calls.append(h) or True,
     )
     monkeypatch.setattr(
-        converter_module,
+        converter_impl,
         "try_export_pdf_via_print_to_pdf_ex",
         lambda h, p: (_ for _ in ()).throw(AssertionError("PDF 경로 호출 금지")),
     )
