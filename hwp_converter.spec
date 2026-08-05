@@ -14,6 +14,8 @@ HWP 변환기 v9.0 - PyInstaller 빌드 설정
 2026-08-05: SOLID 패키지 분할 (hwp_converter/ · hwp_print_settings/ · windows_integration/
   · ui/dialogs|theme|main_window_ui/ · controllers 패키지 · conversion_worker/).
   공개 경로는 패키지 __init__ re-export. 정적 import 유지 — 핵심 패키지를 hiddenimports 에 명시.
+2026-08-05: 감사 잔여 개선 — 소유 PID 한정 UI 억제, PDF 매직·확장 경로, 변환용 폴더 캐시 연령,
+  backup_max_files_per_stem UI/설정. 신규 datas 없음. hiddenimports 패키지 목록 유지.
 """
 
 from pathlib import Path

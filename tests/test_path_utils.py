@@ -2,7 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hwpmate.path_utils import canonicalize_path, check_write_permission, is_valid_path_name, iter_supported_files, make_path_key
+from hwpmate.path_utils import (
+    canonicalize_path,
+    check_write_permission,
+    com_path_candidates,
+    is_path_length_blocking,
+    is_path_length_risky,
+    is_valid_path_name,
+    iter_supported_files,
+    make_path_key,
+    path_char_length,
+    to_extended_win_path,
+)
 
 
 def test_canonicalize_and_make_path_key_normalize_windows_paths() -> None:
@@ -83,3 +94,21 @@ def test_is_valid_path_name_rejects_windows_reserved_and_malformed_names() -> No
     assert is_valid_path_name("//server/share/report")
     assert is_valid_path_name(r"\\?\C:\out\report")
     assert is_valid_path_name(r"\\?\UNC\server\share\report")
+
+
+def test_path_char_length_and_risky() -> None:
+    short = Path("C:/a.hwp")
+    assert path_char_length(short) < 50
+    assert is_path_length_risky(short, warn_length=240) is False
+    long = Path("C:/") / ("x" * 250) / "doc.hwp"
+    assert is_path_length_risky(long, warn_length=240) is True
+    assert is_path_length_blocking(long, block_length=260) is True
+
+
+def test_to_extended_win_path_and_candidates() -> None:
+    drive = to_extended_win_path(r"C:\docs\a.hwp")
+    assert drive.startswith("\\\\?\\")
+    assert "C:" in drive or "c:" in drive.lower()
+    cands = com_path_candidates(r"C:\docs\a.hwp")
+    assert len(cands) >= 1
+    assert any(p.startswith("\\\\?\\") for p in cands) or cands[0].endswith("a.hwp")

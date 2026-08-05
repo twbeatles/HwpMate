@@ -10,6 +10,7 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QCloseEvent, QShowEvent
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QLabel,
     QLineEdit,
@@ -72,6 +73,9 @@ class MainWindow(QMainWindow):
     format_cards: dict[str, FormatCard]
     overwrite_check: QCheckBox
     backup_check: QCheckBox
+    backup_max_spin: QSpinBox
+    auto_accept_security_check: QCheckBox
+    pdf_export_mode_combo: QComboBox
     retry_spin: QSpinBox
     start_btn: QPushButton
     cancel_btn: QPushButton

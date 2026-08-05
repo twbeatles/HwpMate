@@ -251,9 +251,23 @@ class LifecycleController:
         self.window.config["overwrite"] = self.window.overwrite_check.isChecked()
         self.window.config["backup_enabled"] = self.window.backup_check.isChecked()
         self.window.config["retry_count"] = self.window.retry_spin.value()
+        backup_max = getattr(self.window, "backup_max_spin", None)
+        if backup_max is not None:
+            self.window.config["backup_max_files_per_stem"] = int(backup_max.value())
         auto_accept = getattr(self.window, "auto_accept_security_check", None)
         if auto_accept is not None:
             self.window.config["auto_accept_security_dialog"] = auto_accept.isChecked()
+        pdf_combo = getattr(self.window, "pdf_export_mode_combo", None)
+        if pdf_combo is not None:
+            data = pdf_combo.currentData()
+            if data is not None:
+                self.window.config["pdf_export_mode"] = str(data)
+            else:
+                from ....services.hwp_print_settings import normalize_pdf_export_mode
+
+                self.window.config["pdf_export_mode"] = normalize_pdf_export_mode(
+                    pdf_combo.currentText()
+                )
 
         self.window.config["folder_path"] = self.window.folder_entry.text().strip()
         self.window.config["output_path"] = self.window.output_entry.text().strip()

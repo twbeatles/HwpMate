@@ -11,6 +11,7 @@
 - MainWindow 컨트롤러 리팩토링 반영 일자: 2026-06-10
 - 보안 세션·계획 잠금·DLL 무결성 반영 일자: 2026-08-03
 - SOLID 패키지 분할 반영 일자: 2026-08-05
+- 감사 잔여 개선( PID 가드·PDF 매직·확장 경로·변환 캐시·백업 상한 UI) 반영 일자: 2026-08-05
 - 대상 저장소: `D:\github\HwpMate`
 - 분석 목적: "다양한 기능 추가"를 위한 현재 구조, 제약, 확장 포인트 파악
 
@@ -67,7 +68,7 @@
 | 구성요소 | 핵심 역할 |
 |---|---|
 | `config_repository.py` | 설정 저장/로드와 JSON 손상 백업 처리 |
-| `path_utils.py` | 경로 정규화, 권한 검사, 지원 파일 스캔 |
+| `path_utils.py` | 경로 정규화, 권한 검사, 지원 파일 스캔, 긴 경로 경고/확장 경로(`com_path_candidates`) |
 | `models.py` | `AppConfig`, `ConversionTask`, `PlannedConversion`, `ConversionSummary`, `FormatSpec` 데이터 모델 |
 | `services/file_selection_store.py` | 순서 유지 + 대소문자 비민감 중복 제거 |
 | `services/task_planner.py` | 모드별 작업 생성, 동일 형식 건너뜀 분리, 출력 충돌 해소 |
@@ -95,7 +96,7 @@
 - 설정 파일: `%USERPROFILE%\.hwp_converter_config.json`
 - 기본 설정 키:
   - `config_version` (3), `theme`, `mode`, `format`, `include_sub`, `same_location`, `overwrite`
-  - `backup_enabled`, `retry_count`, `auto_accept_security_dialog`
+  - `backup_enabled`, `backup_max_files_per_stem` (기본 20), `retry_count`, `auto_accept_security_dialog`
   - `pdf_export_mode` (`saveas_first` | `print_to_pdf_ex_first`)
 - 추가 저장 키:
   - `folder_path`, `output_path`, `last_folder`, `last_output`

@@ -11,6 +11,30 @@
 - 배포 산출물: `dist/HWP변환기_v9.0.exe`
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
 
+## 2026-08-05 재감사 잔여 항목 반영
+
+- **워커 suppress 전역 금지:** `_suppress_hwp_ui_flash` 는 소유 PID 가 있을 때만 HWND 조작 (`or None` 제거).
+- **변환 직전 폴더 캐시:** `FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS=90` — 오래되면 자동 재스캔.
+- **긴 경로:** `com_path_candidates` / `\\?\` 확장 경로 Open·SaveAs·Print 재시도, Preflight 260자 차단.
+- **백업 보관 개수 UI/설정:** `backup_max_files_per_stem` (1~100).
+- **암호·접근 실패 힌트:** Open/변환 예외에 안내 문구.
+- **SaveAs 무산출물 시 Print 폴백** 보강.
+- 검증: `pytest` 143 passed, `pyright .` 0 errors.
+
+## 2026-08-05 PROJECT_AUDIT 권장안 일괄 반영
+
+- **PID 미추적 시 전역 HWP 조작 금지:** `HwpSecuritySession.allows_window_control` — 소유 PID 없으면 숨김/전면화/자동 클릭 생략.
+- **SaveAs PDF 매직 검증:** `is_valid_pdf_file` 적용, 실패 시 PrintToPDFEx 경로 1회 폴백.
+- **재변환 재진입 가드:** `retry_failed_tasks` 에 `is_planning` + `_confirm_preflight_and_start_worker` 공통화.
+- **취소/강제종료 UX:** COM 대기 안내 문구, 슬라이스 wait, 강제종료 대기 연장.
+- **폴더 캐시:** 디렉터리 mtime 단독 하드 실패 제거(샘플 파일 존재 우선).
+- **보안 버튼:** 「모두 허용」 정확 일치만 클릭.
+- **긴 경로:** Preflight 경고 (`WINDOWS_PATH_WARN_LENGTH`).
+- **PDF 내보내기 UI:** 변환 옵션 콤보 (`pdf_export_mode` 설정 연동).
+- **백업 상한:** 동일 stem 백업 `BACKUP_MAX_FILES_PER_STEM` 초과 시 오래된 파일 prune.
+- **암호 문서 힌트:** 예외 메시지 키워드 시 안내 문구.
+- 검증: `pytest` 140 passed, `pyright .` 0 errors.
+
 ## 2026-08-05 SOLID 패키지 분할 리팩토링
 
 - 대형 단일 모듈을 **기능별 패키지**로 분리 (동작 불변, 공개 import 경로 호환 re-export).

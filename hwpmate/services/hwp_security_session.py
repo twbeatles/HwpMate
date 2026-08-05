@@ -53,23 +53,32 @@ class HwpSecuritySession:
         self.snapshot_unreliable = bool(status.get("snapshot_unreliable", False))
         self.engine_status_received = True
 
+    def allows_window_control(self) -> bool:
+        """소유 PID가 확정된 뒤에만 다른 한글 세션을 건드리지 않고 창 조작을 허용한다."""
+        return self.engine_status_received and bool(self.owned_pids)
+
     def target_pids(self) -> Optional[set[int]]:
         """
         전면화/자동 클릭 대상 PID.
 
-        소유 PID가 있으면 그 집합만 사용한다.
-        아직 추적 전이거나 attach 로 비어 있으면 None → 전면화 best-effort(전체 HWP).
-        자동 클릭은 should_auto_accept 가 별도로 연결 완료·모듈 실패 조건을 본다.
+        - 소유 PID가 있으면 그 집합만 반환한다.
+        - 엔진 상태 수신 후 소유 PID가 비어 있으면 빈 set (전역 HWP 조작 금지).
+        - 엔진 상태 수신 전에는 None (호출측에서 폴링 본문 no-op 권장).
         """
+        if not self.engine_status_received:
+            return None
         if self.owned_pids:
             return set(self.owned_pids)
-        return None
+        return set()
 
     def should_auto_accept(self) -> bool:
         if not self.auto_accept_enabled:
             return False
         # 워커 initialize 결과 수신 전: 연결 창에서 전역 자동 클릭 금지
         if not self.engine_status_received:
+            return False
+        # 소유 PID 없으면 다른 한글 세션 오클릭 방지
+        if not self.owned_pids:
             return False
         # 모듈 등록 성공(True) 또는 미확인(None) 이면 자동 클릭 안 함.
         # 실패(False) 일 때만 「모두 허용」 보조 클릭.

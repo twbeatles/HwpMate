@@ -115,9 +115,15 @@ class AppearanceController:
         self.window.same_location_check.setEnabled(not busy)
         self.window.overwrite_check.setEnabled(not busy)
         self.window.backup_check.setEnabled(not busy)
+        backup_max = getattr(self.window, "backup_max_spin", None)
+        if backup_max is not None:
+            backup_max.setEnabled(not busy)
         auto_accept = getattr(self.window, "auto_accept_security_check", None)
         if auto_accept is not None:
             auto_accept.setEnabled(not busy)
+        pdf_combo = getattr(self.window, "pdf_export_mode_combo", None)
+        if pdf_combo is not None:
+            pdf_combo.setEnabled(not busy)
         self.window.retry_spin.setEnabled(not busy)
         self.window.include_sub_check.setEnabled(not busy)
 

@@ -5,13 +5,22 @@ from hwpmate.services.hwp_security_session import HwpSecuritySession
 
 
 def test_target_pids_prefers_owned() -> None:
-    session = HwpSecuritySession(owned_pids={10, 20})
+    session = HwpSecuritySession(owned_pids={10, 20}, engine_status_received=True)
     assert session.target_pids() == {10, 20}
+    assert session.allows_window_control() is True
 
 
-def test_target_pids_none_when_empty() -> None:
+def test_target_pids_empty_set_after_engine_without_owned() -> None:
+    """엔진 상태 수신 후 소유 PID 없으면 전역 조작 금지(빈 set)."""
+    session = HwpSecuritySession(engine_status_received=True)
+    assert session.target_pids() == set()
+    assert session.allows_window_control() is False
+
+
+def test_target_pids_none_before_engine_status() -> None:
     session = HwpSecuritySession()
     assert session.target_pids() is None
+    assert session.allows_window_control() is False
 
 
 def test_should_auto_accept_disabled_when_module_registered() -> None:
@@ -50,11 +59,22 @@ def test_should_auto_accept_respects_user_toggle() -> None:
     assert session.should_auto_accept() is False
 
 
+def test_should_auto_accept_requires_owned_pids() -> None:
+    session = HwpSecuritySession(
+        auto_accept_enabled=True,
+        security_module_registered=False,
+        engine_status_received=True,
+        owned_pids=set(),
+    )
+    assert session.should_auto_accept() is False
+
+
 def test_should_auto_accept_cooldown_and_note() -> None:
     session = HwpSecuritySession(
         auto_accept_enabled=True,
         security_module_registered=False,
         engine_status_received=True,
+        owned_pids={1},
         cooldown_seconds=60.0,
     )
     assert session.should_auto_accept() is True

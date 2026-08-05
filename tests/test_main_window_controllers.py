@@ -415,6 +415,105 @@ def test_folder_cache_freshness_detects_missing_files(
     assert "변경" in reason or "없음" in reason
 
 
+def test_folder_cache_mtime_only_change_does_not_fail(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
+    """디렉터리 mtime 만 바뀌고 샘플 파일이 있으면 하드 실패하지 않는다."""
+    window, _ = create_window(monkeypatch, qapp)
+    f1 = tmp_path / "a.hwp"
+    f1.write_text("x", encoding="utf-8")
+    window.state.folder_scan_dir_mtime = 1.0
+    window.state.folder_scan_folder = str(tmp_path)
+    window.state.folder_scan_file_count = 1
+    ok, reason = window.file_selection_controller.validate_folder_scan_cache_freshness(
+        [str(f1)],
+        folder_path=str(tmp_path),
+    )
+    assert ok is True
+    assert reason == ""
+
+
+def test_poll_skips_window_control_without_owned_pids(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    controller = window.conversion_controller
+    window.state.is_converting = True
+    session = window.state.security_session
+    session.owned_pids = set()
+    session.security_module_registered = False
+    session.engine_status_received = True
+    session.auto_accept_enabled = True
+
+    hidden: list[object] = []
+    brought: list[object] = []
+    accepted: list[object] = []
+    import hwpmate.ui.main_window_controllers.conversion as conv_mod
+
+    monkeypatch.setattr(
+        conv_mod, "hide_hwp_main_windows", lambda pids: hidden.append(pids) or 0
+    )
+    monkeypatch.setattr(
+        conv_mod, "bring_hwp_windows_to_foreground", lambda pids: brought.append(pids) or 0
+    )
+    monkeypatch.setattr(
+        conv_mod, "try_accept_hwp_security_dialog", lambda pids: accepted.append(pids) or True
+    )
+
+    controller._poll_hwp_foreground()
+    assert hidden == []
+    assert brought == []
+    assert accepted == []
+
+
+def test_retry_failed_tasks_blocked_while_planning(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    window.state.is_planning = True
+    src = tmp_path / "a.hwp"
+    src.write_text("x", encoding="utf-8")
+    failed = [ConversionTask(input_file=src, output_file=tmp_path / "a.pdf", status="실패")]
+    window.conversion_controller.retry_failed_tasks(failed)
+    assert window.worker is None
+
+
+def test_request_worker_stop_sets_force_kill_pending(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
+    window, _ = create_window(monkeypatch, qapp)
+    controller = window.conversion_controller
+
+    class FakeWorker:
+        def __init__(self) -> None:
+            self.cancel_called = False
+            self._running = True
+
+        def cancel(self) -> None:
+            self.cancel_called = True
+
+        def isRunning(self) -> bool:
+            return self._running
+
+        def wait(self, _ms: int) -> bool:
+            return False
+
+        def can_force_terminate(self) -> bool:
+            return True
+
+    fake = FakeWorker()
+    window.state.worker = fake  # type: ignore[assignment]
+    monkeypatch.setattr(
+        "hwpmate.ui.main_window_controllers.conversion.controller.WORKER_WAIT_TIMEOUT",
+        50,
+    )
+    ok = controller.request_worker_stop("취소 요청 중...")
+    assert ok is False
+    assert fake.cancel_called is True
+    assert window.state.force_kill_pending is True
+    assert "강제 종료" in window.cancel_btn.text() or "응답" in window.status_label.text()
+
+
 def test_native_drop_controller_routes_file_mode_paths(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
     window, _ = create_window(monkeypatch, qapp)
     dropped = tmp_path / "doc.hwp"

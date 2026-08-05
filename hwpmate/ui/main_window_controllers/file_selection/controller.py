@@ -348,15 +348,18 @@ class FileSelectionController:
                 f"스캔 캐시 파일 수가 달라졌습니다 ({len(paths)} ≠ {cached_count}).",
             )
 
-        # 폴더 mtime 변경 → 신규 파일/하위 변경 가능성
+        # 디렉터리 mtime 만 바뀐 경우는 NTFS 접근·백신 등으로 오탐이 잦아 하드 실패하지 않는다.
+        # 샘플 파일 존재 여부와 캐시 파일 수로 신선도를 판단한다.
         check_folder = (folder_path or self.state.folder_scan_folder or "").strip()
         cached_mtime = self.state.folder_scan_dir_mtime
+        mtime_changed = False
         if check_folder and cached_mtime is not None:
             current_mtime = self._dir_mtime(check_folder)
             if current_mtime is not None and abs(current_mtime - cached_mtime) > 1e-6:
-                return (
-                    False,
-                    "스캔 이후 폴더가 변경된 것으로 보입니다 (디렉터리 수정 시각 변경).",
+                mtime_changed = True
+                logger.debug(
+                    "폴더 스캔 캐시: 디렉터리 mtime 변경 감지(소프트). "
+                    f"folder={check_folder!r}"
                 )
 
         limit = FOLDER_SCAN_CACHE_SAMPLE_SIZE if sample_size is None else max(1, sample_size)
@@ -370,6 +373,11 @@ class FileSelectionController:
                 missing += 1
 
         if missing == 0:
+            # mtime 만 바뀌고 샘플이 모두 있으면 통과 (신규 하위 파일 누락 가능 — best-effort)
+            if mtime_changed:
+                logger.info(
+                    "폴더 스캔 캐시: mtime 변경이 있으나 샘플 파일은 유효 — 변환 계속"
+                )
             return True, ""
 
         ratio = missing / len(sample)

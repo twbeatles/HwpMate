@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -25,6 +26,9 @@ from PyQt6.QtWidgets import (
 )
 
 from ...constants import (
+    BACKUP_MAX_FILES_PER_STEM,
+    BACKUP_MAX_FILES_PER_STEM_MAX,
+    BACKUP_MAX_FILES_PER_STEM_MIN,
     FORMAT_GROUPS,
     FORMAT_TYPES,
     VERSION,
@@ -32,6 +36,11 @@ from ...constants import (
     WINDOW_DEFAULT_WIDTH,
     WINDOW_MIN_HEIGHT,
     WINDOW_MIN_WIDTH,
+)
+from ...services.hwp_print_settings import (
+    PDF_EXPORT_PRINT_TO_PDF_EX_FIRST,
+    PDF_EXPORT_SAVEAS_FIRST,
+    normalize_pdf_export_mode,
 )
 from ..widgets import DropArea, FormatCard
 from .types import MainWindowCallbacks, MainWindowWidgets
@@ -327,6 +336,31 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
     window.backup_check.setChecked(window.config.get("backup_enabled", True))
     options_layout.addWidget(window.backup_check)
 
+    backup_max_row = QHBoxLayout()
+    backup_max_row.setSpacing(10)
+    backup_max_label = QLabel("백업 보관 개수:")
+    backup_max_label.setFixedWidth(100)
+    backup_max_row.addWidget(backup_max_label)
+    window.backup_max_spin = QSpinBox()
+    window.backup_max_spin.setRange(BACKUP_MAX_FILES_PER_STEM_MIN, BACKUP_MAX_FILES_PER_STEM_MAX)
+    try:
+        backup_max_val = int(
+            window.config.get("backup_max_files_per_stem", BACKUP_MAX_FILES_PER_STEM)
+            or BACKUP_MAX_FILES_PER_STEM
+        )
+    except (TypeError, ValueError):
+        backup_max_val = BACKUP_MAX_FILES_PER_STEM
+    window.backup_max_spin.setValue(backup_max_val)
+    window.backup_max_spin.setToolTip(
+        "같은 원본 파일명(stem)의 backup 폴더 내 복사본을 최대 몇 개까지 남길지입니다. "
+        "초과 시 오래된 백업부터 삭제합니다."
+    )
+    window.backup_max_spin.setFixedWidth(80)
+    backup_max_row.addWidget(window.backup_max_spin)
+    backup_max_row.addWidget(QLabel("개 (파일당)"))
+    backup_max_row.addStretch()
+    options_layout.addLayout(backup_max_row)
+
     window.auto_accept_security_check = QCheckBox("보안 허용 창 「모두 허용」 자동 시도")
     window.auto_accept_security_check.setToolTip(
         "보안 모듈 등록에 실패한 환경에서 한글 「모두 허용」 창을 best-effort 로 클릭합니다. "
@@ -336,6 +370,34 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
         window.config.get("auto_accept_security_dialog", True)
     )
     options_layout.addWidget(window.auto_accept_security_check)
+
+    pdf_mode_row = QHBoxLayout()
+    pdf_mode_row.setSpacing(10)
+    pdf_mode_label = QLabel("PDF 내보내기:")
+    pdf_mode_label.setFixedWidth(100)
+    pdf_mode_row.addWidget(pdf_mode_label)
+
+    window.pdf_export_mode_combo = QComboBox()
+    window.pdf_export_mode_combo.addItem(
+        "SaveAs 우선 (용지 품질)",
+        PDF_EXPORT_SAVEAS_FIRST,
+    )
+    window.pdf_export_mode_combo.addItem(
+        "PrintToPDFEx 우선 (모아찍기 완화)",
+        PDF_EXPORT_PRINT_TO_PDF_EX_FIRST,
+    )
+    window.pdf_export_mode_combo.setToolTip(
+        "PDF 변환 전략입니다. SaveAs 는 문서 용지 품질을 우선하고, "
+        "PrintToPDFEx 는 모아찍기 등 인쇄 설정 완화를 우선합니다. "
+        "물리 프린터로는 출력하지 않습니다."
+    )
+    saved_pdf_mode = normalize_pdf_export_mode(
+        window.config.get("pdf_export_mode", PDF_EXPORT_SAVEAS_FIRST)
+    )
+    idx = window.pdf_export_mode_combo.findData(saved_pdf_mode)
+    window.pdf_export_mode_combo.setCurrentIndex(idx if idx >= 0 else 0)
+    pdf_mode_row.addWidget(window.pdf_export_mode_combo, 1)
+    options_layout.addLayout(pdf_mode_row)
 
     retry_row = QHBoxLayout()
     retry_row.setSpacing(10)
@@ -434,7 +496,9 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
         format_cards=window.format_cards,
         overwrite_check=window.overwrite_check,
         backup_check=window.backup_check,
+        backup_max_spin=window.backup_max_spin,
         auto_accept_security_check=window.auto_accept_security_check,
+        pdf_export_mode_combo=window.pdf_export_mode_combo,
         retry_spin=window.retry_spin,
         start_btn=window.start_btn,
         cancel_btn=window.cancel_btn,

@@ -17,8 +17,10 @@
 ### 변환 엔진 호환성
 - `Open` 이후 짧은 대기와 `SaveAs` 2→3 인자 폴백은 실제 한글 버전 차이를 흡수하기 위한 장치입니다.
 - `Open()`/`SaveAs()` 실패 판정은 `is_com_failure_result`(False/0)를 사용하며, 출력 산출물이 새로 생성되거나 갱신되고 0바이트보다 커야 성공입니다.
+- PDF는 SaveAs·PrintToPDF **모두** `%PDF` 매직 검증. SaveAs 매직/산출 실패 시 PrintToPDF 1회 폴백 가능.
+- 긴 경로는 `com_path_candidates` 로 일반 경로 후 `\\?\` 확장 경로를 재시도합니다. Preflight 는 260자 이상 차단.
 - PDF/이미지는 변환 전 `PrintMethod=0`(1쪽씩) best-effort 리셋 (`hwp_print_settings`). 원본 디스크는 저장하지 않습니다.
-- PDF 기본 전략 `pdf_export_mode=saveas_first`(SaveAs → 실패 시 PrintToPDFEx/RunToPDF). 옵션 `print_to_pdf_ex_first`.
+- PDF 기본 전략 `pdf_export_mode=saveas_first`(SaveAs → 실패 시 PrintToPDFEx/RunToPDF). 옵션 `print_to_pdf_ex_first` (UI 콤보).
 - **금지:** `CreateAction("Print").Execute` (물리 프린터 오출력 위험).
 - 결과 CSV/JSON에 `export_method` 등 감사 필드를 포함합니다.
 - 이미지/HTML 계열은 기본 출력 파일 외에도 같은 stem 기반 보조 산출물을 함께 수집해 결과에 기록합니다.
@@ -39,6 +41,7 @@
 ### 백업과 덮어쓰기 방지
 - `_create_backup`은 원본 보호를 위한 기본 안전장치입니다.
 - 백업은 기본 활성화이며 UI 설정으로 끌 수 있습니다.
+- 동일 stem 백업 최대 개수(`backup_max_files_per_stem`, 기본 20, UI 스핀 1~100) 초과 시 오래된 파일부터 삭제합니다.
 - 하위 `backup/` 폴더는 폴더 재귀 스캔에서 기본 제외됩니다.
 - 덮어쓰기 미허용 시 자동 번호 부여 로직을 유지합니다.
 - 덮어쓰기 허용 시에도 같은 실행 배치 내부 출력 경로 충돌은 자동 번호 부여로 분리합니다.
@@ -52,9 +55,10 @@
 ### 보안 모듈·전면화·계획 잠금
 - `hwp_security_module`: 번들 DLL을 `%LOCALAPPDATA%\HwpMate\security`에 설치하고 SHA-256 검증 후 HKCU 레지스트리 등록.
 - `RegisterModule("FilePathCheckDLL", …)` 실패는 Summary 경고로 남깁니다. 조용히 숨기지 않습니다.
-- `HwpSecuritySession`: 소유 PID 우선 전면화. 「모두 허용」 자동 클릭은 엔진 상태 수신 후·모듈 등록 **실패** 시에만, 사용자 옵션으로 끌 수 있습니다.
-- 폴더 스캔 대기·작업 수집 중 `is_planning`으로 시작/입력/드롭 재진입을 막습니다.
-- 폴더 캐시는 만료·샘플 검증을 거치며, 없으면 UI 동기 재스캔 대신 비동기 스캔 후 변환합니다.
+- `HwpSecuritySession`: 소유 PID 우선 전면화/숨김. PID 미추적 시 **전역 HWP 조작 금지** (`allows_window_control`). 「모두 허용」 자동 클릭은 엔진 상태 수신 후·모듈 등록 **실패**·소유 PID 있을 때만, 사용자 옵션으로 끌 수 있습니다.
+- 워커 `_suppress_hwp_ui_flash` 도 소유 PID 가 있을 때만 HWND 조작합니다 (`or None` 전역 경로 금지).
+- 폴더 스캔 대기·작업 수집·실패 재변환 preflight 중 `is_planning`으로 시작/입력/드롭 재진입을 막습니다.
+- 폴더 캐시는 만료·샘플 검증을 거치며, 변환 직전 연령(`FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS`)이 지나면 비동기 재스캔 후 변환합니다.
 
 ## 3. 현재 리포지토리 품질 기준
 

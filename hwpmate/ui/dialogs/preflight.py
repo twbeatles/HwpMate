@@ -21,9 +21,15 @@ from ...constants import (
     PREFLIGHT_DETAIL_MAX_TASKS,
     PREFLIGHT_READ_CHECK_MAX_TASKS,
     PRINT_SETTINGS_NOTICE,
+    WINDOWS_PATH_BLOCK_LENGTH,
+    WINDOWS_PATH_WARN_LENGTH,
 )
 from ...models import PlannedConversion
-from ...path_utils import check_write_permission
+from ...path_utils import (
+    check_write_permission,
+    is_path_length_blocking,
+    is_path_length_risky,
+)
 from ...services.hwp_converter import get_registered_hwp_progids
 
 
@@ -71,6 +77,13 @@ class PreflightDialog(QDialog):
         warnings = list(plan.warnings)
         if blocking_errors:
             warnings.extend(f"변환 시작 차단: {error}" for error in blocking_errors)
+        long_path_count = self._long_path_warning_count(plan)
+        if long_path_count:
+            warnings.append(
+                f"경로 길이가 {WINDOWS_PATH_WARN_LENGTH}자 이상인 항목이 "
+                f"{long_path_count}개 있습니다. 앱이 확장 경로(\\\\?\\)로 재시도합니다. "
+                f"{WINDOWS_PATH_BLOCK_LENGTH}자 이상은 시작이 차단될 수 있습니다."
+            )
         if self._deep_read_skipped > 0:
             warnings.append(
                 f"입력 읽기 심층 검사는 앞쪽 {PREFLIGHT_READ_CHECK_MAX_TASKS}개만 수행했습니다 "
@@ -171,6 +184,14 @@ class PreflightDialog(QDialog):
         except OSError:
             return False
 
+    def _long_path_warning_count(self, plan: PlannedConversion) -> int:
+        """입력/출력 경로가 경고 임계를 넘는 실행 대상 개수."""
+        count = 0
+        for task in plan.tasks:
+            if is_path_length_risky(task.input_file) or is_path_length_risky(task.output_file):
+                count += 1
+        return count
+
     def _blocking_errors(self, plan: PlannedConversion) -> list[str]:
         """차단 오류.
 
@@ -197,6 +218,14 @@ class PreflightDialog(QDialog):
                     errors.append(f"입력 파일 읽기 불가: {task.input_file}")
             else:
                 deep_read_skipped += 1
+
+            if is_path_length_blocking(task.input_file) or is_path_length_blocking(
+                task.output_file
+            ):
+                errors.append(
+                    f"경로가 너무 깁니다 ({WINDOWS_PATH_BLOCK_LENGTH}자 이상): "
+                    f"{task.input_file.name}"
+                )
 
             output_dir = task.output_file.parent
             output_key = str(output_dir).lower()

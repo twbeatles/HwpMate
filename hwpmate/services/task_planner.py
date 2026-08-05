@@ -35,6 +35,7 @@ class TaskPlanner:
         file_paths: Sequence[str],
         backup_enabled: bool = True,
         retry_count: int = 1,
+        backup_max_files_per_stem: int = 20,
         pdf_export_mode: str = "saveas_first",
         folder_file_paths: Sequence[str] | None = None,
     ) -> PlannedConversion:
@@ -128,6 +129,7 @@ class TaskPlanner:
                 output_path=output_path.strip(),
                 backup_enabled=backup_enabled,
                 retry_count=retry_count,
+                backup_max_files_per_stem=backup_max_files_per_stem,
                 pdf_export_mode=pdf_export_mode,
                 tasks=tasks,
                 skipped_tasks=skipped_tasks,
@@ -175,6 +177,7 @@ class TaskPlanner:
             output_path=output_path.strip(),
             backup_enabled=backup_enabled,
             retry_count=retry_count,
+            backup_max_files_per_stem=backup_max_files_per_stem,
             pdf_export_mode=pdf_export_mode,
             tasks=tasks,
             skipped_tasks=skipped_tasks,

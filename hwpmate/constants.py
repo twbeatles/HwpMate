@@ -34,7 +34,11 @@ WINDOW_DEFAULT_HEIGHT = 900
 TOAST_DURATION_DEFAULT = 3000
 TOAST_FADE_DURATION = 300
 FEEDBACK_RESET_DELAY = 1500
-WORKER_WAIT_TIMEOUT = 3000
+# 취소 요청 후 COM 응답 대기 (ms). Open/SaveAs 블로킹을 고려해 여유를 둔다.
+WORKER_WAIT_TIMEOUT = 5000
+# 강제 종료(taskkill) 후 워커 종료 대기 — 슬라이스 합산
+WORKER_FORCE_TERMINATE_WAIT_MS = 8000
+WORKER_FORCE_TERMINATE_SLICE_MS = 500
 
 # Open 직후 문서 로드 대기 (초). 과도한 대량 배치 지연을 줄이기 위해 0.5s.
 DOCUMENT_LOAD_DELAY = 0.5
@@ -46,10 +50,20 @@ CONFIG_VERSION = 3
 SCAN_BATCH_SIZE = 100
 SCAN_CANCEL_WAIT_MS = 2000
 FOLDER_SCAN_WAIT_MS = 120_000
-# 폴더 미리보기 캐시 최대 유효 시간 (초). 초과 시 변환 전 재스캔.
+# 폴더 미리보기 캐시 최대 유효 시간 (초). 초과 시 미리보기 캐시 무효.
 FOLDER_SCAN_CACHE_MAX_AGE_SECONDS = 300
+# 변환 시작 시 캐시 최대 허용 연령 — 더 짧아 스캔 후 추가 파일 누락을 줄인다.
+FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS = 90
 # 캐시 신선도 샘플 검사 개수 (앞·뒤·중간 분산)
 FOLDER_SCAN_CACHE_SAMPLE_SIZE = 24
+# Windows 전통 MAX_PATH(260) 직전 경고 임계 (문자 수, 경로 전체)
+WINDOWS_PATH_WARN_LENGTH = 240
+# 이 길이 이상은 Preflight 에서 변환 시작을 차단할 수 있음 (COM 호환)
+WINDOWS_PATH_BLOCK_LENGTH = 260
+# 동일 stem 백업 파일 최대 보관 개수 기본값 (설정·UI 로 조정 가능, 1~100)
+BACKUP_MAX_FILES_PER_STEM = 20
+BACKUP_MAX_FILES_PER_STEM_MIN = 1
+BACKUP_MAX_FILES_PER_STEM_MAX = 100
 
 # 사전 점검(Preflight) UI 부하 상한
 # 상세 목록에 표시할 최대 작업 수 (초과 분은 요약 한 줄)
@@ -73,7 +87,7 @@ HWP_PERMISSION_HINT = (
 PRINT_SETTINGS_NOTICE = (
     "PDF·이미지 변환 시 앱이 인쇄 방식을 기본(1쪽씩)으로 맞추려 시도합니다. "
     "문서 편집 용지(대부분 A4)는 그대로 두고, 모아찍기 등만 해제하는 방향입니다. "
-    "기본 PDF 경로는 SaveAs(용지 품질 우선)이며, 설정 pdf_export_mode 로 "
+    "기본 PDF 경로는 SaveAs(용지 품질 우선)이며, 변환 옵션의 PDF 내보내기 모드로 "
     "PrintToPDFEx 우선(모아찍기 완화)을 고를 수 있습니다. "
     "물리 프린터 Print 실행은 사용하지 않습니다. "
     "한글 버전·환경에 따라 일부 설정이 남을 수 있습니다."

@@ -5,6 +5,7 @@ from typing import Callable
 
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QLabel,
     QLineEdit,
     QProgressBar,
@@ -42,7 +43,9 @@ class MainWindowWidgets:
     format_cards: dict[str, FormatCard]
     overwrite_check: QCheckBox
     backup_check: QCheckBox
+    backup_max_spin: QSpinBox
     auto_accept_security_check: QCheckBox
+    pdf_export_mode_combo: QComboBox
     retry_spin: QSpinBox
     start_btn: QPushButton
     cancel_btn: QPushButton

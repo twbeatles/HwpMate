@@ -369,3 +369,20 @@ def test_create_backup_avoids_name_collisions(tmp_path: Path, monkeypatch) -> No
     backups = sorted((tmp_path / "backup").iterdir())
     assert len(backups) == 2
     assert backups[0].name != backups[1].name
+
+
+def test_create_backup_prunes_old_stem_files(tmp_path: Path, monkeypatch) -> None:
+    import hwpmate.workers.conversion_worker.backup as backup_module
+
+    source = tmp_path / "doc.hwp"
+    source.write_text("x", encoding="utf-8")
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    for i in range(5):
+        old = backup_dir / f"doc_20200101_00000{i}_000000.hwp"
+        old.write_text("old", encoding="utf-8")
+
+    path = backup_module.create_backup(source, max_files=3)
+    assert path.exists()
+    remaining = list(backup_dir.glob("doc_*.hwp"))
+    assert len(remaining) <= 3

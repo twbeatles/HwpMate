@@ -35,8 +35,9 @@
 - `SetMessageBoxMode(0x00000001)`도 함께 유지합니다.
 - 보안 모듈 등록 실패는 조용히 숨기지 말고 결과 경고와 로그에 남깁니다.
 - DLL은 `ensure_hwp_security_module`이 번들에서 `%LOCALAPPDATA%\HwpMate\security`로 설치하고 SHA-256 검증 후 레지스트리 등록합니다.
-- 「모두 허용」 자동 클릭은 모듈 등록 **실패** 시에만 보조로 쓰며, `engine_status` 수신 전·모듈 성공 시에는 금지합니다.
-- 변환 계획/스캔 대기 중에는 `is_planning`으로 시작·입력·드롭 재진입을 막습니다.
+- 「모두 허용」 자동 클릭은 모듈 등록 **실패** 시에만 보조로 쓰며, `engine_status` 수신 전·모듈 성공 시·**소유 PID 미추적** 시에는 금지합니다.
+- 한글 창 숨김/전면화는 **소유 PID가 확정된 범위만** 허용합니다 (UI 폴링·워커 `_suppress_hwp_ui_flash` 모두). PID 미추적 시 다른 한글 세션에 대한 전역 조작을 하지 않습니다.
+- 변환 계획/스캔 대기 중에는 `is_planning`으로 시작·입력·드롭 재진입을 막습니다. 실패 재변환 preflight 도 동일 가드를 사용합니다.
 
 ### 네이티브 드래그 앤 드롭
 - 관리자 권한 환경 호환을 위해 `NativeDropFilter`와 `WM_DROPFILES` 흐름을 유지합니다.
@@ -54,7 +55,7 @@
 ### 성공 판정과 재시도
 - `Open()` 또는 `SaveAs()`가 명시적으로 `False`를 반환하면 실패로 처리합니다.
 - `Open()`이 `False`를 반환한 경우에도 다음 파일에 상태가 전파되지 않도록 best-effort `Clear(option=1)` 정리를 유지합니다.
-- SaveAs 또는 PrintToPDFEx/RunToPDF 후 출력 산출물이 새로 생성되거나 갱신되고 0바이트보다 클 때만 성공으로 집계합니다 (PDF는 `%PDF` 매직 검증).
+- SaveAs 또는 PrintToPDFEx/RunToPDF 후 출력 산출물이 새로 생성되거나 갱신되고 0바이트보다 클 때만 성공으로 집계합니다 (PDF는 SaveAs·PrintToPDF **모두** `%PDF` 매직 검증; SaveAs 매직 실패 시 PrintToPDF 1회 폴백 가능).
 - 결과 CSV/JSON에는 `retry_count`, `backup_file`, `backup_error`, `created_files`, `output_size`, `output_mtime`, `save_format`, `export_method`, `progid_used`가 포함됩니다.
 - 이미지/HTML 계열은 기본 출력 파일 외에도 같은 stem 기반 보조 산출물을 함께 수집해 성공 판정, 충돌 회피, 결과 저장에 반영합니다.
 - 실패 자동 재시도는 설정값 `retry_count`를 따르며 기본 1회, 최대 3회입니다.

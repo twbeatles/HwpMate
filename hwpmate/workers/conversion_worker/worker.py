@@ -47,6 +47,9 @@ class ConversionWorker(QThread):
         self.format_type = planned_conversion.format_type
         self.backup_enabled = planned_conversion.backup_enabled
         self.retry_count = max(0, min(MAX_RETRY_COUNT, planned_conversion.retry_count))
+        self.backup_max_files_per_stem = int(
+            getattr(planned_conversion, "backup_max_files_per_stem", 20) or 20
+        )
         self.cancel_requested = False
         self.converter: Optional[ConverterEngine] = None
         self._converter_factory: Callable[[], ConverterEngine] = converter_factory or HWPConverter
@@ -222,7 +225,7 @@ class ConversionWorker(QThread):
 
     def _create_backup(self, file_path: Path) -> Path:
         """파일 백업 생성"""
-        return create_backup(file_path)
+        return create_backup(file_path, max_files=self.backup_max_files_per_stem)
 
     def _apply_converter_artifacts(self, task: ConversionTask, converter: ConverterEngine) -> None:
         apply_converter_artifacts(task, converter)

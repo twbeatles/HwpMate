@@ -27,6 +27,8 @@ class AppConfig:
     overwrite: bool = False
     backup_enabled: bool = True
     retry_count: int = 1
+    # 동일 stem 백업 최대 보관 개수 (1~100)
+    backup_max_files_per_stem: int = 20
     # 보안 모듈 실패 시 「모두 허용」 대화상자 자동 클릭 (best-effort)
     auto_accept_security_dialog: bool = True
     # PDF: saveas_first(용지 품질 우선) | print_to_pdf_ex_first(모아찍기 완화 우선)
@@ -135,6 +137,7 @@ class PlannedConversion:
     output_path: str
     backup_enabled: bool = True
     retry_count: int = 1
+    backup_max_files_per_stem: int = 20
     pdf_export_mode: str = "saveas_first"
     tasks: list[ConversionTask] = field(default_factory=list)
     skipped_tasks: list[ConversionTask] = field(default_factory=list)

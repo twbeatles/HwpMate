@@ -12,7 +12,7 @@ class FakeHwp:
         open_result: bool | int = True,
         save_results=None,
         write_output: bool = True,
-        output_content: bytes = b"x",
+        output_content: bytes = b"%PDF-1.4\n",
         aux_suffix: str | None = None,
     ) -> None:
         self.open_result = open_result
@@ -190,6 +190,60 @@ def test_convert_file_pdf_saveas_first_skips_print_when_saveas_ok(
     assert len(fake.save_calls) == 1
     assert print_calls == []
     assert converter.last_export_method == "saveas_2"
+
+
+def test_suppress_hwp_ui_flash_skips_hwnd_when_no_owned_pids(monkeypatch) -> None:
+    """소유 PID 없으면 HWND 전역 조작(suppress)을 호출하지 않는다."""
+    import hwpmate.services.hwp_converter.converter as converter_impl
+
+    calls: list[object] = []
+
+    def fake_suppress(pids):
+        calls.append(pids)
+        return 0, 0
+
+    monkeypatch.setattr(
+        "hwpmate.windows_integration.suppress_hwp_ui_flash",
+        fake_suppress,
+    )
+    converter = HWPConverter()
+    converter.hwp = FakeHwp()
+    converter.is_initialized = True
+    converter.owned_pids = set()
+    converter._suppress_hwp_ui_flash()
+    assert calls == []
+
+    converter.owned_pids = {42}
+    converter._suppress_hwp_ui_flash()
+    assert calls == [{42}]
+
+
+def test_convert_file_pdf_saveas_invalid_magic_fails_or_falls_back(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """SaveAs 가 비-PDF 바이트를 쓰면 실패(폴백 실패 시)로 판정한다."""
+    import hwpmate.services.hwp_converter.converter as converter_impl
+
+    monkeypatch.setattr(converter_impl, "DOCUMENT_LOAD_DELAY", 0)
+    monkeypatch.setattr(converter_impl, "apply_default_print_settings", lambda h: True)
+    monkeypatch.setattr(
+        converter_impl,
+        "try_export_pdf_via_print_to_pdf_ex",
+        lambda *a, **k: (False, None),
+    )
+
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+    output = tmp_path / "a.pdf"
+    fake = FakeHwp(output_content=b"NOT-A-PDF")
+    converter = build_converter(fake)
+    converter.pdf_export_mode = "saveas_first"
+
+    success, error = converter.convert_file(source, output, "PDF")
+
+    assert success is False
+    assert error is not None
+    assert "PDF" in error or "매직" in error
 
 
 def test_convert_file_pdf_print_first_skips_saveas_when_print_ok(
@@ -423,7 +477,7 @@ def test_convert_file_accepts_auxiliary_image_artifact(tmp_path: Path) -> None:
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")
     output = tmp_path / "a.png"
-    fake = FakeHwp(write_output=False, aux_suffix="_001")
+    fake = FakeHwp(write_output=False, aux_suffix="_001", output_content=b"x")
     converter = build_converter(fake)
 
     success, error = converter.convert_file(source, output, "PNG")

@@ -9,13 +9,16 @@ from typing import Any, Optional, Tuple, cast
 
 from ...constants import DOCUMENT_LOAD_DELAY, FORMAT_TYPES, HWP_PROGIDS
 from ...logging_config import get_logger
+from ...path_utils import com_path_candidates
 from ..hwp_print_settings import (
     EXPORT_METHOD_SAVEAS_2,
     EXPORT_METHOD_SAVEAS_3,
     PDF_EXPORT_PRINT_TO_PDF_EX_FIRST,
     PDF_EXPORT_SAVEAS_FIRST,
     apply_default_print_settings,
+    is_valid_pdf_file,
     normalize_pdf_export_mode,
+    remove_incomplete_output,
     try_export_pdf_via_print_to_pdf_ex,
     uses_print_settings_control,
 )
@@ -216,19 +219,27 @@ class HWPConverter:
             return False
 
     def _suppress_hwp_ui_flash(self) -> None:
-        """메인 편집 창 숨김 + 보안 대화상자 전면화 (best-effort, 변환 실패로 전파하지 않음)."""
+        """메인 편집 창 숨김 + 보안 대화상자 전면화 (best-effort, 변환 실패로 전파하지 않음).
+
+        HWND 조작은 소유 PID가 있을 때만 수행한다.
+        owned_pids 가 비어 있을 때 None 을 넘기면 전역 HWP 조작이 되므로 금지한다.
+        COM XHwpWindows.Visible 은 현재 Dispatch 세션에만 적용된다.
+        """
         try:
             self._try_set_xhw_windows_visible(False)
         except Exception as e:
             logger.debug(f"COM Visible=False 실패(무시): {e}")
+        if not self.owned_pids:
+            return
         try:
             from ...windows_integration import suppress_hwp_ui_flash
 
-            hidden, raised = suppress_hwp_ui_flash(self.owned_pids or None)
+            # 빈 set 이 아니라 확정된 소유 PID 집합만 전달 (None=전역 금지)
+            hidden, raised = suppress_hwp_ui_flash(set(self.owned_pids))
             if hidden or raised:
                 logger.debug(
                     f"한글 UI 억제: hidden={hidden}, security_raised={raised}, "
-                    f"pids={sorted(self.owned_pids) if self.owned_pids else None}"
+                    f"pids={sorted(self.owned_pids)}"
                 )
         except Exception as e:
             logger.debug(f"한글 UI 억제 실패(무시): {e}")
@@ -259,9 +270,10 @@ class HWPConverter:
                 return False
 
         try:
-            input_str = str(input_path)
-            output_str = str(output_path)
-            output_file = Path(output_str)
+            # 산출물 검증용 논리 경로 (확장 접두 없는 Path)
+            output_file = Path(str(output_path))
+            input_open_candidates = com_path_candidates(input_path)
+            output_save_candidates = com_path_candidates(output_file)
             self.last_created_files = []
             self.last_output_size = None
             self.last_output_mtime = None
@@ -278,13 +290,24 @@ class HWPConverter:
             if _cancelled():
                 return False, "사용자 취소"
 
-            open_result = hwp.Open(input_str, "", "forceopen:true")
-            if is_com_failure_result(open_result):
+            open_result: object = False
+            opened = False
+            for input_str in input_open_candidates:
+                if _cancelled():
+                    return False, "사용자 취소"
+                open_result = hwp.Open(input_str, "", "forceopen:true")
+                if not is_com_failure_result(open_result):
+                    opened = True
+                    if input_str != input_open_candidates[0]:
+                        logger.debug(f"Open 확장/대체 경로 성공: {input_str}")
+                    break
+                logger.debug(f"Open 실패 후보: {input_str!r} → {open_result!r}")
+            if not opened:
                 try:
                     hwp.Clear(option=1)
                 except Exception:
                     pass
-                return False, f"문서 열기 실패: HWP Open이 실패를 반환했습니다 ({open_result!r})"
+                return False, _open_failure_message(open_result)
             time.sleep(DOCUMENT_LOAD_DELAY)
             # Open 후 메인 창이 다시 뜰 수 있어 best-effort 재숨김
             self._suppress_hwp_ui_flash()
@@ -321,67 +344,86 @@ class HWPConverter:
                 """PrintToPDFEx/RunToPDF (물리 Print Execute 없음)."""
                 if _cancelled():
                     return False
-                try:
-                    ok, method = try_export_pdf_via_print_to_pdf_ex(
-                        hwp,
-                        output_str,
-                        cancel_check=cancel_check,
-                    )
-                    if ok:
-                        self.last_save_format = "PDF"
-                        self.last_export_method = method
-                        logger.debug(
-                            f"PrintToPDF 경로 성공: method={method}, path={output_str}"
+                for output_str in output_save_candidates:
+                    if _cancelled():
+                        return False
+                    try:
+                        ok, method = try_export_pdf_via_print_to_pdf_ex(
+                            hwp,
+                            output_str,
+                            cancel_check=cancel_check,
                         )
-                        return True
-                except Exception as pdf_ex_error:
-                    logger.debug(f"PrintToPDF 경로 예외: {pdf_ex_error}")
+                        if ok:
+                            self.last_save_format = "PDF"
+                            self.last_export_method = method
+                            logger.debug(
+                                f"PrintToPDF 경로 성공: method={method}, path={output_str}"
+                            )
+                            return True
+                    except Exception as pdf_ex_error:
+                        logger.debug(f"PrintToPDF 경로 예외 ({output_str}): {pdf_ex_error}")
                 return False
 
             def _try_saveas() -> bool:
                 nonlocal save_error
                 if _cancelled():
                     return False
-                try:
-                    save_result = hwp.SaveAs(output_str, save_format)
-                    if is_com_failure_result(save_result):
-                        raise RuntimeError(f"SaveAs 2-param returned failure: {save_result!r}")
-                    logger.debug(f"SaveAs 2-param 성공: {output_str}")
-                    self.last_export_method = EXPORT_METHOD_SAVEAS_2
-                    return True
-                except Exception as e1:
-                    logger.debug(f"SaveAs 2-param 실패: {e1}")
+                errors: list[str] = []
+                for output_str in output_save_candidates:
                     if _cancelled():
                         return False
                     try:
-                        save_result = hwp.SaveAs(output_str, save_format, "")
+                        save_result = hwp.SaveAs(output_str, save_format)
                         if is_com_failure_result(save_result):
-                            raise RuntimeError(f"SaveAs 3-param returned failure: {save_result!r}")
-                        logger.debug(f"SaveAs 3-param 성공: {output_str}")
-                        self.last_export_method = EXPORT_METHOD_SAVEAS_3
+                            raise RuntimeError(
+                                f"SaveAs 2-param returned failure: {save_result!r}"
+                            )
+                        logger.debug(f"SaveAs 2-param 성공: {output_str}")
+                        self.last_export_method = EXPORT_METHOD_SAVEAS_2
                         return True
-                    except Exception as e2:
-                        save_error = f"2-param: {e1}, 3-param: {e2}"
-                        logger.error(f"모든 SaveAs 방식 실패: {save_error}")
-                        return False
+                    except Exception as e1:
+                        logger.debug(f"SaveAs 2-param 실패 ({output_str}): {e1}")
+                        if _cancelled():
+                            return False
+                        try:
+                            save_result = hwp.SaveAs(output_str, save_format, "")
+                            if is_com_failure_result(save_result):
+                                raise RuntimeError(
+                                    f"SaveAs 3-param returned failure: {save_result!r}"
+                                )
+                            logger.debug(f"SaveAs 3-param 성공: {output_str}")
+                            self.last_export_method = EXPORT_METHOD_SAVEAS_3
+                            return True
+                        except Exception as e2:
+                            errors.append(f"{output_str}: 2-param: {e1}, 3-param: {e2}")
+                save_error = "; ".join(errors) if errors else "SaveAs 실패"
+                logger.error(f"모든 SaveAs 방식 실패: {save_error}")
+                return False
 
             # PDF 전략:
             # - saveas_first(기본): 용지 품질 우선 → SaveAs 후 실패 시 PrintToPDFEx
             # - print_to_pdf_ex_first: 모아찍기 완화 우선 → PrintToPDFEx 1패스 후 SaveAs
+            used_print_path = False
+            used_saveas_path = False
             if format_key == "PDF":
                 if pdf_mode == PDF_EXPORT_PRINT_TO_PDF_EX_FIRST:
                     if _try_print_to_pdf():
                         exported = True
+                        used_print_path = True
                     elif _try_saveas():
                         exported = True
+                        used_saveas_path = True
                 else:
                     if _try_saveas():
                         exported = True
+                        used_saveas_path = True
                     elif _try_print_to_pdf():
                         exported = True
+                        used_print_path = True
             else:
                 if _try_saveas():
                     exported = True
+                    used_saveas_path = True
 
             if not exported:
                 try:
@@ -392,31 +434,91 @@ class HWPConverter:
                     return False, "사용자 취소"
                 return False, save_error or "내보내기 실패"
 
-            after_artifacts = _snapshot_artifacts(output_file, format_type)
-            primary_snapshot = after_artifacts.get(output_file)
+            def _artifact_ok() -> Tuple[bool, Optional[str], list[Path], Any]:
+                after = _snapshot_artifacts(output_file, format_type)
+                primary = after.get(output_file)
+                if not after:
+                    return False, f"출력 파일이 생성되지 않았습니다: {output_file.name}", [], None
+                if primary is not None and primary.size <= 0:
+                    return False, f"출력 파일이 비어 있습니다: {output_file.name}", [], None
+                changed = _changed_artifacts(before_artifacts, after)
+                if not changed:
+                    return (
+                        False,
+                        f"출력 파일이 새로 생성되거나 갱신되지 않았습니다: {output_file.name}",
+                        [],
+                        None,
+                    )
+                return True, None, changed, after
 
-            if not after_artifacts:
-                try:
-                    hwp.Clear(option=1)
-                except Exception:
-                    pass
-                return False, f"출력 파일이 생성되지 않았습니다: {output_file.name}"
+            ok, artifact_error, changed_files, after_artifacts = _artifact_ok()
+            if not ok:
+                # SaveAs 가 성공처럼 보였으나 산출물이 없으면 Print 폴백 1회
+                recovered = False
+                if (
+                    format_key == "PDF"
+                    and used_saveas_path
+                    and not used_print_path
+                    and not _cancelled()
+                ):
+                    if _try_print_to_pdf():
+                        used_print_path = True
+                        ok, artifact_error, changed_files, after_artifacts = _artifact_ok()
+                        recovered = ok
+                if not recovered:
+                    try:
+                        hwp.Clear(option=1)
+                    except Exception:
+                        pass
+                    if _cancelled():
+                        return False, "사용자 취소"
+                    return False, artifact_error
 
-            if primary_snapshot is not None and primary_snapshot.size <= 0:
-                try:
-                    hwp.Clear(option=1)
-                except Exception:
-                    pass
-                return False, f"출력 파일이 비어 있습니다: {output_file.name}"
+            # PDF: SaveAs 경로도 %PDF 매직 검증. 실패 시 아직 안 쓴 폴백 경로 1회 시도.
+            if format_key == "PDF":
+                pdf_check = (
+                    output_file if output_file in changed_files else changed_files[0]
+                )
+                if not is_valid_pdf_file(pdf_check):
+                    logger.warning(
+                        f"PDF 매직/크기 검증 실패 (method={self.last_export_method}): {pdf_check}"
+                    )
+                    before_ns = None
+                    before_sz = None
+                    prev = before_artifacts.get(pdf_check)
+                    if prev is not None:
+                        before_ns = prev.mtime_ns
+                        before_sz = prev.size
+                    remove_incomplete_output(
+                        pdf_check,
+                        before_mtime_ns=before_ns,
+                        before_size=before_sz,
+                    )
+                    recovered = False
+                    if used_saveas_path and not used_print_path and not _cancelled():
+                        if _try_print_to_pdf():
+                            ok2, err2, changed_files, after_artifacts = _artifact_ok()
+                            if ok2 and is_valid_pdf_file(
+                                output_file
+                                if output_file in changed_files
+                                else changed_files[0]
+                            ):
+                                recovered = True
+                            elif not ok2:
+                                artifact_error = err2
+                    if not recovered:
+                        try:
+                            hwp.Clear(option=1)
+                        except Exception:
+                            pass
+                        if _cancelled():
+                            return False, "사용자 취소"
+                        return False, (
+                            artifact_error
+                            or f"유효한 PDF가 아닙니다 (매직/크기 검사 실패): {pdf_check.name}"
+                        )
 
-            changed_files = _changed_artifacts(before_artifacts, after_artifacts)
-            if not changed_files:
-                try:
-                    hwp.Clear(option=1)
-                except Exception:
-                    pass
-                return False, f"출력 파일이 새로 생성되거나 갱신되지 않았습니다: {output_file.name}"
-
+            assert after_artifacts is not None
             representative = output_file if output_file in changed_files else changed_files[0]
             representative_snapshot = after_artifacts[representative]
             self.last_created_files = changed_files
@@ -431,7 +533,7 @@ class HWPConverter:
             return True, None
 
         except Exception as e:
-            error_msg = str(e)
+            error_msg = _with_document_access_hint(str(e))
             logger.error(f"변환 실패 ({input_path}): {error_msg}")
             if hwp is not None:
                 try:
@@ -506,3 +608,23 @@ class HWPConverter:
             except Exception:
                 pass
             self._com_apartment_owned = False
+
+
+def _with_document_access_hint(message: str) -> str:
+    """암호·보호·권한 관련 안내를 메시지에 best-effort 로 붙인다."""
+    hint = "(암호·보호된 문서이거나 접근이 제한된 파일일 수 있습니다. 암호를 해제한 뒤 다시 시도하세요.)"
+    if hint in message:
+        return message
+    lowered = message.lower()
+    tokens_ko = ("암호", "비밀번호", "패스워드", "보호", "권한")
+    tokens_en = ("password", "passwd", "encrypted", "protected", "access denied", "permission")
+    if any(t in message for t in tokens_ko) or any(t in lowered for t in tokens_en):
+        return f"{message} {hint}"
+    return message
+
+
+def _open_failure_message(open_result: object) -> str:
+    base = f"문서 열기 실패: HWP Open이 실패를 반환했습니다 ({open_result!r})"
+    return _with_document_access_hint(
+        f"{base} 암호가 걸린 문서이면 해제 후 다시 시도하세요."
+    )

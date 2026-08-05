@@ -72,12 +72,18 @@ hwp_com_smoke_*.json
 # 로컬 변환/스모크 산출 (경로 가변)
 **/변환결과*
 **/변환실패*
-# 로컬 스모크/임시 출력 폴더 이름
+# 로컬 스모크/임시 출력·실험 폴더
 _out/
 _smoke_out/
 _smoke/
 out/
 output/
+.tmp_test/
+.tmp_*/
+tmp_test/
+# 에이전트/로컬 일회성 출력
+images/
+videos/
 
 # ===== 로컬 설정 (홈 디렉터리가 기본; 실수로 루트에 복사된 경우) =====
 .hwp_converter_config.json

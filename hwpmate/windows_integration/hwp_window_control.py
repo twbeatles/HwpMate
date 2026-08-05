@@ -154,9 +154,11 @@ def try_accept_hwp_security_dialog(pids: Optional[Set[int]] = None) -> bool:
                 buf = ctypes.create_unicode_buffer(length + 1)
                 user32.GetWindowTextW(hwnd, buf, length + 1)
                 text = buf.value.strip()
-                # 정확 일치 우선, 느슨 매칭은 "모두"+"허용"이 모두 있을 때만
-                matched = text in _SECURITY_ACCEPT_BUTTON_TEXTS or (
-                    "모두" in text and "허용" in text and len(text) <= 24
+                # 오클릭 방지를 위해 정확 일치만 허용 (공백 정규화)
+                normalized = " ".join(text.split())
+                matched = (
+                    text in _SECURITY_ACCEPT_BUTTON_TEXTS
+                    or normalized in _SECURITY_ACCEPT_BUTTON_TEXTS
                 )
                 if not matched:
                     return True

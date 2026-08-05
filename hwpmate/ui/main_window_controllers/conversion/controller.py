@@ -11,14 +11,22 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from ....constants import (
+    BACKUP_MAX_FILES_PER_STEM,
+    FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS,
     FOLDER_SCAN_WAIT_MS,
     HWP_FOREGROUND_POLL_MS,
     HWP_PERMISSION_HINT,
+    WORKER_FORCE_TERMINATE_SLICE_MS,
+    WORKER_FORCE_TERMINATE_WAIT_MS,
     WORKER_WAIT_TIMEOUT,
 )
 from ....logging_config import get_logger
 from ....models import ConversionSummary, ConversionTask, PlannedConversion
 from ....path_utils import check_write_permission, is_valid_path_name
+from ....services.hwp_print_settings import (
+    PDF_EXPORT_SAVEAS_FIRST,
+    normalize_pdf_export_mode,
+)
 from ....windows_integration import (
     hide_hwp_main_windows,
     bring_hwp_windows_to_foreground,
@@ -43,6 +51,35 @@ class ConversionController:
         if check is not None:
             return bool(check.isChecked())
         return bool(self.window.config.get("auto_accept_security_dialog", True))
+
+    def _pdf_export_mode_from_ui(self) -> str:
+        combo = getattr(self.window, "pdf_export_mode_combo", None)
+        if combo is not None:
+            data = combo.currentData()
+            if data is not None:
+                return normalize_pdf_export_mode(str(data))
+            return normalize_pdf_export_mode(combo.currentText())
+        try:
+            return normalize_pdf_export_mode(
+                self.window.config.get("pdf_export_mode", PDF_EXPORT_SAVEAS_FIRST)
+            )
+        except Exception:
+            return PDF_EXPORT_SAVEAS_FIRST
+
+    def _backup_max_files_from_ui(self) -> int:
+        spin = getattr(self.window, "backup_max_spin", None)
+        if spin is not None:
+            try:
+                return int(spin.value())
+            except (TypeError, ValueError):
+                pass
+        try:
+            return int(
+                self.window.config.get("backup_max_files_per_stem", BACKUP_MAX_FILES_PER_STEM)
+                or BACKUP_MAX_FILES_PER_STEM
+            )
+        except (TypeError, ValueError):
+            return BACKUP_MAX_FILES_PER_STEM
 
     def _start_hwp_foreground_polling(self) -> None:
         """Dispatch/Open 블로킹 중에도 UI 스레드에서 한글 창을 전면화한다.
@@ -106,10 +143,15 @@ class ConversionController:
         # initialize 결과 전: 전역 HWP 전면화로 다른 세션을 건드리지 않는다.
         if not session.engine_status_received:
             return
+        # 소유 PID 미추적: 다른 한글 편집 세션 숨김/전면화/자동 클릭 금지
+        if not session.allows_window_control():
+            return
         target = session.target_pids()
+        if not target:
+            return
         try:
             # Open 등으로 메인 창이 다시 보이면 숨기고, 보안 대화상자만 전면화.
-            # 소유 PID 가 있으면 그 범위만 (없으면 best-effort 전체 HWP).
+            # 소유 PID 범위만 조작한다.
             api.hide_hwp_main_windows(target)
             api.bring_hwp_windows_to_foreground(target)
             # 모듈 성공·설정 꺼짐·쿨다운이면 자동 클릭 생략
@@ -123,9 +165,11 @@ class ConversionController:
         is_folder_mode = self.window.folder_radio.isChecked()
         folder_file_paths = None
         if is_folder_mode:
+            # 변환 시점에는 미리보기보다 짧은 캐시 연령을 요구해 신규 파일 누락을 줄인다.
             folder_file_paths = self.window.file_selection_controller.get_folder_scan_cache(
                 folder_path=self.window.folder_entry.text(),
                 include_sub=self.window.include_sub_check.isChecked(),
+                max_age_seconds=FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS,
             )
             if folder_file_paths is None and require_folder_cache:
                 # wait 직후 시그널 드레인 재시도
@@ -133,12 +177,14 @@ class ConversionController:
                 folder_file_paths = self.window.file_selection_controller.get_folder_scan_cache(
                     folder_path=self.window.folder_entry.text(),
                     include_sub=self.window.include_sub_check.isChecked(),
+                    max_age_seconds=FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS,
                 )
             # 폴더 모드: UI 스레드 동기 재스캔 금지 (캐시 필수)
             if folder_file_paths is None:
                 raise ValueError(
-                    "폴더 스캔 결과가 아직 준비되지 않았습니다.\n"
-                    "미리보기 스캔이 끝난 뒤 다시 시도하세요."
+                    "폴더 스캔 결과가 아직 준비되지 않았거나 오래되었습니다.\n"
+                    f"변환 직전 캐시는 {int(FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS)}초 이내여야 합니다.\n"
+                    "폴더를 다시 선택하거나 미리보기 스캔 후 변환하세요."
                 )
             # 캐시 신선도: 디스크에서 사라진 파일이 많으면 재스캔 유도
             ok, reason = self.window.file_selection_controller.validate_folder_scan_cache_freshness(
@@ -150,13 +196,6 @@ class ConversionController:
                 raise ValueError(
                     f"{reason}\n폴더를 다시 선택하거나 미리보기 스캔 후 변환하세요."
                 )
-        pdf_export_mode = "saveas_first"
-        try:
-            pdf_export_mode = str(
-                self.window.config.get("pdf_export_mode", "saveas_first") or "saveas_first"
-            )
-        except Exception:
-            pass
         return self.window.task_planner.build_tasks(
             is_folder_mode=is_folder_mode,
             format_type=self.state.selected_format,
@@ -167,7 +206,8 @@ class ConversionController:
             file_paths=self.window.file_store.paths,
             backup_enabled=self.window.backup_check.isChecked(),
             retry_count=self.window.retry_spin.value(),
-            pdf_export_mode=pdf_export_mode,
+            backup_max_files_per_stem=self._backup_max_files_from_ui(),
+            pdf_export_mode=self._pdf_export_mode_from_ui(),
             folder_file_paths=folder_file_paths if is_folder_mode else None,
         )
 
@@ -178,7 +218,10 @@ class ConversionController:
             self.state.is_planning = planning
 
     def _ensure_folder_scan_ready(self) -> None:
-        """폴더 모드에서 유효 캐시가 없으면 비동기 스캔을 시작하고 완료를 기다린다."""
+        """폴더 모드에서 변환용 유효 캐시가 없으면 비동기 스캔을 시작하고 완료를 기다린다.
+
+        변환 직전에는 미리보기보다 짧은 캐시 연령을 요구한다.
+        """
         folder = self.window.folder_entry.text().strip()
         if not folder:
             raise ValueError("폴더를 선택하세요.")
@@ -186,10 +229,13 @@ class ConversionController:
         cache = self.window.file_selection_controller.get_folder_scan_cache(
             folder_path=folder,
             include_sub=self.window.include_sub_check.isChecked(),
+            max_age_seconds=FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS,
         )
         if cache is not None:
             return
 
+        # 오래되었거나 없음 → 재스캔
+        self.window.file_selection_controller.invalidate_folder_scan_cache()
         scan_worker = self.state.scan_worker
         scan_running = bool(
             scan_worker
@@ -197,7 +243,7 @@ class ConversionController:
             and self.state.scan_mode == "folder_preview"
         )
         if not scan_running:
-            self.window.status_label.setText("폴더 스캔 시작 중...")
+            self.window.status_label.setText("폴더 스캔 시작 중 (변환 직전 최신화)...")
             self.window.file_selection_controller.start_folder_preview_scan(folder)
             QApplication.processEvents()
 
@@ -254,6 +300,59 @@ class ConversionController:
             # 시작 메시지에 허용 창 힌트를 합쳐 토스트 스택을 아끼고 가독성을 유지
             combined = f"{toast_message}\n{HWP_PERMISSION_HINT}"
             self.window.toast.show_message(combined, toast_icon)
+
+    def _confirm_preflight_and_start_worker(
+        self,
+        plan: PlannedConversion,
+        *,
+        toast_message: str,
+        toast_icon: str,
+    ) -> bool:
+        """사전 점검 확인 후 변환 워커를 시작한다.
+
+        호출 시점에 이미 is_planning 이거나, 여기서 planning 을 잠깐 잡는다.
+        성공 시 converting 이 planning 을 대체한다. 시작했으면 True.
+        """
+        planning_held_here = False
+        try:
+            if self.is_conversion_active():
+                self.window.status_label.setText("변환이 이미 진행 중입니다")
+                if hasattr(self.window, "toast"):
+                    self.window.toast.show_message("변환이 이미 진행 중입니다", "⚠️")
+                return False
+
+            if not self.state.is_planning:
+                self._set_planning(True)
+                planning_held_here = True
+
+            self._abort_if_close_requested()
+            preflight = self.window._create_preflight_dialog(plan)
+            if preflight.exec() != self.window.dialog_accepted_code():
+                self.window.status_label.setText("변환 시작이 취소되었습니다")
+                return False
+
+            self._abort_if_close_requested()
+            self.state.plan = plan
+            self.state.tasks = plan.tasks
+            self.window._save_settings()
+
+            self.window._set_converting_state(True)
+            planning_held_here = False
+            self.window.progress_bar.setMaximum(plan.runnable_count)
+            self.window.progress_bar.setValue(0)
+            self.state.conversion_start_time = time.time()
+            worker = self.window._create_conversion_worker(plan)
+            self._begin_worker_ui(worker, toast_message=toast_message, toast_icon=toast_icon)
+            return True
+        except ValueError as e:
+            if self.state.close_requested or self.state.close_after_plan:
+                self.window.status_label.setText("종료 요청으로 변환 시작이 취소되었습니다")
+            else:
+                QMessageBox.warning(self.window, "경고", str(e))
+            return False
+        finally:
+            if planning_held_here:
+                self._set_planning(False)
 
     def start_conversion(self) -> None:
         planning_held = False
@@ -333,29 +432,17 @@ class ConversionController:
                     message += f"\n동일 형식 {plan.skipped_count}개는 자동으로 건너뜁니다."
                 raise ValueError(message)
 
-            self._abort_if_close_requested()
-            preflight = self.window._create_preflight_dialog(plan)
-            if preflight.exec() != self.window.dialog_accepted_code():
-                self.window.status_label.setText("변환 시작이 취소되었습니다")
-                return
-
-            self._abort_if_close_requested()
-            self.state.plan = plan
-            self.state.tasks = plan.tasks
-            self.window._save_settings()
-
-            # converting 이 planning 을 대체
-            self.window._set_converting_state(True)
-            planning_held = False
-            self.window.progress_bar.setMaximum(plan.runnable_count)
-            self.window.progress_bar.setValue(0)
-            self.state.conversion_start_time = time.time()
-            worker = self.window._create_conversion_worker(plan)
-
             start_message = f"{plan.runnable_count}개 파일 변환 시작"
             if plan.skipped_count:
                 start_message += f" (건너뜀 {plan.skipped_count}개)"
-            self._begin_worker_ui(worker, toast_message=start_message, toast_icon="🚀")
+            # planning 은 헬퍼가 converting 으로 넘기거나 실패 시 finally 에서 해제
+            started = self._confirm_preflight_and_start_worker(
+                plan,
+                toast_message=start_message,
+                toast_icon="🚀",
+            )
+            if started:
+                planning_held = False
         except ValueError as e:
             # 종료 요청으로 인한 취소는 경고 박스 없이 조용히 처리
             if self.state.close_requested or self.state.close_after_plan:
@@ -397,19 +484,35 @@ class ConversionController:
         if worker is None:
             return True
 
-        self.window.status_label.setText(waiting_text)
+        self.window.status_label.setText(
+            f"{waiting_text} (현재 파일의 한글 응답을 기다리는 중…)"
+        )
         worker.cancel()
-        if worker.wait(WORKER_WAIT_TIMEOUT):
+        # COM Open/SaveAs 블로킹 중에는 즉시 반환되지 않을 수 있음
+        remaining = max(0, int(WORKER_WAIT_TIMEOUT))
+        slice_ms = 200
+        while remaining > 0 and worker.isRunning():
+            step = min(slice_ms, remaining)
+            if worker.wait(step):
+                return True
+            QApplication.processEvents()
+            remaining -= step
+
+        if not worker.isRunning():
             return True
 
         if worker.can_force_terminate():
             self.state.force_kill_pending = True
             self.window.cancel_btn.setText("🛑 강제 종료")
-            self.window.status_label.setText("취소 요청됨 (응답 대기)")
+            self.window.status_label.setText(
+                "취소 요청됨 — 한글 COM 응답 대기 중. 응답이 없으면 「강제 종료」를 누르세요."
+            )
         else:
             self.state.force_kill_pending = False
             self.window.cancel_btn.setText("⏹️ 취소")
-            self.window.status_label.setText("안전하게 강제 종료할 대상 프로세스를 확인하지 못했습니다. 종료를 기다리는 중입니다.")
+            self.window.status_label.setText(
+                "취소 요청됨. 안전하게 강제 종료할 대상 프로세스를 확인하지 못해 종료를 기다리는 중입니다."
+            )
         return False
 
     def perform_force_terminate(self) -> bool:
@@ -417,7 +520,7 @@ class ConversionController:
         if worker is None:
             return False
 
-        self.window.status_label.setText("강제 종료 중...")
+        self.window.status_label.setText("강제 종료 중… (앱이 띄운 한글만)")
         QApplication.processEvents()
         killed = worker.force_terminate()
         if not killed:
@@ -428,12 +531,27 @@ class ConversionController:
                 "강제 종료 불가",
                 "안전하게 종료할 대상 프로세스를 확인하지 못해 강제 종료를 수행하지 않았습니다.",
             )
-            self.window.status_label.setText("안전한 강제 종료 대상이 없어 종료를 기다리는 중입니다.")
+            self.window.status_label.setText(
+                "안전한 강제 종료 대상이 없어 워커 종료를 기다리는 중입니다."
+            )
             return False
 
-        worker.wait(1000)
+        remaining = max(0, int(WORKER_FORCE_TERMINATE_WAIT_MS))
+        slice_ms = max(100, int(WORKER_FORCE_TERMINATE_SLICE_MS))
+        while remaining > 0 and worker.isRunning():
+            step = min(slice_ms, remaining)
+            if worker.wait(step):
+                break
+            QApplication.processEvents()
+            remaining -= step
+
         self.state.force_kill_pending = False
         self.window.cancel_btn.setText("⏹️ 취소")
+        if worker.isRunning():
+            self.window.status_label.setText(
+                "강제 종료 후 워커가 아직 종료되지 않았습니다. 잠시 더 기다려 주세요."
+            )
+            return False
         return True
 
     def cancel_conversion(self) -> None:
@@ -444,18 +562,21 @@ class ConversionController:
             reply = QMessageBox.question(
                 self.window,
                 "강제 종료 경고",
-                "앱이 소유한 한글 프로세스만 강제 종료합니다.\n열려 있는 문서가 저장되지 않을 수 있습니다.\n\n계속할까요?",
+                "앱이 소유한 한글 프로세스만 강제 종료합니다.\n"
+                "열려 있는 문서가 저장되지 않을 수 있습니다.\n\n계속할까요?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.Yes:
                 if self.perform_force_terminate():
-                    self.window.status_label.setText("강제 종료 요청 완료")
+                    self.window.status_label.setText("강제 종료 완료")
             return
 
         reply = QMessageBox.question(
             self.window,
             "확인",
-            "변환을 취소하시겠습니까?\n응답이 없으면 앱이 소유한 한글 프로세스만 강제 종료할 수 있습니다.",
+            "변환을 취소하시겠습니까?\n"
+            "현재 파일은 한글 응답이 끝날 때까지 기다린 뒤 중단됩니다.\n"
+            "응답이 없으면 앱이 소유한 한글 프로세스만 강제 종료할 수 있습니다.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -524,8 +645,15 @@ class ConversionController:
 
     def retry_failed_tasks(self, failed_tasks: list[ConversionTask]) -> None:
         """결과 다이얼로그에서 실패 항목만 다시 변환한다."""
-        if self.is_conversion_active():
-            self.window.status_label.setText("변환이 이미 진행 중입니다")
+        if self.is_conversion_active() or self.state.is_planning:
+            msg = (
+                "작업 준비가 이미 진행 중입니다"
+                if self.state.is_planning
+                else "변환이 이미 진행 중입니다"
+            )
+            self.window.status_label.setText(msg)
+            if hasattr(self.window, "toast"):
+                self.window.toast.show_message(msg, "⚠️")
             return
         if not failed_tasks:
             return
@@ -547,20 +675,14 @@ class ConversionController:
             QMessageBox.warning(self.window, "경고", "다시 변환할 실패 파일이 없습니다.")
             return
 
-        pdf_export_mode = "saveas_first"
-        try:
-            pdf_export_mode = str(
-                self.window.config.get("pdf_export_mode", "saveas_first") or "saveas_first"
-            )
-        except Exception:
-            pass
         plan = PlannedConversion(
             format_type=format_type,
             same_location=self.window.same_location_check.isChecked(),
             output_path=self.window.output_entry.text().strip(),
             backup_enabled=self.window.backup_check.isChecked(),
             retry_count=self.window.retry_spin.value(),
-            pdf_export_mode=pdf_export_mode,
+            backup_max_files_per_stem=self._backup_max_files_from_ui(),
+            pdf_export_mode=self._pdf_export_mode_from_ui(),
             tasks=retry_tasks,
             warnings=warnings + ["실패 항목만 다시 변환합니다."],
         )
@@ -573,20 +695,8 @@ class ConversionController:
                 f"출력 경로 충돌 {plan.conflict_renamed_count}개는 자동으로 새 이름으로 저장됩니다."
             )
 
-        preflight = self.window._create_preflight_dialog(plan)
-        if preflight.exec() != self.window.dialog_accepted_code():
-            self.window.status_label.setText("실패 항목 재변환이 취소되었습니다")
-            return
-
-        self.state.plan = plan
-        self.state.tasks = plan.tasks
-        self.window._set_converting_state(True)
-        self.window.progress_bar.setMaximum(plan.runnable_count)
-        self.window.progress_bar.setValue(0)
-        self.state.conversion_start_time = time.time()
-        worker = self.window._create_conversion_worker(plan)
-        self._begin_worker_ui(
-            worker,
+        self._confirm_preflight_and_start_worker(
+            plan,
             toast_message=f"실패 {plan.runnable_count}개 재변환 시작",
             toast_icon="🔁",
         )

@@ -79,6 +79,68 @@ def make_path_key(path: str) -> str:
     return os.path.normcase(canonicalize_path(path))
 
 
+def path_char_length(path: str | Path) -> int:
+    """경로 문자열 길이 (긴 경로 경고용)."""
+    return len(str(path))
+
+
+def is_path_length_risky(
+    path: str | Path,
+    *,
+    warn_length: int | None = None,
+) -> bool:
+    """Windows 전통 MAX_PATH 근처인지 여부.
+
+    한컴 COM 이 긴 경로를 거부할 수 있어 사전 점검 경고에 사용한다.
+    """
+    from .constants import WINDOWS_PATH_WARN_LENGTH
+
+    limit = WINDOWS_PATH_WARN_LENGTH if warn_length is None else max(1, int(warn_length))
+    return path_char_length(path) >= limit
+
+
+def is_path_length_blocking(
+    path: str | Path,
+    *,
+    block_length: int | None = None,
+) -> bool:
+    """COM 호환이 어려울 정도로 긴 경로인지 (차단 후보)."""
+    from .constants import WINDOWS_PATH_BLOCK_LENGTH
+
+    limit = WINDOWS_PATH_BLOCK_LENGTH if block_length is None else max(1, int(block_length))
+    return path_char_length(path) >= limit
+
+
+def to_extended_win_path(path: str | Path) -> str:
+    """Windows 확장 경로(\\\\?\\) 접두를 붙인 절대 경로.
+
+    이미 확장 접두가 있으면 그대로 둔다. UNC 는 \\\\?\\UNC\\ 형식을 사용한다.
+    """
+    raw = str(path).strip()
+    if not raw:
+        return raw
+    normalized = os.path.abspath(os.path.normpath(raw.replace("/", "\\")))
+    if normalized.startswith("\\\\?\\"):
+        return normalized
+    if normalized.startswith("\\\\"):
+        # \\server\share\... → \\?\UNC\server\share\...
+        return "\\\\?\\UNC\\" + normalized[2:]
+    return "\\\\?\\" + normalized
+
+
+def com_path_candidates(path: str | Path) -> list[str]:
+    """COM Open/SaveAs 용 경로 후보 (일반 → 확장 경로)."""
+    primary = os.path.abspath(os.path.normpath(str(path)))
+    extended = to_extended_win_path(primary)
+    if primary == extended or path_char_length(primary) < 200:
+        # 짧은 경로도 실패 시 확장 후보를 쓸 수 있게 하되, 기본은 일반 경로 우선
+        if primary == extended:
+            return [primary]
+        return [primary, extended]
+    # 긴 경로는 확장 경로를 먼저 시도
+    return [extended, primary]
+
+
 def iter_supported_files(
     root_path: Path,
     include_sub: bool = True,

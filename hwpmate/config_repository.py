@@ -92,6 +92,24 @@ class ConfigRepository:
         except (TypeError, ValueError):
             repair("retry_count", default_config.retry_count)
 
+        from .constants import (
+            BACKUP_MAX_FILES_PER_STEM_MAX,
+            BACKUP_MAX_FILES_PER_STEM_MIN,
+        )
+
+        try:
+            backup_max = int(
+                merged.get("backup_max_files_per_stem", default_config.backup_max_files_per_stem)
+            )
+            if (
+                backup_max < BACKUP_MAX_FILES_PER_STEM_MIN
+                or backup_max > BACKUP_MAX_FILES_PER_STEM_MAX
+            ):
+                raise ValueError
+            merged["backup_max_files_per_stem"] = backup_max
+        except (TypeError, ValueError):
+            repair("backup_max_files_per_stem", default_config.backup_max_files_per_stem)
+
         merged["config_version"] = CONFIG_VERSION
         return AppConfig.from_mapping(merged), repairs
 
