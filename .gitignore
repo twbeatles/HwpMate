@@ -49,12 +49,26 @@ warn-*.txt
 # 런타임 DLL 원자 교체 임시 파일
 *.dll.tmp
 
-# ===== Local agent / tool caches (레포 루트) =====
+# ===== Local agent / tool caches & docs (레포 루트) =====
+# 코딩 에이전트 캐시·스킬·로컬 설정 (커밋하지 않음)
 .agents/
 .grok/
 .claude/
-# Spec Kit 로컬 산출은 팀 정책에 따라 추적 가능 — 기본은 무시하지 않음
-# .specify/ 와 specs/ 는 기능 명세 작업 시 커밋할 수 있음
+.cursor/
+.codex/
+.continue/
+.windsurf/
+.specify/
+specs/
+# 에이전트별 프로젝트 지침 문서 (로컬 전용)
+claude.md
+Claude.md
+CLAUDE.md
+gemini.md
+AGENTS.md
+agents.md
+.cursorrules
+.cursorignore
 
 # ===== Logs / local artifacts =====
 *.log
