@@ -1,15 +1,28 @@
-# HwpMate (HWP 변환기)
+# HwpMate — HWP/HWPX to PDF, DOCX & Image Batch Converter
 
-**한글(HWP/HWPX) 문서를 다른 형식으로 한 번에 바꿔 주는 Windows 프로그램**입니다.
+> 한컴오피스 한글 문서를 PDF·Word·이미지 등으로 대량 변환하는 Windows GUI/CLI 도구
 
-폴더 통째로 넣거나, 파일만 골라서 PDF·Word·이미지 등으로 변환할 수 있습니다.  
+HwpMate는 Windows에서 HWP/HWPX 파일을 PDF, DOCX, PNG, JPG, TXT 등으로 한꺼번에 바꾸는 HWP/HWPX converter입니다. 폴더 전체 또는 선택한 파일을 변환할 수 있어, 여러 문서의 **HWP to PDF** 작업에 적합합니다.
+
+- **입력:** HWP, HWPX
+- **주요 출력:** PDF, DOCX, PNG, JPG, TXT 등
+- **환경:** Windows 10/11 및 Hancom Hangul(한컴오피스 한글) 2018 이상 필요
+- **설치:** 일반 사용자는 Python 없이 [최신 EXE를 Releases에서 다운로드](https://github.com/twbeatles/HwpMate/releases/latest)해 실행
+
 한컴오피스 한글이 PC에 설치되어 있어야 하며, **관리자 권한으로 실행**하는 것이 안전합니다.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows_10/11-lightgrey.svg)
-![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ---
+
+## HwpMate가 맞는 경우
+
+| 목적 | 적합성 |
+|---|---|
+| 수백 개 HWP/HWPX를 PDF·DOCX·이미지로 일괄 변환 | 매우 적합 |
+| HWP 서식 편집, 매크로, 템플릿 자동화, 문서 관리 | [HwpMaster](https://github.com/twbeatles/HwpMaster) 권장 |
+| Linux 서버에서 HWP를 직접 변환 | 부적합 — Windows와 한컴오피스 한글 환경 필요 |
 
 ## 이 프로그램이 하는 일
 
@@ -228,7 +241,6 @@ pyinstaller --noconfirm --clean hwp_converter.spec
 | [HWP_COM_SMOKE_TEST_CHECKLIST.md](HWP_COM_SMOKE_TEST_CHECKLIST.md) | 실제 한글 연동 수동 점검 |
 | [PROJECT_STRUCTURE_ANALYSIS.md](PROJECT_STRUCTURE_ANALYSIS.md) | 코드 구조·확장 포인트 |
 | [PROJECT_AUDIT.md](PROJECT_AUDIT.md) | 기능 감사·개선 이력 |
-| [claude.md](claude.md) / [gemini.md](gemini.md) | AI 협업 시 개발 규칙 |
 
 개발 품질 확인:
 
@@ -239,4 +251,9 @@ pytest
 
 ---
 
-MIT License
+## 관련 프로젝트
+
+- **단순·대량 HWP/HWPX 변환:** HwpMate
+- **HWP 편집·매크로·템플릿 자동화·문서 관리:** [HwpMaster](https://github.com/twbeatles/HwpMaster)
+
+라이선스: 현재 저장소에는 별도의 `LICENSE` 파일이 없습니다.
