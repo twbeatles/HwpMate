@@ -4,14 +4,14 @@
 
 ## 현재 상태
 
-- 앱 버전: `v9.1.0`
+- 앱 버전: `v9.1.1`
 - 주 엔트리포인트: `hwptopdf-hwpx_v4.py`
 - 빌드 설정: `hwp_converter.spec`
 - 정적 검사 기준: `pyrightconfig.json`
-- 배포 산출물: `dist/HWP변환기_v9.1.0.exe` (릴리즈: `HwpMate-v9.1.0.exe`)
+- 배포 산출물: `dist/HWP변환기_v9.1.1.exe` (릴리즈: `HwpMate-v9.1.1.exe`)
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
 
-## 2026-09-15 기능 감사 조치 및 한글 2022 실측 결함 수정 (v9.1.0)
+## 2026-09-15 기능 감사 조치 및 한글 2022 실측 결함 수정 (v9.1.1)
 
 - **감사(`PROJECT_AUDIT.md`) 이슈 조치:**
   - 폴더 모드: 변환 직전 재스캔을 2초만 기다려 대형/네트워크 폴더에서 변환을 시작할 수 없던 문제 수정 (`FOLDER_SCAN_WAIT_MS` 대기, 방금 기다린 캐시 재사용, 계획 중 불필요 토스트 제거).

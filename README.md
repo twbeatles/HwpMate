@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/twbeatles/HwpMate/releases/latest">
-    <img src="https://img.shields.io/badge/Release-v9.1.0-blue.svg?style=for-the-badge&logo=github" alt="Latest Release" />
+    <img src="https://img.shields.io/badge/Release-v9.1.1-blue.svg?style=for-the-badge&logo=github" alt="Latest Release" />
   </a>
   <img src="https://img.shields.io/badge/Platform-Windows_10%2F11_(64--bit)-lightgrey.svg?style=for-the-badge&logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.10+" />
@@ -20,7 +20,7 @@
 > ### 🚀 [초고속 다운로드 (무설치 포터블)]
 > Python 설치나 복잡한 환경 설정 없이, 아래 링크에서 단일 실행 파일(`.exe`)을 다운로드하여 즉시 사용하실 수 있습니다.
 > 
-> 👉 **[최신 버전 HwpMate-v9.1.0.exe 다운로드 (GitHub Releases)](https://github.com/twbeatles/HwpMate/releases/latest)**  
+> 👉 **[최신 버전 HwpMate-v9.1.1.exe 다운로드 (GitHub Releases)](https://github.com/twbeatles/HwpMate/releases/latest)**  
 > *(다운로드 후 마우스 오른쪽 버튼을 클릭하여 **'관리자 권한으로 실행'**해 주세요.)*
 
 ---
@@ -103,7 +103,7 @@
 ```
 
 ### 1단계: 프로그램 실행
-다운로드한 `HwpMate-v9.1.0.exe` 파일을 마우스 우클릭한 뒤 **[관리자 권한으로 실행]**을 클릭합니다.
+다운로드한 `HwpMate-v9.1.1.exe` 파일을 마우스 우클릭한 뒤 **[관리자 권한으로 실행]**을 클릭합니다.
 
 ### 2단계: 문서 또는 폴더 추가
 * **폴더 통째로 변환할 때**: 상단 모드를 **[폴더 일괄 변환]**으로 두고, 변환할 폴더를 창으로 끌어다 놓거나 `[폴더 선택]`을 누릅니다. (하위 폴더를 포함하려면 체크박스 선택)
@@ -127,22 +127,22 @@ HwpMate는 GUI 창 없이 윈도우 작업 스케줄러, 배치 파일(`.bat`), 
 
 ```powershell
 # 1. 단일 파일 변환 (HWP -> PDF)
-HwpMate-v9.1.0.exe --input "C:\문서\보고서.hwp" --format PDF
+HwpMate-v9.1.1.exe --input "C:\문서\보고서.hwp" --format PDF
 
 # 2. 폴더 전체 일괄 변환 (하위 폴더 포함, MS Word DOCX로 변환)
-HwpMate-v9.1.0.exe --input "C:\업무자료" --format DOCX --recursive --output "C:\변환완료"
+HwpMate-v9.1.1.exe --input "C:\업무자료" --format DOCX --recursive --output "C:\변환완료"
 
 # 3. 초고속 변환 (백업 생성 안 함, 기존 파일 덮어쓰기)
-HwpMate-v9.1.0.exe --input "C:\문서폴더" --format PDF --overwrite --no-backup
+HwpMate-v9.1.1.exe --input "C:\문서폴더" --format PDF --overwrite --no-backup
 
 # 4. 모아찍기 해제 인쇄 모드로 PDF 변환 (실패 시 2회 재시도)
-HwpMate-v9.1.0.exe --input "C:\공문서" --format PDF --pdf-export-mode print_to_pdf_ex_first --retry 2
+HwpMate-v9.1.1.exe --input "C:\공문서" --format PDF --pdf-export-mode print_to_pdf_ex_first --retry 2
 
 # 5. 결과를 JSON으로 저장 (CSV는 .csv 확장자)
-HwpMate-v9.1.0.exe --input "C:\문서폴더" --format DOCX --report "C:\변환결과\result.json"
+HwpMate-v9.1.1.exe --input "C:\문서폴더" --format DOCX --report "C:\변환결과\result.json"
 
 # 6. 시스템 및 COM 의존성 무결성 진단 (스모크 테스트)
-HwpMate-v9.1.0.exe --smoke
+HwpMate-v9.1.1.exe --smoke
 ```
 
 > CLI는 GUI와 같은 변환 엔진(백업 → 출력 충돌 회피 → 재시도 → 산출물 검증)을 사용합니다. 같은 한글 COM·출력 파일을 동시에 다루지 않도록 **GUI 또는 다른 CLI가 실행 중이면 오류 코드 1로 종료**합니다. 실패·취소가 없으면 종료 코드 0입니다.

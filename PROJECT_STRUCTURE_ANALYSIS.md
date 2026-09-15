@@ -280,7 +280,8 @@
 
 ## 14. 버전 동기화 기준
 
-### v9.1.0 감사 조치 (2026-09-15)
+### v9.1.1 감사 조치 (2026-09-15)
+- 앱 버전과 PyInstaller 산출물 이름은 `9.1.1` / `HWP변환기_v9.1.1.exe`(릴리즈 `HwpMate-v9.1.1.exe`)입니다.
 - 한글 2022(12.0.0.4605) 실측 기준: 이미지 산출물 `{stem}NNN`, ODT 형식 문자열 `ODF`, `Clear(3)` 원본 저장, 호환 문서 WPF 확인 창.
 - GUI·CLI가 `task_runner`를 공유하며, CLI는 단일 인스턴스 잠금·`--report`·`--no-auto-continue`를 지원합니다.
 - 실제 COM 검증: 11개 형식 × 2쪽 문서, 복합 문서(표·각주·다단·수식) DOCX/RTF/ODT/PDF/PNG, GUI 워커 E2E, CLI E2E 모두 성공 (`PROJECT_AUDIT.md` §10).
