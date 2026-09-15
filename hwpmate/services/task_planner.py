@@ -11,6 +11,7 @@ from ..path_utils import canonicalize_path, check_write_permission, iter_support
 from .artifact_policy import (
     artifact_key,
     existing_artifact_conflicts,
+    is_protected_source_path,
 )
 
 logger = get_logger(__name__)
@@ -39,6 +40,7 @@ class TaskPlanner:
         backup_max_files_per_stem: int = 20,
         pdf_export_mode: str = "saveas_first",
         folder_file_paths: Sequence[str] | None = None,
+        auto_continue_compat_dialog: bool = True,
     ) -> PlannedConversion:
         tasks: list[ConversionTask] = []
         skipped_tasks: list[ConversionTask] = []
@@ -133,6 +135,7 @@ class TaskPlanner:
                 retry_count=retry_count,
                 backup_max_files_per_stem=backup_max_files_per_stem,
                 pdf_export_mode=pdf_export_mode,
+                auto_continue_compat_dialog=auto_continue_compat_dialog,
                 tasks=tasks,
                 skipped_tasks=skipped_tasks,
                 warnings=warnings,
@@ -182,6 +185,7 @@ class TaskPlanner:
             retry_count=retry_count,
             backup_max_files_per_stem=backup_max_files_per_stem,
             pdf_export_mode=pdf_export_mode,
+            auto_continue_compat_dialog=auto_continue_compat_dialog,
             tasks=tasks,
             skipped_tasks=skipped_tasks,
             warnings=warnings,
@@ -218,9 +222,7 @@ class TaskPlanner:
         """Allocate a collision-free output path and return whether it changed."""
         original_path = task.output_file
         batch_duplicate = artifact_key(original_path) in used_path_keys
-        existing_conflict = (not overwrite) and self._has_existing_output_conflict(
-            original_path, format_type
-        )
+        existing_conflict = self._blocks_output_path(original_path, overwrite, format_type)
         if not (batch_duplicate or existing_conflict):
             used_path_keys.add(artifact_key(task.output_file))
             return False
@@ -232,9 +234,7 @@ class TaskPlanner:
         while counter <= MAX_FILENAME_COUNTER:
             new_name = f"{stem} ({counter}){ext}"
             new_path = parent / new_name
-            exists_conflict = (not overwrite) and self._has_existing_output_conflict(
-                new_path, format_type
-            )
+            exists_conflict = self._blocks_output_path(new_path, overwrite, format_type)
             batch_conflict = artifact_key(new_path) in used_path_keys
             if not exists_conflict and not batch_conflict:
                 task.output_file = new_path
@@ -247,9 +247,7 @@ class TaskPlanner:
                 suffix = "" if fallback_counter == 1 else f"_{fallback_counter}"
                 new_name = f"{stem}_{timestamp}{suffix}{ext}"
                 new_path = parent / new_name
-                exists_conflict = (not overwrite) and self._has_existing_output_conflict(
-                    new_path, format_type
-                )
+                exists_conflict = self._blocks_output_path(new_path, overwrite, format_type)
                 batch_conflict = artifact_key(new_path) in used_path_keys
                 if not exists_conflict and not batch_conflict:
                     task.output_file = new_path
@@ -261,6 +259,27 @@ class TaskPlanner:
         used_path_keys.add(artifact_key(task.output_file))
         logger.info(f"출력 경로 조정: {original_path} -> {task.output_file}")
         return True
+
+    def _blocks_output_path(
+        self,
+        output_file: Path,
+        overwrite: bool,
+        format_type: str | None,
+    ) -> bool:
+        # 원본 한글 문서(.hwp/.hwpx)는 덮어쓰기 설정과 무관하게 절대 출력 대상으로 쓰지 않는다.
+        # (예: 덮어쓰기 + HWP 변환에서 a.hwpx -> a.hwp 가 건너뛴 원본 a.hwp 를 교체하는 문제)
+        if self._is_existing_protected_source(output_file):
+            return True
+        return (not overwrite) and self._has_existing_output_conflict(output_file, format_type)
+
+    @staticmethod
+    def _is_existing_protected_source(output_file: Path) -> bool:
+        if not is_protected_source_path(output_file):
+            return False
+        try:
+            return output_file.exists()
+        except OSError:
+            return True
 
     def _has_existing_output_conflict(self, output_file: Path, format_type: str | None) -> bool:
         if format_type is None:
@@ -292,3 +311,13 @@ class TaskPlanner:
             preview = ", ".join(str(path) for path in unwritable_dirs[:3])
             suffix = "" if len(unwritable_dirs) <= 3 else f" 외 {len(unwritable_dirs) - 3}개"
             warnings.append(f"같은 위치 저장 대상 중 쓰기 권한을 확인하지 못한 폴더가 있습니다: {preview}{suffix}")
+
+
+def count_protected_source_renames(tasks: Iterable[ConversionTask]) -> int:
+    """원본 한글 문서 보호로 출력 이름이 바뀐 작업 수 (경고 문구용)."""
+    count = 0
+    for task in tasks:
+        original = task.conflict_original_output_file
+        if original is not None and is_protected_source_path(original):
+            count += 1
+    return count

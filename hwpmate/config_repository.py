@@ -69,6 +69,7 @@ class ConfigRepository:
             "overwrite",
             "backup_enabled",
             "auto_accept_security_dialog",
+            "auto_continue_compat_dialog",
         }
         for key in bool_keys:
             value = merged.get(key)

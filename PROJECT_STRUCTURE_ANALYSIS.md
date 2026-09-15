@@ -48,7 +48,9 @@
 | `hwpmate/services/hwp_converter/` | 패키지 | COM 변환 엔진 (호환 re-export) |
 | `hwpmate/services/hwp_print_settings/` | 패키지 | 인쇄 리셋·PDF 내보내기 |
 | `hwpmate/windows_integration/` | 패키지 | OS 통합 (DnD·창 제어) |
-| `hwpmate/workers/conversion_worker/` | 패키지 | 변환 워커 |
+| `hwpmate/workers/conversion_worker/` | 패키지 | 변환 워커 + GUI·CLI 공유 작업 실행기(`task_runner.py`) |
+| `hwpmate/services/update_*.py` | 추적 | 서명 매니페스트 검증·다운로드·교체/롤백 |
+| `scripts/` | 스크립트 | 업데이트 적용/매니페스트 생성/릴리즈 키 검증 |
 | `hwpmate/ui/{dialogs,theme,main_window_ui}/` | 패키지 | UI 다이얼로그·테마·레이아웃 빌더 |
 
 현재 구조는 `hwpmate/` 기준 **기능별 하위 패키지** 아키텍처이며, 공개 import 경로는 `__init__.py` re-export로 유지하고 루트 래퍼·배포 흐름은 동일합니다.
@@ -77,7 +79,11 @@
 | `services/hwp_security_module.py` | 보안승인 DLL 설치·SHA-256·HKCU 등록 |
 | `services/hwp_security_session.py` | 전면화/자동 클릭 세션 정책 |
 | `workers/file_scan_worker.py` | 파일/폴더를 비동기 배치 스캔 |
-| `workers/conversion_worker/` | 순차 변환·백업·요약·engine_status (`worker`/`backup`/`summary`/`protocol`) |
+| `workers/conversion_worker/` | 순차 변환·백업·요약·engine_status (`worker`/`backup`/`summary`/`protocol`/`task_runner`) |
+| `workers/conversion_worker/task_runner.py` | Qt 비의존 작업 실행기(백업 → 런타임 경로 할당 → 재시도 → 감사 필드, 재순환 재시도) — GUI 워커와 CLI 공유 |
+| `windows_integration/hwp_dialog_responder.py` | 소유 PID 한정 「호환 문서(배치 변경)」 확인 창 자동 계속(Y 키) |
+| `services/update_manifest.py`, `services/update_installer.py` | Ed25519 매니페스트, 스트리밍 다운로드, 부모 종료 대기·교체 재시도·롤백 상태·스테이징 정리 |
+| `ui/main_window_controllers/update.py` | 업데이트 확인/다운로드/적용(변환 중 보류, 시작 확인 1회) |
 | `windows_integration/` | 관리자 DnD·한글 창 전면화/숨김·모두 허용·NativeDropFilter |
 | `ui/theme/`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs/` | 테마 QSS·토스트·위젯·사전 점검/결과 다이얼로그 |
 | `ui/main_window.py` | `MainWindow` import 경로를 유지하는 조립 루트와 호환 래퍼 |
@@ -96,7 +102,7 @@
 - 설정 파일: `%USERPROFILE%\.hwp_converter_config.json`
 - 기본 설정 키:
   - `config_version` (3), `theme`, `mode`, `format`, `include_sub`, `same_location`, `overwrite`
-  - `backup_enabled`, `backup_max_files_per_stem` (기본 20), `retry_count`, `auto_accept_security_dialog`
+  - `backup_enabled`, `backup_max_files_per_stem` (기본 20), `retry_count`, `auto_accept_security_dialog`, `auto_continue_compat_dialog` (기본 True)
   - `pdf_export_mode` (`saveas_first` | `print_to_pdf_ex_first`)
 - 추가 저장 키:
   - `folder_path`, `output_path`, `last_folder`, `last_output`
@@ -126,8 +132,9 @@
 7. `ConversionWorker.run()` 내부
    - 워커 스레드 `pythoncom.CoInitialize()`
    - `HWPConverter.initialize()` 및 보안 모듈/PID 추적 경고 수집
-   - 파일별 선택적 `_create_backup()` 후 `convert_file()`
-   - 실패 시 설정된 횟수만큼 재시도
+   - 파일별 `task_runner.execute_task()`: 선택적 백업 → 런타임 출력 경로 재할당(원본 `.hwp/.hwpx` 보호) → `convert_file()`
+   - `convert_file()`은 소유 PID가 있으면 「호환 문서」 확인 창 자동 계속 스레드를 함께 실행
+   - 실패 시 설정된 횟수만큼 재시도, 200건마다 재순환(초기화 3회 재시도, 실패 시 남은 작업 즉시 실패 처리)
    - 취소 시 남은 task를 `취소됨`으로 마킹
    - 산출 파일/크기/수정 시각/COM 형식을 기록한 `ConversionSummary` 생성
 8. `task_completed` 시그널 수신 후 `ResultDialog` 표시
@@ -272,6 +279,11 @@
 - 텍스트 파일은 `.editorconfig` 기준으로 UTF-8, LF, final newline을 사용합니다.
 
 ## 14. 버전 동기화 기준
+
+### v9.1.0 감사 조치 (2026-09-15)
+- 한글 2022(12.0.0.4605) 실측 기준: 이미지 산출물 `{stem}NNN`, ODT 형식 문자열 `ODF`, `Clear(3)` 원본 저장, 호환 문서 WPF 확인 창.
+- GUI·CLI가 `task_runner`를 공유하며, CLI는 단일 인스턴스 잠금·`--report`·`--no-auto-continue`를 지원합니다.
+- 실제 COM 검증: 11개 형식 × 2쪽 문서, 복합 문서(표·각주·다단·수식) DOCX/RTF/ODT/PDF/PNG, GUI 워커 E2E, CLI E2E 모두 성공 (`PROJECT_AUDIT.md` §10).
 
 ### v9.0 (2026-08-04)
 - 공식 지원 Python 버전은 3.10 이상입니다.

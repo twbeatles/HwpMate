@@ -257,6 +257,9 @@ class LifecycleController:
         auto_accept = getattr(self.window, "auto_accept_security_check", None)
         if auto_accept is not None:
             self.window.config["auto_accept_security_dialog"] = auto_accept.isChecked()
+        auto_continue = getattr(self.window, "auto_continue_compat_check", None)
+        if auto_continue is not None:
+            self.window.config["auto_continue_compat_dialog"] = auto_continue.isChecked()
         pdf_combo = getattr(self.window, "pdf_export_mode_combo", None)
         if pdf_combo is not None:
             data = pdf_combo.currentData()

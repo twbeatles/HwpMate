@@ -11,6 +11,16 @@ class FormatSpec:
     save_format: str
     icon: str
     desc: str
+    # 한글 버전별 SaveAs 형식 문자열 차이 대비 대체 후보 (save_format 실패 시 순서대로 시도)
+    alt_save_formats: tuple[str, ...] = ()
+
+    @property
+    def save_format_candidates(self) -> tuple[str, ...]:
+        candidates: list[str] = []
+        for name in (self.save_format, *self.alt_save_formats):
+            if name and name not in candidates:
+                candidates.append(name)
+        return tuple(candidates)
 
     def __getitem__(self, key: str) -> Any:
         return getattr(self, key)
@@ -31,6 +41,8 @@ class AppConfig:
     backup_max_files_per_stem: int = 20
     # 보안 모듈 실패 시 「모두 허용」 대화상자 자동 클릭 (best-effort)
     auto_accept_security_dialog: bool = True
+    # 한글 「호환 문서(배치가 변경될 수 있습니다)」 확인 창 자동 계속 (소유 한글 프로세스 한정)
+    auto_continue_compat_dialog: bool = True
     # PDF: saveas_first(용지 품질 우선) | print_to_pdf_ex_first(모아찍기 완화 우선)
     pdf_export_mode: str = "saveas_first"
     folder_path: str = ""
@@ -140,6 +152,7 @@ class PlannedConversion:
     retry_count: int = 1
     backup_max_files_per_stem: int = 20
     pdf_export_mode: str = "saveas_first"
+    auto_continue_compat_dialog: bool = True
     tasks: list[ConversionTask] = field(default_factory=list)
     skipped_tasks: list[ConversionTask] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)

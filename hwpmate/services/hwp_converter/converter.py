@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import subprocess
 import time
+from contextlib import nullcontext
 from pathlib import Path
-from typing import Any, Optional, Tuple, cast
+from typing import Any, ContextManager, Iterable, Optional, Tuple, cast
 
 from ...constants import DOCUMENT_LOAD_DELAY, FORMAT_TYPES, HWP_PROGIDS
 from ...logging_config import get_logger
@@ -67,6 +68,9 @@ class HWPConverter:
         self.last_export_method: str | None = None
         # PDF 내보내기 전략 (saveas_first | print_to_pdf_ex_first)
         self.pdf_export_mode: str = PDF_EXPORT_SAVEAS_FIRST
+        # 「호환 문서(배치가 변경될 수 있습니다)」 확인 창 자동 계속 (소유 PID 한정)
+        self.auto_continue_compat_dialogs: bool = True
+        self.compat_dialog_responses: int = 0
         # True only when this instance successfully called CoInitialize itself.
         self._com_apartment_owned = False
 
@@ -180,6 +184,14 @@ class HWPConverter:
 
             except Exception as e:
                 errors.append(f"{progid}: {str(e)}")
+                self.hwp = None
+                self.progid_used = None
+                # Dispatch 는 성공했지만 이후 호출이 실패하면(강제 종료 직후 재연결 등)
+                # 새로 뜬 한글 프로세스가 고아로 남으므로 이번 시도에서 생긴 PID 만 정리한다.
+                orphan_pids = _snapshot_hwp_pids() - before_pids
+                if orphan_pids:
+                    logger.warning(f"한글 연결 실패로 생성된 프로세스 정리: {sorted(orphan_pids)}")
+                    self._terminate_hwp_pids(orphan_pids)
                 continue
 
         error_detail = "\n".join(errors)
@@ -260,7 +272,42 @@ class HWPConverter:
 
         cancel_check: 호출 시 취소 여부(bool)를 반환하는 콜백(선택).
         PDF 전략은 self.pdf_export_mode (saveas_first | print_to_pdf_ex_first).
+        Open/SaveAs 블로킹 동안 소유 한글 프로세스의 「호환 문서」 확인 창에 자동으로 「계속」한다.
         """
+        responder = self._compat_dialog_responder()
+        with responder:
+            try:
+                return self._convert_file_impl(
+                    input_path,
+                    output_path,
+                    format_type,
+                    cancel_check=cancel_check,
+                )
+            finally:
+                count = int(getattr(responder, "response_count", 0) or 0)
+                if count:
+                    self.compat_dialog_responses += count
+
+    def _compat_dialog_responder(self) -> ContextManager[Any]:
+        if not self.auto_continue_compat_dialogs or not self.owned_pids:
+            # 소유 PID 미추적 시 다른 한글 세션 창을 건드리지 않는다.
+            return nullcontext()
+        try:
+            from ...windows_integration import HwpDialogAutoResponder
+
+            return HwpDialogAutoResponder(lambda: set(self.owned_pids))
+        except Exception as e:
+            logger.debug(f"확인 창 자동 응답기 생성 실패(무시): {e}")
+            return nullcontext()
+
+    def _convert_file_impl(
+        self,
+        input_path,
+        output_path,
+        format_type="PDF",
+        *,
+        cancel_check: Any = None,
+    ) -> Tuple[bool, Optional[str]]:
         hwp = self.hwp
         if not self.is_initialized or hwp is None:
             return False, "한글 객체가 초기화되지 않았습니다"
@@ -324,8 +371,8 @@ class HWPConverter:
                 return False, "사용자 취소"
 
             format_info = FORMAT_TYPES.get(format_type, FORMAT_TYPES["PDF"])
-            save_format = format_info["save_format"]
-            self.last_save_format = save_format
+            save_format_candidates = format_info.save_format_candidates
+            self.last_save_format = save_format_candidates[0]
 
             # PDF·이미지: 문서에 남은 모아찍기 등 인쇄설정을 1쪽씩으로 best-effort 리셋
             # (원본 디스크 파일은 저장하지 않음. 실패해도 변환은 계속)
@@ -386,33 +433,39 @@ class HWPConverter:
                 if _cancelled():
                     return False
                 errors: list[str] = []
-                for output_str in output_save_candidates:
-                    if _cancelled():
-                        return False
-                    try:
-                        save_result = hwp.SaveAs(output_str, save_format)
-                        if is_com_failure_result(save_result):
-                            raise RuntimeError(
-                                f"SaveAs 2-param returned failure: {save_result!r}"
-                            )
-                        logger.debug(f"SaveAs 2-param 성공: {output_str}")
-                        self.last_export_method = EXPORT_METHOD_SAVEAS_2
-                        return True
-                    except Exception as e1:
-                        logger.debug(f"SaveAs 2-param 실패 ({output_str}): {e1}")
+                # 형식 문자열 후보 × 경로 후보 × (2-param → 3-param 폴백)
+                for format_name in save_format_candidates:
+                    for output_str in output_save_candidates:
                         if _cancelled():
                             return False
                         try:
-                            save_result = hwp.SaveAs(output_str, save_format, "")
+                            save_result = hwp.SaveAs(output_str, format_name)
                             if is_com_failure_result(save_result):
                                 raise RuntimeError(
-                                    f"SaveAs 3-param returned failure: {save_result!r}"
+                                    f"SaveAs 2-param returned failure: {save_result!r}"
                                 )
-                            logger.debug(f"SaveAs 3-param 성공: {output_str}")
-                            self.last_export_method = EXPORT_METHOD_SAVEAS_3
+                            logger.debug(f"SaveAs 2-param 성공: {format_name} {output_str}")
+                            self.last_save_format = format_name
+                            self.last_export_method = EXPORT_METHOD_SAVEAS_2
                             return True
-                        except Exception as e2:
-                            errors.append(f"{output_str}: 2-param: {e1}, 3-param: {e2}")
+                        except Exception as e1:
+                            logger.debug(f"SaveAs 2-param 실패 ({format_name} {output_str}): {e1}")
+                            if _cancelled():
+                                return False
+                            try:
+                                save_result = hwp.SaveAs(output_str, format_name, "")
+                                if is_com_failure_result(save_result):
+                                    raise RuntimeError(
+                                        f"SaveAs 3-param returned failure: {save_result!r}"
+                                    )
+                                logger.debug(f"SaveAs 3-param 성공: {format_name} {output_str}")
+                                self.last_save_format = format_name
+                                self.last_export_method = EXPORT_METHOD_SAVEAS_3
+                                return True
+                            except Exception as e2:
+                                errors.append(
+                                    f"{format_name} {output_str}: 2-param: {e1}, 3-param: {e2}"
+                                )
                 save_error = "; ".join(errors) if errors else "SaveAs 실패"
                 logger.error(f"모든 SaveAs 방식 실패: {save_error}")
                 return False
@@ -548,7 +601,11 @@ class HWPConverter:
             except OSError:
                 self.last_output_mtime = representative_snapshot.mtime_ns / 1_000_000_000
 
-            hwp.Clear(option=1)
+            try:
+                hwp.Clear(option=1)
+            except Exception as clear_error:
+                # 산출물 검증까지 끝났으므로 문서 닫기 실패로 성공을 뒤집지 않는다.
+                logger.warning(f"변환 성공 후 문서 닫기 실패(무시): {clear_error}")
 
             return True, None
 
@@ -572,11 +629,17 @@ class HWPConverter:
             logger.warning("추적된 한글 프로세스가 없어 강제 종료를 수행하지 않습니다.")
             return False
 
+        killed_any, remaining = self._terminate_hwp_pids(self.owned_pids)
+        self.owned_pids = remaining
+        return killed_any
+
+    def _terminate_hwp_pids(self, pids: Iterable[int]) -> tuple[bool, set[int]]:
+        """지정 PID 중 현재도 한글 이미지명인 프로세스만 강제 종료. (종료 여부, 남은 PID)"""
         # PID 재사용 방지를 위해 종료 직전 한글 이미지명 프로세스인지 재확인한다.
         live_hwp_pids = _snapshot_hwp_pids()
         killed_any = False
         remaining: set[int] = set()
-        for pid in sorted(self.owned_pids):
+        for pid in sorted(set(pids)):
             if pid not in live_hwp_pids:
                 logger.warning(
                     f"PID={pid} 가 현재 한글 관련 프로세스가 아니거나 이미 종료되어 강제 종료를 건너뜁니다."
@@ -599,16 +662,16 @@ class HWPConverter:
             except Exception as e:
                 remaining.add(pid)
                 logger.error(f"PID 강제 종료 실패: PID={pid}, 오류={e}")
-
-        self.owned_pids = remaining
-        return killed_any
+        return killed_any, remaining
 
     def cleanup(self) -> None:
         """정리."""
         hwp = self.hwp
         if hwp is not None and self.is_initialized:
             try:
-                hwp.Clear(3)
+                # 1=hwpDiscard. 2(변경 시 저장)/3(무조건 저장)은 한글 2022 실측에서
+                # 열린 원본 문서를 디스크에 저장하므로 사용하지 않는다.
+                hwp.Clear(1)
             except Exception:
                 pass
 

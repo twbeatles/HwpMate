@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from hwpmate.models import ConversionTask
-from hwpmate.services.task_planner import TaskPlanner
+from hwpmate.services.task_planner import TaskPlanner, count_protected_source_renames
 
 
 def test_build_tasks_in_file_mode_skips_same_format_entries(tmp_path: Path) -> None:
@@ -262,3 +262,87 @@ def test_resolve_output_conflicts_timestamp_fallback_avoids_duplicates(tmp_path:
     assert tasks[0].output_file != tasks[1].output_file
     assert tasks[0].conflict_original_output_file == existing
     assert tasks[1].conflict_original_output_file == existing
+
+
+def test_overwrite_never_targets_existing_source_hwp_document(tmp_path: Path) -> None:
+    planner = TaskPlanner()
+    (tmp_path / "a.hwp").write_bytes(b"ORIGINAL-HWP")
+    (tmp_path / "a.hwpx").write_bytes(b"ORIGINAL-HWPX")
+
+    plan = planner.build_tasks(
+        is_folder_mode=True,
+        format_type="HWP",
+        folder_path=str(tmp_path),
+        include_sub=False,
+        same_location=True,
+        output_path="",
+        overwrite=True,
+        file_paths=[],
+    )
+    renamed = planner.resolve_output_conflicts(plan.tasks, overwrite=True, format_type="HWP")
+
+    assert [task.input_file.name for task in plan.skipped_tasks] == ["a.hwp"]
+    assert [task.output_file.name for task in plan.tasks] == ["a (1).hwp"]
+    assert renamed == 1
+    assert count_protected_source_renames(plan.tasks) == 1
+
+
+def test_overwrite_never_targets_existing_source_hwpx_document(tmp_path: Path) -> None:
+    planner = TaskPlanner()
+    source = tmp_path / "a.hwp"
+    source.write_bytes(b"src")
+    (tmp_path / "a.hwpx").write_bytes(b"ORIGINAL-HWPX")
+    task = ConversionTask(input_file=source, output_file=tmp_path / "a.hwpx")
+
+    planner.resolve_output_conflicts([task], overwrite=True, format_type="HWPX")
+
+    assert task.output_file == tmp_path / "a (1).hwpx"
+
+
+def test_overwrite_still_replaces_existing_non_source_output(tmp_path: Path) -> None:
+    planner = TaskPlanner()
+    source = tmp_path / "a.hwp"
+    source.write_bytes(b"src")
+    (tmp_path / "a.pdf").write_bytes(b"old pdf")
+    task = ConversionTask(input_file=source, output_file=tmp_path / "a.pdf")
+
+    renamed = planner.resolve_output_conflicts([task], overwrite=True, format_type="PDF")
+
+    assert renamed == 0
+    assert task.output_file == tmp_path / "a.pdf"
+
+
+def test_image_and_html_same_location_keep_plain_output_name(tmp_path: Path) -> None:
+    planner = TaskPlanner()
+    (tmp_path / "report.hwp").write_bytes(b"src")
+    (tmp_path / "report_final.hwp").write_bytes(b"src")
+
+    for fmt, ext in (("PNG", ".png"), ("JPG", ".jpg"), ("HTML", ".html")):
+        plan = planner.build_tasks(
+            is_folder_mode=True,
+            format_type=fmt,
+            folder_path=str(tmp_path),
+            include_sub=False,
+            same_location=True,
+            output_path="",
+            file_paths=[],
+        )
+        renamed = planner.resolve_output_conflicts(plan.tasks, overwrite=False, format_type=fmt)
+        assert renamed == 0, fmt
+        assert sorted(task.output_file.name for task in plan.tasks) == [
+            f"report{ext}",
+            f"report_final{ext}",
+        ]
+
+
+def test_existing_hwp_page_images_trigger_rename(tmp_path: Path) -> None:
+    planner = TaskPlanner()
+    source = tmp_path / "report.hwp"
+    source.write_bytes(b"src")
+    (tmp_path / "report001.png").write_bytes(b"old page")
+    task = ConversionTask(input_file=source, output_file=tmp_path / "report.png")
+
+    renamed = planner.resolve_output_conflicts([task], overwrite=False, format_type="PNG")
+
+    assert renamed == 1
+    assert task.output_file == tmp_path / "report (1).png"

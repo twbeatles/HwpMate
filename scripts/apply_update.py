@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import os
@@ -11,20 +11,22 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hwpmate.services.update_installer import apply_staged_update, write_update_result
+from hwpmate.services.update_installer import (
+    UPDATE_STATUS_APPLIED,
+    apply_staged_update,
+    update_status_for_exception,
+    wait_for_file_writable,
+    wait_for_process_exit,
+    write_update_result,
+)
 
 
 def _wait_for_parent(parent_pid: int, timeout: float = 30.0) -> None:
     if parent_pid <= 0:
         raise ValueError("부모 프로세스 ID는 양수여야 합니다.")
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            os.kill(parent_pid, 0)
-        except OSError:
-            return
-        time.sleep(0.2)
-    raise TimeoutError("업데이트 적용 전 부모 프로세스가 종료되지 않았습니다.")
+    # os.kill(pid, 0) 은 Windows 에서 존재 확인이 아니라 CTRL_C_EVENT 전송이므로 사용하지 않는다.
+    if not wait_for_process_exit(parent_pid, timeout):
+        raise TimeoutError("업데이트 적용 전 부모 프로세스가 종료되지 않았습니다.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -44,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     try:
         _wait_for_parent(args.parent_pid)
+        wait_for_file_writable(Path(args.target).resolve())
         apply_staged_update(
             target=Path(args.target),
             staged=Path(args.staged),
@@ -52,13 +55,13 @@ def main(argv: list[str] | None = None) -> int:
             expected_size=args.expected_size,
         )
     except Exception as exc:
-        status = "rolled_back" if "rolled back" in str(exc).lower() or "롤백" in str(exc) else "failed"
+        status = update_status_for_exception(exc)
         write_update_result(
             args.result_file,
             {**base_result, "status": status, "error": str(exc)},
         )
         return 1
-    write_update_result(args.result_file, {**base_result, "status": "applied"})
+    write_update_result(args.result_file, {**base_result, "status": UPDATE_STATUS_APPLIED})
     return 0
 
 

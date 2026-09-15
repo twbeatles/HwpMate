@@ -515,3 +515,132 @@ def test_convert_file_accepts_auxiliary_image_artifact(tmp_path: Path) -> None:
     assert converter.last_created_files == [tmp_path / "a_001.png"]
     assert converter.last_output_size == 1
     assert converter.last_save_format == "PNG"
+
+
+def test_convert_file_accepts_hwp_page_numbered_images(tmp_path: Path) -> None:
+    # 한글 2022 실측: 요청 경로 대신 {stem}001.png 만 생성된다.
+    source = tmp_path / "sample.hwp"
+    source.write_text("x", encoding="utf-8")
+    output = tmp_path / "sample.png"
+    fake = FakeHwp(write_output=False, aux_suffix="001", output_content=b"img")
+    converter = build_converter(fake)
+
+    success, error = converter.convert_file(source, output, "PNG")
+
+    assert success is True, error
+    assert converter.last_created_files == [tmp_path / "sample001.png"]
+    assert source.read_text(encoding="utf-8") == "x"
+
+
+def test_convert_file_odt_uses_odf_then_falls_back_to_odt(tmp_path: Path) -> None:
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+    output = tmp_path / "a.odt"
+    # ODF: 일반 경로 2/3-param, 확장 경로 2/3-param 모두 실패 → ODT 일반 경로 2-param 성공
+    fake = FakeHwp(save_results=[False, False, False, False, True], output_content=b"PK\x03\x04")
+    converter = build_converter(fake)
+
+    success, error = converter.convert_file(source, output, "ODT")
+
+    assert success is True, error
+    assert [call[1] for call in fake.save_calls] == ["ODF", "ODF", "ODF", "ODF", "ODT"]
+    assert converter.last_save_format == "ODT"
+
+
+def test_convert_file_odt_prefers_odf_format_name(tmp_path: Path) -> None:
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+    output = tmp_path / "a.odt"
+    fake = FakeHwp(output_content=b"PK\x03\x04")
+    converter = build_converter(fake)
+
+    success, _ = converter.convert_file(source, output, "ODT")
+
+    assert success is True
+    assert fake.save_calls[0][1] == "ODF"
+    assert converter.last_save_format == "ODF"
+
+
+def test_convert_file_success_survives_clear_error(tmp_path: Path) -> None:
+    class ClearFailsAfterSave(FakeHwp):
+        def Clear(self, option: int = 0):
+            super().Clear(option)
+            if self.save_calls:
+                raise RuntimeError("clear failed")
+
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+    output = tmp_path / "a.docx"
+    fake = ClearFailsAfterSave(output_content=b"PK")
+    converter = build_converter(fake)
+
+    success, error = converter.convert_file(source, output, "DOCX")
+
+    assert success is True, error
+
+
+def test_cleanup_discards_document_instead_of_saving() -> None:
+    fake = FakeHwp()
+    converter = build_converter(fake)
+
+    converter.cleanup()
+
+    # 한글 Clear: 1=버림, 2/3=저장 (원본 문서가 디스크에 저장될 수 있음)
+    assert fake.clear_calls == [1]
+
+
+def test_convert_file_runs_compat_dialog_responder_for_owned_pids(tmp_path: Path, monkeypatch) -> None:
+    from typing import Any
+
+    import hwpmate.windows_integration as wi
+
+    created: list[Any] = []
+
+    class FakeResponder:
+        def __init__(self, pids_provider):
+            self.pids_provider = pids_provider
+            self.response_count = 2
+            self.entered = False
+            created.append(self)
+
+        def __enter__(self):
+            self.entered = True
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+    monkeypatch.setattr(wi, "HwpDialogAutoResponder", FakeResponder)
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+    fake = FakeHwp(output_content=b"PK")
+    converter = build_converter(fake)
+    converter.owned_pids = {4321}
+
+    success, _ = converter.convert_file(source, tmp_path / "a.docx", "DOCX")
+
+    assert success is True
+    assert len(created) == 1
+    assert created[0].pids_provider() == {4321}
+    assert converter.compat_dialog_responses == 2
+
+
+def test_convert_file_skips_compat_responder_without_owned_pids_or_when_disabled(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import hwpmate.windows_integration as wi
+
+    created: list[object] = []
+    monkeypatch.setattr(wi, "HwpDialogAutoResponder", lambda provider: created.append(provider))
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+
+    converter = build_converter(FakeHwp(output_content=b"PK"))
+    converter.convert_file(source, tmp_path / "a.docx", "DOCX")
+
+    disabled = build_converter(FakeHwp(output_content=b"PK"))
+    disabled.owned_pids = {4321}
+    disabled.auto_continue_compat_dialogs = False
+    disabled.convert_file(source, tmp_path / "b.docx", "DOCX")
+
+    assert created == []

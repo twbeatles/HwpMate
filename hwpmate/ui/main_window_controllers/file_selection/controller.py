@@ -11,7 +11,12 @@ from typing import Any
 from PyQt6.QtCore import QSignalBlocker
 from PyQt6.QtWidgets import QFileDialog, QMessageBox, QTableWidgetItem
 
-from ....constants import SCAN_BATCH_SIZE, SCAN_CANCEL_WAIT_MS, SUPPORTED_EXTENSIONS
+from ....constants import (
+    FOLDER_SCAN_WAIT_MS,
+    SCAN_BATCH_SIZE,
+    SCAN_CANCEL_WAIT_MS,
+    SUPPORTED_EXTENSIONS,
+)
 from ....logging_config import get_logger
 from ....path_utils import canonicalize_path, make_path_key
 from ....workers.file_scan_worker import FileScanWorker
@@ -102,7 +107,8 @@ class FileSelectionController:
         *,
         allow_while_planning: bool = False,
     ) -> None:
-        if self._input_locked() and not (allow_while_planning and self.state.is_planning):
+        # 계획 중 허용된 내부 재스캔은 _input_locked() 의 경고 토스트를 띄우지 않도록 먼저 판정한다.
+        if not (allow_while_planning and self.state.is_planning) and self._input_locked():
             return
 
         cleaned_inputs = [str(p).strip() for p in input_paths if str(p).strip()]
@@ -147,11 +153,21 @@ class FileSelectionController:
             allow_while_planning=allow_while_planning,
         )
 
-    def refresh_folder_scan_for_conversion(self, folder_path: str) -> bool:
-        """Refresh the folder cache without opening the normal input mutation path."""
+    def refresh_folder_scan_for_conversion(
+        self,
+        folder_path: str,
+        *,
+        wait_ms: int = FOLDER_SCAN_WAIT_MS,
+    ) -> bool:
+        """변환 직전 폴더 캐시를 새로 스캔하고 완료까지 기다린다.
+
+        대기 한도는 폴더 스캔 대기(FOLDER_SCAN_WAIT_MS)를 따른다. 짧은 취소 대기값을 쓰면
+        스캔이 그보다 오래 걸리는 대형/네트워크 폴더는 매번 캐시를 버리고 재스캔해
+        변환을 영영 시작할 수 없었다.
+        """
         self.invalidate_folder_scan_cache()
         self.start_folder_preview_scan(folder_path, allow_while_planning=True)
-        return self.wait_for_active_scan(SCAN_CANCEL_WAIT_MS)
+        return self.wait_for_active_scan(wait_ms)
 
     def append_files_batch(self, files: list[str]) -> int:
         if not files:

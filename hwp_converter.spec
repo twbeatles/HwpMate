@@ -95,7 +95,10 @@ a = Analysis(
         'hwpmate.services.hwp_converter',
         'hwpmate.services.hwp_print_settings',
         'hwpmate.windows_integration',
+        # 2026-09-15: 호환 문서 확인 창 자동 계속(지연 import) · GUI/CLI 공유 작업 실행기
+        'hwpmate.windows_integration.hwp_dialog_responder',
         'hwpmate.workers.conversion_worker',
+        'hwpmate.workers.conversion_worker.task_runner',
         'hwpmate.ui.dialogs',
         'hwpmate.ui.theme',
         'hwpmate.ui.main_window_ui',

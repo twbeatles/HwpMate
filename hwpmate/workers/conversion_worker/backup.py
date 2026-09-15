@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
 
 from ...constants import (
+    BACKUP_DIR_NAME,
     BACKUP_MAX_FILES_PER_STEM,
     BACKUP_MAX_FILES_PER_STEM_MAX,
     BACKUP_MAX_FILES_PER_STEM_MIN,
@@ -21,6 +23,14 @@ def _clamp_backup_max(max_files: int | None) -> int:
     return max(BACKUP_MAX_FILES_PER_STEM_MIN, min(BACKUP_MAX_FILES_PER_STEM_MAX, base))
 
 
+def _backup_name_pattern(stem: str, suffix: str) -> re.Pattern[str]:
+    """create_backup 이 만드는 이름만 매칭: {stem}_{YYYYmmdd_HHMMSS_ffffff}[_{n}]{suffix}."""
+    return re.compile(
+        rf"^{re.escape(stem)}_(\d{{8}}_\d{{6}}_\d{{6}})(?:_(\d+))?{re.escape(suffix)}$",
+        re.IGNORECASE,
+    )
+
+
 def _prune_old_backups(
     backup_dir: Path,
     stem: str,
@@ -31,23 +41,23 @@ def _prune_old_backups(
 ) -> None:
     """동일 stem(+suffix) 백업이 한도를 넘으면 오래된 것부터 삭제.
 
-    방금 만든 keep_path 는 절대 삭제하지 않는다 (mtime 동점 오삭제 방지).
+    - 정확한 백업 파일명 패턴만 대상으로 한다 (report.hwp 정리 시 report_1.hwp 백업 보호).
+    - 정렬은 파일명의 생성 타임스탬프 기준 (copy2 가 원본 mtime 을 보존하므로 mtime 사용 금지).
+    - 방금 만든 keep_path 는 절대 삭제하지 않는다.
     """
     try:
         max_keep = _clamp_backup_max(max_files)
-        prefix = f"{stem}_"
+        pattern = _backup_name_pattern(stem, suffix)
         keep_resolved = keep_path.resolve() if keep_path is not None else None
-        candidates: list[Path] = []
+        candidates: list[tuple[str, int, str, Path]] = []
         for entry in backup_dir.iterdir():
-            if not entry.is_file():
-                continue
-            if entry.suffix.lower() != suffix.lower():
-                continue
-            if not entry.name.startswith(prefix):
+            match = pattern.match(entry.name)
+            if match is None or not entry.is_file():
                 continue
             if keep_resolved is not None and entry.resolve() == keep_resolved:
                 continue
-            candidates.append(entry)
+            counter = int(match.group(2)) if match.group(2) else 0
+            candidates.append((match.group(1), counter, entry.name, entry))
 
         # keep_path 1개를 포함한 총 상한
         slots_for_old = max_keep - (1 if keep_resolved is not None else 0)
@@ -55,8 +65,8 @@ def _prune_old_backups(
             slots_for_old = 0
         if len(candidates) <= slots_for_old:
             return
-        candidates.sort(key=lambda p: (p.stat().st_mtime, p.name))
-        for old in candidates[: len(candidates) - slots_for_old]:
+        candidates.sort(key=lambda item: (item[0], item[1], item[2]))
+        for _timestamp, _counter, _name, old in candidates[: len(candidates) - slots_for_old]:
             try:
                 old.unlink(missing_ok=True)
                 logger.debug(f"오래된 백업 정리: {old}")
@@ -69,7 +79,7 @@ def _prune_old_backups(
 def create_backup(file_path: Path, *, max_files: int | None = None) -> Path:
     """파일 백업 생성"""
     try:
-        backup_dir = file_path.parent / "backup"
+        backup_dir = file_path.parent / BACKUP_DIR_NAME
         backup_dir.mkdir(exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")

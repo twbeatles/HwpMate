@@ -46,6 +46,7 @@ class MainWindowWidgets:
     backup_check: QCheckBox
     backup_max_spin: QSpinBox
     auto_accept_security_check: QCheckBox
+    auto_continue_compat_check: QCheckBox
     pdf_export_mode_combo: QComboBox
     retry_spin: QSpinBox
     start_btn: QPushButton

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timedelta, timezone
@@ -146,3 +146,134 @@ def test_cleanup_update_backups(tmp_path: Path) -> None:
     cleanup_update_backups(target, keep_count=2)
     remaining = sorted(p.name for p in tmp_path.glob("app.exe.v*.bak"))
     assert len(remaining) == 2
+
+
+def test_apply_staged_update_replace_failure_keeps_old_version_and_removes_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hwpmate.services.update_installer as installer
+
+    target = tmp_path / "app.exe"
+    staged = tmp_path / "staged.exe"
+    backup = tmp_path / "app.exe.v9.0.bak"
+    target.write_bytes(b"old")
+    staged.write_bytes(b"new")
+
+    def locked_replace(src, dst):
+        raise PermissionError("target locked")
+
+    monkeypatch.setattr(installer.os, "replace", locked_replace)
+
+    with pytest.raises(UpdateApplyError) as exc_info:
+        apply_staged_update(
+            target=target,
+            staged=staged,
+            backup=backup,
+            smoke_runner=lambda p: True,
+            replace_attempts=2,
+            replace_delay=0,
+        )
+
+    assert exc_info.value.status == "failed"
+    assert target.read_bytes() == b"old"
+    assert not backup.exists()
+
+
+def test_apply_staged_update_rollback_status_is_explicit(tmp_path: Path) -> None:
+    target = tmp_path / "app.exe"
+    staged = tmp_path / "staged.exe"
+    backup = tmp_path / "app.exe.v9.0.bak"
+    target.write_bytes(b"old")
+    staged.write_bytes(b"bad")
+
+    with pytest.raises(UpdateApplyError) as exc_info:
+        apply_staged_update(target=target, staged=staged, backup=backup, smoke_runner=lambda p: False)
+
+    assert exc_info.value.status == "rolled_back"
+    assert target.read_bytes() == b"old"
+
+
+def test_apply_staged_update_rollback_failure_is_reported_as_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hwpmate.services.update_installer as installer
+
+    target = tmp_path / "app.exe"
+    staged = tmp_path / "staged.exe"
+    backup = tmp_path / "app.exe.v9.0.bak"
+    target.write_bytes(b"old")
+    staged.write_bytes(b"bad")
+    real_replace = installer.os.replace
+    calls: list[tuple[str, str]] = []
+
+    def replace_then_lock(src, dst):
+        calls.append((str(src), str(dst)))
+        if len(calls) == 1:
+            return real_replace(src, dst)
+        raise PermissionError("locked during rollback")
+
+    monkeypatch.setattr(installer.os, "replace", replace_then_lock)
+
+    with pytest.raises(UpdateApplyError) as exc_info:
+        apply_staged_update(
+            target=target,
+            staged=staged,
+            backup=backup,
+            smoke_runner=lambda p: False,
+            replace_attempts=2,
+            replace_delay=0,
+        )
+
+    assert exc_info.value.status == "failed"
+    assert "수동 복구" in str(exc_info.value)
+    assert backup.read_bytes() == b"old"  # 유일한 정상본은 남긴다
+
+
+def test_unique_update_backup_path_skips_existing_backups(tmp_path: Path) -> None:
+    from hwpmate.services.update_installer import unique_update_backup_path
+
+    target = tmp_path / "app.exe"
+    target.write_bytes(b"x")
+    (tmp_path / "app.exe.v9.1.0.bak").write_bytes(b"old")
+    (tmp_path / "app.exe.v9.1.0.1.bak").write_bytes(b"old")
+
+    assert unique_update_backup_path(target, "9.1.0") == (tmp_path / "app.exe.v9.1.0.2.bak").resolve()
+
+
+def test_cleanup_update_staging_removes_helpers_and_stale_downloads(tmp_path: Path) -> None:
+    from hwpmate.services.update_installer import cleanup_update_staging
+
+    helper = tmp_path / "update-helper-abc.exe"
+    stale = tmp_path / "update-9.2.0-def.exe"
+    keep = tmp_path / "update-9.3.0-ghi.exe"
+    result = tmp_path / "last-update-result.json"
+    for path in (helper, stale, keep, result):
+        path.write_bytes(b"x")
+
+    removed = cleanup_update_staging(tmp_path, keep=[keep])
+
+    assert removed == 2
+    assert not helper.exists() and not stale.exists()
+    assert keep.exists() and result.exists()
+
+
+def test_wait_for_process_exit_really_waits_for_live_process() -> None:
+    import subprocess
+    import sys
+
+    from hwpmate.services.update_installer import wait_for_process_exit
+
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        # os.kill(pid, 0) 기반 구현은 콘솔 없는 헬퍼에서 즉시 반환해 버렸다.
+        assert wait_for_process_exit(child.pid, 0.3) is False
+    finally:
+        child.kill()
+        child.wait(timeout=10)
+    assert wait_for_process_exit(child.pid, 5.0) is True
+
+
+def test_wait_for_process_exit_accepts_missing_pid() -> None:
+    from hwpmate.services.update_installer import wait_for_process_exit
+
+    assert wait_for_process_exit(0) is True

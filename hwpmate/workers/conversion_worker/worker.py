@@ -7,7 +7,7 @@ from typing import Callable, Optional, Protocol
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from ...logging_config import get_logger
-from ...constants import CONVERTER_RECYCLE_BATCH_COUNT, MAX_RETRY_COUNT, RETRY_DELAY_SECONDS
+from ...constants import CONVERTER_RECYCLE_BATCH_COUNT, MAX_RETRY_COUNT
 from ...models import ConversionSummary, ConversionTask, PlannedConversion
 
 from ...services.hwp_converter import HWPConverter, pythoncom
@@ -24,6 +24,13 @@ from .summary import (
     build_summary as build_summary_fn,
     collect_converter_warnings as collect_converter_warnings_fn,
     engine_status_payload,
+)
+from .task_runner import (
+    TaskRunOptions,
+    compat_dialog_note,
+    execute_task,
+    fail_pending_tasks,
+    recycle_converter,
 )
 
 
@@ -88,6 +95,13 @@ class ConversionWorker(QThread):
         try:
             converter = self._converter_factory()
             self.converter = converter
+            # 호환 문서 확인 창 자동 계속 설정은 변환 호출 전에 반영한다 (initialize 결과와 무관).
+            if hasattr(converter, "auto_continue_compat_dialogs"):
+                setattr(
+                    converter,
+                    "auto_continue_compat_dialogs",
+                    bool(getattr(self.planned_conversion, "auto_continue_compat_dialog", True)),
+                )
             self._set_stage("한글 연결")
             self.status_updated.emit(
                 "한글 프로그램 연결 중... 허용/보안 창이 뜨면 작업 표시줄을 확인해 주세요."
@@ -118,87 +132,26 @@ class ConversionWorker(QThread):
                 return
             self.status_updated.emit(f"연결 성공: {converter.progid_used}")
 
+            options = TaskRunOptions.from_plan(self.planned_conversion)
             for idx, task in enumerate(self.tasks):
                 if self.cancel_requested:
                     self.status_updated.emit("사용자가 취소했습니다.")
                     break
 
                 self.status_updated.emit(f"변환 중: {task.input_file.name}")
-
-                if self.backup_enabled:
-                    self._set_stage("백업 생성")
-                    try:
-                        task.backup_file = self._create_backup(task.input_file)
-                    except Exception as e:
-                        task.backup_error = str(e)
-                        logger.warning(f"백업 실패 (계속 진행): {e}")
-
-                original_output = task.output_file
-                self._set_stage("출력 경로 확인")
-                if self._task_planner.allocate_output_path(
-                    task,
-                    used_path_keys=used_output_path_keys,
-                    overwrite=self.planned_conversion.overwrite,
-                    format_type=self.format_type,
-                ):
-                    warning = f"변환 직전 출력 충돌 감지로 경로 변경: {original_output} -> {task.output_file}"
-                    runtime_warnings.append(warning)
-                    logger.warning(warning)
-
-                try:
-                    self._set_stage("출력 폴더 준비")
-                    task.output_file.parent.mkdir(parents=True, exist_ok=True)
-                except Exception as e:
-                    task.status = "실패"
-                    task.error = f"폴더 생성 실패: {e}"
-                    self.progress_updated.emit(idx + 1, total, task.input_file.name)
-                    continue
-
-                if not task.input_file.exists():
-                    task.status = "실패"
-                    task.error = f"파일을 찾을 수 없음: {task.input_file.name}"
-                    logger.warning(f"파일 없음: {task.input_file}")
-                    self.progress_updated.emit(idx + 1, total, task.input_file.name)
-                    continue
-
-                task.status = "진행중"
-                success = False
-                error: str | None = None
-                for attempt in range(self.retry_count + 1):
-                    if self.cancel_requested:
-                        break
-
-                    self._set_stage("COM 내보내기")
-                    success, error = converter.convert_file(
-                        task.input_file,
-                        task.output_file,
-                        self.format_type,
+                runtime_warnings.extend(
+                    execute_task(
+                        task,
+                        converter,
+                        options,
+                        planner=self._task_planner,
+                        used_output_path_keys=used_output_path_keys,
                         cancel_check=lambda: self.cancel_requested,
+                        create_backup_fn=self._create_backup,
+                        on_stage=self._set_stage,
+                        on_status=self.status_updated.emit,
                     )
-                    if success:
-                        self._apply_converter_artifacts(task, converter)
-                        break
-
-                    if attempt < self.retry_count:
-                        self._set_stage("재시도 대기")
-                        task.retry_count += 1
-                        self.status_updated.emit(
-                            f"재시도 중: {task.input_file.name} ({task.retry_count}/{self.retry_count})"
-                        )
-                        time.sleep(RETRY_DELAY_SECONDS)
-
-                if success:
-                    task.status = "성공"
-                    task.error = None
-                elif self.cancel_requested:
-                    # 취소 요청 후 실패(또는 미완료)는 실패 대신 취소로 집계한다.
-                    detail = error.strip() if error else "사용자 취소"
-                    task.status = "취소됨"
-                    task.error = detail if detail == "사용자 취소" else f"사용자 취소 ({detail})"
-                else:
-                    task.status = "실패"
-                    task.error = error
-
+                )
                 self.progress_updated.emit(idx + 1, total, task.input_file.name)
 
                 # 대량 변환 시 한글 프로세스 메모리/GDI 누수 방지를 위한 주기적 재순환
@@ -208,16 +161,17 @@ class ConversionWorker(QThread):
                     and not self.cancel_requested
                 ):
                     self.status_updated.emit("대량 변환 최적화: 한글 프로세스 재순환 중...")
-                    try:
-                        converter.cleanup()
-                        converter.initialize(manage_com_apartment=False)
-                        if hasattr(converter, "pdf_export_mode"):
-                            converter.pdf_export_mode = normalize_pdf_export_mode(
-                                getattr(self.planned_conversion, "pdf_export_mode", None)
-                            )
+                    self._set_stage("한글 프로세스 재순환")
+                    recycle_error = recycle_converter(converter, options)
+                    if recycle_error is None:
                         self._emit_engine_status(converter)
-                    except Exception as recycle_exc:
-                        logger.warning(f"한글 프로세스 재순환 중 오류 발생 (계속 진행): {recycle_exc}")
+                        continue
+                    message = f"한글 프로세스 재순환 실패로 남은 작업을 중단했습니다: {recycle_error}"
+                    failed = fail_pending_tasks(self.tasks, message)
+                    runtime_warnings.append(f"{message} (미처리 {failed}개 실패 처리)")
+                    logger.error(message)
+                    self.progress_updated.emit(total, total, "재순환 실패")
+                    break
 
             if self.cancel_requested:
 
@@ -227,6 +181,9 @@ class ConversionWorker(QThread):
                         task.error = "사용자 취소"
 
             self.progress_updated.emit(total, total, "완료" if not self.cancel_requested else "취소됨")
+            note = compat_dialog_note(converter)
+            if note:
+                runtime_warnings.append(note)
             summary = self._build_summary(
                 warnings=list(self.planned_conversion.warnings) + runtime_warnings,
                 elapsed_seconds=time.perf_counter() - start_ts,

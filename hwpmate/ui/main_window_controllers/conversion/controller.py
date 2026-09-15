@@ -23,6 +23,7 @@ from ....constants import (
 from ....logging_config import get_logger
 from ....models import ConversionSummary, ConversionTask, PlannedConversion
 from ....path_utils import check_write_permission, is_valid_path_name
+from ....services.task_planner import count_protected_source_renames
 from ....services.hwp_print_settings import (
     PDF_EXPORT_SAVEAS_FIRST,
     normalize_pdf_export_mode,
@@ -51,6 +52,12 @@ class ConversionController:
         if check is not None:
             return bool(check.isChecked())
         return bool(self.window.config.get("auto_accept_security_dialog", True))
+
+    def _auto_continue_compat_from_ui(self) -> bool:
+        check = getattr(self.window, "auto_continue_compat_check", None)
+        if check is not None:
+            return bool(check.isChecked())
+        return bool(self.window.config.get("auto_continue_compat_dialog", True))
 
     def _pdf_export_mode_from_ui(self) -> str:
         combo = getattr(self.window, "pdf_export_mode_combo", None)
@@ -210,6 +217,7 @@ class ConversionController:
             backup_max_files_per_stem=self._backup_max_files_from_ui(),
             pdf_export_mode=self._pdf_export_mode_from_ui(),
             folder_file_paths=folder_file_paths if is_folder_mode else None,
+            auto_continue_compat_dialog=self._auto_continue_compat_from_ui(),
         )
 
     def _set_planning(self, planning: bool) -> None:
@@ -227,16 +235,27 @@ class ConversionController:
         if not folder:
             raise ValueError("폴더를 선택하세요.")
 
-        # 변환 직전에는 항상 비동기 최신 스캔을 수행한다.
+        # 변환 직전에는 비동기 최신 스캔을 수행한다.
+        # 단, 직전에 진행 중이던 미리보기 스캔 완료를 기다려 얻은 캐시는 이미 최신이므로 재사용한다.
         scan_worker = self.state.scan_worker
         scan_running = bool(
             scan_worker
             and getattr(scan_worker, "isRunning", lambda: False)()
             and self.state.scan_mode == "folder_preview"
         )
+        if not scan_running and self._waited_for_folder_scan:
+            fresh = self.window.file_selection_controller.get_folder_scan_cache(
+                folder_path=folder,
+                include_sub=self.window.include_sub_check.isChecked(),
+                max_age_seconds=FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS,
+            )
+            if fresh is not None:
+                return
         if not scan_running:
             self.window.status_label.setText("폴더 스캔 시작 중 (변환 직전 최신화)...")
-            if not self.window.file_selection_controller.refresh_folder_scan_for_conversion(folder):
+            if not self.window.file_selection_controller.refresh_folder_scan_for_conversion(
+                folder, wait_ms=FOLDER_SCAN_WAIT_MS
+            ):
                 self._abort_if_close_requested()
                 raise ValueError("폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요.")
             QApplication.processEvents()
@@ -255,6 +274,17 @@ class ConversionController:
             overwrite=overwrite,
             format_type=plan.format_type,
         )
+
+    @staticmethod
+    def _append_protected_source_warning(plan: PlannedConversion, *, overwrite: bool) -> None:
+        if not overwrite:
+            return
+        protected = count_protected_source_renames(plan.tasks)
+        if protected:
+            plan.warnings.append(
+                f"원본 한글 문서 보호: 출력 경로가 기존 .hwp/.hwpx 문서와 같은 {protected}개는 "
+                "덮어쓰기 설정과 관계없이 새 이름으로 저장합니다."
+            )
 
     def validate_output_settings(self) -> None:
         if self.window.same_location_check.isChecked():
@@ -408,6 +438,7 @@ class ConversionController:
             self._abort_if_close_requested()
             overwrite = self.window.overwrite_check.isChecked()
             plan.conflict_renamed_count = self.adjust_output_paths(plan, overwrite=overwrite)
+            self._append_protected_source_warning(plan, overwrite=overwrite)
             if plan.conflict_renamed_count:
                 if overwrite:
                     plan.warnings.append(
@@ -684,12 +715,16 @@ class ConversionController:
             retry_count=self.window.retry_spin.value(),
             backup_max_files_per_stem=self._backup_max_files_from_ui(),
             pdf_export_mode=self._pdf_export_mode_from_ui(),
+            auto_continue_compat_dialog=self._auto_continue_compat_from_ui(),
             tasks=retry_tasks,
             warnings=warnings + ["실패 항목만 다시 변환합니다."],
         )
         plan.conflict_renamed_count = self.adjust_output_paths(
             plan,
             overwrite=self.window.overwrite_check.isChecked(),
+        )
+        self._append_protected_source_warning(
+            plan, overwrite=self.window.overwrite_check.isChecked()
         )
         if plan.conflict_renamed_count:
             plan.warnings.append(

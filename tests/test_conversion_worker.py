@@ -442,3 +442,125 @@ def test_conversion_worker_emits_com_export_stage(tmp_path: Path) -> None:
     worker.run()
 
     assert "COM 내보내기" in stages
+
+
+def test_create_backup_prune_keeps_backups_of_other_prefixed_files(tmp_path: Path) -> None:
+    import hwpmate.workers.conversion_worker.backup as backup_module
+
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    others = []
+    for i in range(5):
+        other = backup_dir / f"report_{i}_20260101_00000{i}_000000.hwp"
+        other.write_text("other", encoding="utf-8")
+        others.append(other)
+    source = tmp_path / "report.hwp"
+    source.write_text("x", encoding="utf-8")
+
+    backup_module.create_backup(source, max_files=3)
+
+    assert all(path.exists() for path in others)
+
+
+def test_create_backup_prune_orders_by_backup_timestamp_not_source_mtime(tmp_path: Path) -> None:
+    import os
+
+    import hwpmate.workers.conversion_worker.backup as backup_module
+
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    oldest = backup_dir / "doc_20200101_000000_000000.hwp"
+    middle = backup_dir / "doc_20210101_000000_000000.hwp"
+    newest = backup_dir / "doc_20220101_000000_000000.hwp"
+    for path in (oldest, middle, newest):
+        path.write_text("b", encoding="utf-8")
+    # copy2 는 원본 mtime 을 보존하므로 mtime 이 백업 순서를 뜻하지 않는다.
+    os.utime(newest, (1, 1))
+    os.utime(oldest, (2_000_000_000, 2_000_000_000))
+    source = tmp_path / "doc.hwp"
+    source.write_text("x", encoding="utf-8")
+
+    created = backup_module.create_backup(source, max_files=3)
+
+    assert created.exists()
+    assert not oldest.exists()
+    assert middle.exists() and newest.exists()
+
+
+def test_conversion_worker_fails_pending_tasks_when_recycle_initialize_fails(tmp_path: Path, monkeypatch) -> None:
+    import hwpmate.workers.conversion_worker.task_runner as runner_module
+    import hwpmate.workers.conversion_worker.worker as worker_impl
+
+    monkeypatch.setattr(worker_impl, "CONVERTER_RECYCLE_BATCH_COUNT", 2)
+    monkeypatch.setattr(runner_module, "RECYCLE_INITIALIZE_DELAY_SECONDS", 0)
+    inputs = []
+    for name in ("a", "b", "c", "d"):
+        path = tmp_path / f"{name}.hwp"
+        path.write_text("x", encoding="utf-8")
+        inputs.append(path)
+
+    class RecycleFailConverter(StubConverter):
+        def __init__(self) -> None:
+            super().__init__(results={p.name: (True, None) for p in inputs})
+            self.init_calls = 0
+
+        def initialize(self, *, manage_com_apartment: bool = True) -> bool:
+            self.init_calls += 1
+            if self.init_calls > 1:
+                raise RuntimeError("dispatch failed")
+            return True
+
+    converter = RecycleFailConverter()
+    plan = PlannedConversion(
+        format_type="PDF",
+        same_location=True,
+        output_path="",
+        retry_count=0,
+        backup_enabled=False,
+        tasks=[ConversionTask(p, p.with_suffix(".pdf")) for p in inputs],
+    )
+    summaries = []
+    worker = ConversionWorker(plan, converter_factory=lambda: converter)
+    worker.task_completed.connect(lambda summary: summaries.append(summary))
+
+    worker.run()
+
+    summary = summaries[0]
+    assert summary.success_count == 2
+    assert summary.failed_count == 2
+    assert converter.init_calls == 1 + runner_module.RECYCLE_INITIALIZE_ATTEMPTS
+    assert any("재순환 실패" in warning for warning in summary.warnings)
+    failed = [task for task in summary.tasks if task.status == "실패"]
+    assert all("dispatch failed" in (task.error or "") for task in failed)
+
+
+def test_conversion_worker_propagates_compat_dialog_setting_and_reports_responses(tmp_path: Path) -> None:
+    source = tmp_path / "a.hwp"
+    source.write_text("x", encoding="utf-8")
+
+    class CompatConverter(StubConverter):
+        auto_continue_compat_dialogs = True
+        compat_dialog_responses = 0
+
+        def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+            self.compat_dialog_responses += 1
+            return super().convert_file(input_path, output_path, format_type, cancel_check=cancel_check)
+
+    converter = CompatConverter(results={"a.hwp": (True, None)})
+    plan = PlannedConversion(
+        format_type="DOCX",
+        same_location=True,
+        output_path="",
+        retry_count=0,
+        backup_enabled=False,
+        auto_continue_compat_dialog=False,
+        tasks=[ConversionTask(source, tmp_path / "a.docx")],
+    )
+    summaries = []
+    worker = ConversionWorker(plan, converter_factory=lambda: converter)
+    worker.task_completed.connect(lambda summary: summaries.append(summary))
+
+    worker.run()
+
+    assert converter.auto_continue_compat_dialogs is False
+    assert any("호환 문서" in warning for warning in summaries[0].warnings)

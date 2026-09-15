@@ -380,6 +380,17 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
     )
     options_layout.addWidget(window.auto_accept_security_check)
 
+    window.auto_continue_compat_check = QCheckBox("호환 형식 저장 확인 창 「계속」 자동 선택")
+    window.auto_continue_compat_check.setToolTip(
+        "DOCX·RTF 등으로 저장할 때 한글이 띄우는 「호환 문서 — 문서 내용의 배치가 변경될 수 있습니다. "
+        "저장을 계속할까요?」 창에 자동으로 「계속」합니다. 앱이 띄운 한글 프로세스에만 적용됩니다. "
+        "끄면 변환이 창에서 멈추며 직접 눌러야 합니다."
+    )
+    window.auto_continue_compat_check.setChecked(
+        window.config.get("auto_continue_compat_dialog", True)
+    )
+    options_layout.addWidget(window.auto_continue_compat_check)
+
     pdf_mode_row = QHBoxLayout()
     pdf_mode_row.setSpacing(10)
     pdf_mode_label = QLabel("PDF 내보내기:")
@@ -509,6 +520,7 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
         backup_check=window.backup_check,
         backup_max_spin=window.backup_max_spin,
         auto_accept_security_check=window.auto_accept_security_check,
+        auto_continue_compat_check=window.auto_continue_compat_check,
         pdf_export_mode_combo=window.pdf_export_mode_combo,
         retry_spin=window.retry_spin,
         start_btn=window.start_btn,

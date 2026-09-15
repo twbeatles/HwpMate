@@ -121,3 +121,23 @@ def test_save_reports_failure_when_parent_is_not_directory(tmp_path: Path) -> No
 
     assert repo.save(AppConfig(theme="light")) is False
     assert blocked_parent.read_text(encoding="utf-8") == "not a directory"
+
+
+def test_auto_continue_compat_dialog_setting_roundtrip_and_repair(tmp_path: Path) -> None:
+    import json
+
+    from hwpmate.config_repository import ConfigRepository
+
+    config_file = tmp_path / "config.json"
+    config_file.write_text(json.dumps({"auto_continue_compat_dialog": "off"}), encoding="utf-8")
+    repo = ConfigRepository(config_file)
+
+    loaded = repo.load()
+    assert loaded.auto_continue_compat_dialog is False
+
+    config_file.write_text(json.dumps({"auto_continue_compat_dialog": "garbage"}), encoding="utf-8")
+    assert repo.load().auto_continue_compat_dialog is True
+
+    loaded.auto_continue_compat_dialog = False
+    assert repo.save(loaded) is True
+    assert repo.load().auto_continue_compat_dialog is False

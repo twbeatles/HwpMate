@@ -583,3 +583,98 @@ def test_wait_for_active_scan_returns_false_when_close_requested(
     window.state.close_requested = True
     window.state.scan_worker = None
     assert window.file_selection_controller.wait_for_active_scan(1000) is False
+
+
+def test_folder_conversion_starts_even_when_scan_is_slower_than_cancel_wait(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
+    """ISSUE-001: 스캔이 짧은 취소 대기값보다 오래 걸려도 변환 사전 점검까지 진행돼야 한다."""
+    import time
+
+    import hwpmate.ui.main_window_controllers.file_selection.controller as selection_module
+    import hwpmate.workers.file_scan_worker as scan_module
+    from PyQt6.QtWidgets import QMessageBox
+
+    window, _ = create_window(monkeypatch, qapp)
+    (tmp_path / "a.hwp").write_text("x", encoding="utf-8")
+    real_iter = scan_module.iter_supported_files
+
+    def slow_iter(*args, **kwargs):
+        time.sleep(0.5)
+        yield from real_iter(*args, **kwargs)
+
+    monkeypatch.setattr(scan_module, "iter_supported_files", slow_iter)
+    # 과거 구현은 변환 직전 재스캔을 이 짧은 값만큼만 기다렸다.
+    monkeypatch.setattr(selection_module, "SCAN_CANCEL_WAIT_MS", 100)
+    warnings: list[str] = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: warnings.append(str(args[2])))
+    toasts: list[str] = []
+    monkeypatch.setattr(window.toast, "show_message", lambda message, *a, **k: toasts.append(message))
+    reached: list[int] = []
+    monkeypatch.setattr(
+        window.conversion_controller,
+        "_confirm_preflight_and_start_worker",
+        lambda plan, **kwargs: reached.append(len(plan.tasks)) or False,
+    )
+    window.folder_radio.setChecked(True)
+    window.folder_entry.setText(str(tmp_path))
+
+    window.conversion_controller.start_conversion()
+
+    assert reached == [1]
+    assert warnings == []
+    assert not any("작업 준비 중에는 입력을 변경할 수 없습니다" in toast for toast in toasts)
+    window.file_selection_controller.wait_for_active_scan(5000)
+
+
+def test_update_apply_is_refused_while_converting(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
+    import hwpmate.ui.main_window_controllers.update as update_module
+    from hwpmate.services.update_manifest import ReleaseManifest
+    from datetime import datetime, timezone
+
+    window, _ = create_window(monkeypatch, qapp)
+    controller = window.update_controller
+    staged = tmp_path / "update-9.9.9-x.exe"
+    staged.write_bytes(b"x")
+    manifest = ReleaseManifest(
+        version="9.9.9",
+        artifact_url="https://example.com/a.exe",
+        artifact_sha256="0" * 64,
+        artifact_size=1,
+        expires_at=datetime.now(timezone.utc),
+        signature="sig",
+    )
+    controller._staged_file = staged
+    controller._staged_manifest = manifest
+    controller._current_manifest = manifest
+    launched: list[object] = []
+    monkeypatch.setattr(update_module, "launch_update_helper", lambda **kwargs: launched.append(kwargs))
+    toasts: list[str] = []
+    monkeypatch.setattr(window.toast, "show_message", lambda message, *a, **k: toasts.append(message))
+    window.state.is_converting = True
+
+    controller._apply_and_restart()
+
+    assert launched == []
+    assert any("변환 작업이 진행 중" in toast for toast in toasts)
+    assert controller._has_staged_file_for(manifest) is True
+
+
+def test_update_startup_tasks_run_once_across_show_events(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
+    import hwpmate.ui.main_window_controllers.update as update_module
+
+    window, _ = create_window(monkeypatch, qapp)
+    controller = window.update_controller
+    scheduled: list[int] = []
+    monkeypatch.setattr(update_module.QTimer, "singleShot", lambda delay, callback: scheduled.append(delay))
+    consumed: list[object] = []
+    monkeypatch.setattr(update_module, "consume_update_result", lambda path: consumed.append(path) or None)
+    monkeypatch.setattr(update_module, "cleanup_update_staging", lambda root: 0)
+
+    controller.schedule_startup_check(3000)
+    controller.schedule_startup_check(3000)
+    controller.check_previous_update_result()
+    controller.check_previous_update_result()
+
+    assert scheduled == [3000]
+    assert len(consumed) == 1

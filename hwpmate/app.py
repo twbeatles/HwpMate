@@ -11,12 +11,21 @@ from typing import Optional
 from PyQt6.QtWidgets import QApplication, QMessageBox, QStyleFactory
 
 from .app_instance import SingleInstanceLock
-from .constants import FORMAT_TYPES, VERSION
+from .constants import FORMAT_TYPES, SUPPORTED_EXTENSIONS, VERSION
 from .logging_config import get_logger
+from .models import ConversionSummary
 from .services.hwp_converter import HWPConverter, PYWIN32_AVAILABLE, pythoncom
 from .services.hwp_print_settings import normalize_pdf_export_mode
-from .services.task_planner import TaskPlanner
-from .services.update_installer import apply_staged_update, write_update_result
+from .services.task_planner import TaskPlanner, count_protected_source_renames
+from .services.update_installer import (
+    UPDATE_STATUS_APPLIED,
+    UPDATE_STATUS_ROLLED_BACK,
+    apply_staged_update,
+    update_status_for_exception,
+    wait_for_file_writable,
+    wait_for_process_exit,
+    write_update_result,
+)
 from .ui.main_window import MainWindow
 from .windows_integration import (
     enable_drag_drop_for_admin,
@@ -153,6 +162,16 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         choices=["saveas_first", "print_to_pdf_ex_first"],
         help="PDF 내보내기 우선 모드 (saveas_first | print_to_pdf_ex_first).",
     )
+    parser.add_argument(
+        "--report",
+        default="",
+        help="변환 결과를 저장할 CSV 또는 JSON 경로 (확장자로 형식 결정).",
+    )
+    parser.add_argument(
+        "--no-auto-continue",
+        action="store_true",
+        help="한글 「호환 문서(배치가 변경될 수 있습니다)」 확인 창에 자동으로 계속하지 않습니다.",
+    )
 
     # 자동 업데이트 내부 헬퍼 인자
     parser.add_argument("--apply-update", action="store_true", help=argparse.SUPPRESS)
@@ -188,144 +207,252 @@ def _run_smoke(args: argparse.Namespace) -> int:
 
 
 def _wait_for_parent(parent_pid: int, timeout: float = 30.0) -> None:
+    """부모 앱 프로세스 종료를 기다린다 (os.kill(pid, 0) 은 Windows 에서 존재 확인이 아님)."""
     if parent_pid <= 0:
         return
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            os.kill(parent_pid, 0)
-        except OSError:
-            return
-        time.sleep(0.2)
-    raise TimeoutError("업데이트 적용 전 부모 프로세스가 종료되지 않았습니다.")
+    if not wait_for_process_exit(parent_pid, timeout):
+        raise TimeoutError("업데이트 적용 전 부모 프로세스가 종료되지 않았습니다.")
+
+
+def _relaunch(target: Path) -> None:
+    try:
+        import subprocess
+
+        subprocess.Popen([str(target.resolve())])
+    except Exception:
+        pass
 
 
 def _run_apply_update(args: argparse.Namespace) -> int:
+    target = Path(args.update_target)
     base_result = {
-        "target": str(Path(args.update_target).resolve()),
+        "target": str(target.resolve()),
         "backup": str(Path(args.update_backup).resolve()),
         "completed_at": time.time(),
     }
     try:
         _wait_for_parent(args.update_parent_pid)
+        # onefile 부트로더가 exe 이미지를 놓을 때까지 대기 (교체 자체도 재시도한다)
+        wait_for_file_writable(target.resolve())
         apply_staged_update(
-            target=Path(args.update_target),
+            target=target,
             staged=Path(args.update_staged),
             backup=Path(args.update_backup),
             expected_sha256=args.update_expected_sha256,
             expected_size=args.update_expected_size,
         )
     except Exception as exc:
-        status = "rolled_back" if "rolled back" in str(exc).lower() or "롤백" in str(exc) else "failed"
+        status = update_status_for_exception(exc)
         write_update_result(
             args.update_result_file,
             {**base_result, "status": status, "error": str(exc)},
         )
+        if status == UPDATE_STATUS_ROLLED_BACK:
+            # 이전 버전으로 복구됐으므로 사용자가 앱이 사라졌다고 느끼지 않게 다시 실행한다.
+            _relaunch(target)
         return 1
 
-    write_update_result(args.update_result_file, {**base_result, "status": "applied"})
-    try:
-        import subprocess
-        subprocess.Popen([str(Path(args.update_target).resolve())])
-    except Exception:
-        pass
+    write_update_result(args.update_result_file, {**base_result, "status": UPDATE_STATUS_APPLIED})
+    _relaunch(target)
     return 0
 
 
+def _cli_error(message: str) -> int:
+    print(f"[오류] {message}", file=sys.stderr)
+    return 1
+
+
+def _write_cli_report(report_path: str, summary: ConversionSummary) -> str | None:
+    target = str(report_path or "").strip()
+    if not target:
+        return None
+    from .ui.dialogs.atomic_io import write_results_csv, write_results_json
+
+    path = Path(target).resolve()
+    if path.suffix.lower() == ".json":
+        write_results_json(path, summary)
+    else:
+        if path.suffix.lower() != ".csv":
+            path = path.with_suffix(".csv")
+        write_results_csv(path, summary)
+    return str(path)
+
+
 def _run_cli_conversion(args: argparse.Namespace) -> int:
-    """헤드리스 CLI 일괄 변환 실행."""
+    """헤드리스 CLI 일괄 변환 실행 (GUI 워커와 같은 작업 실행기 사용)."""
+    from .workers.conversion_worker.summary import collect_converter_warnings
+    from .workers.conversion_worker.task_runner import (
+        TaskRunOptions,
+        compat_dialog_note,
+        execute_task,
+        fail_pending_tasks,
+        recycle_converter,
+    )
+    from .constants import CONVERTER_RECYCLE_BATCH_COUNT, MAX_RETRY_COUNT
+
     _ensure_cli_console_output()
+    started = time.perf_counter()
     input_path = Path(args.input).resolve()
     if not input_path.exists():
-        print(f"[오류] 입력 경로가 존재하지 않습니다: {input_path}", file=sys.stderr)
-        return 1
+        return _cli_error(f"입력 경로가 존재하지 않습니다: {input_path}")
 
     format_type = str(args.format).upper().strip()
     if format_type not in FORMAT_TYPES:
-        print(
-            f"[오류] 지원하지 않는 출력 형식: {args.format} (가능한 형식: {', '.join(FORMAT_TYPES.keys())})",
-            file=sys.stderr,
+        return _cli_error(
+            f"지원하지 않는 출력 형식: {args.format} (가능한 형식: {', '.join(FORMAT_TYPES.keys())})"
         )
-        return 1
 
     is_folder_mode = input_path.is_dir()
+    if not is_folder_mode and input_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+        return _cli_error(
+            f"한글 문서(.hwp/.hwpx)만 변환할 수 있습니다: {input_path.name}"
+        )
+
+    retry_count = max(0, min(MAX_RETRY_COUNT, int(args.retry)))
     same_location = not bool(args.output)
     output_path = ""
     if args.output:
-        out_dir = Path(args.output).resolve()
-        out_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            out_dir = Path(args.output).resolve()
+            out_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return _cli_error(f"출력 폴더를 만들 수 없습니다: {exc}")
         output_path = str(out_dir)
 
     planner = TaskPlanner()
+    try:
+        plan = planner.build_tasks(
+            is_folder_mode=is_folder_mode,
+            format_type=format_type,
+            folder_path=str(input_path) if is_folder_mode else "",
+            include_sub=args.recursive,
+            same_location=same_location,
+            output_path=output_path,
+            overwrite=args.overwrite,
+            file_paths=[str(input_path)] if not is_folder_mode else [],
+            backup_enabled=not args.no_backup,
+            retry_count=retry_count,
+            pdf_export_mode=args.pdf_export_mode,
+        )
+    except ValueError as exc:
+        return _cli_error(str(exc))
 
-    plan = planner.build_tasks(
-        is_folder_mode=is_folder_mode,
-        format_type=format_type,
-        folder_path=str(input_path) if is_folder_mode else "",
-        include_sub=args.recursive,
-        same_location=same_location,
-        output_path=output_path,
-        file_paths=[str(input_path)] if not is_folder_mode else [],
-        backup_enabled=not args.no_backup,
-        retry_count=max(0, min(3, args.retry)),
-        pdf_export_mode=args.pdf_export_mode,
-    )
-
-    planner.resolve_output_conflicts(plan.tasks, overwrite=args.overwrite, format_type=format_type)
+    renamed = planner.resolve_output_conflicts(plan.tasks, overwrite=args.overwrite, format_type=format_type)
+    if renamed:
+        plan.warnings.append(f"출력 경로 충돌 {renamed}개는 자동으로 새 이름으로 저장됩니다.")
+    protected = count_protected_source_renames(plan.tasks)
+    if args.overwrite and protected:
+        plan.warnings.append(
+            f"원본 한글 문서 보호: {protected}개는 덮어쓰지 않고 새 이름으로 저장합니다."
+        )
 
     tasks = plan.tasks
+    print(f"=== HwpMate v{VERSION} CLI 일괄 변환 ===")
+    print(f"변환 대상: {len(tasks)}개 | 건너뜀: {plan.skipped_count}개 | 목표 형식: {format_type}")
+    for warning in plan.warnings:
+        print(f"⚠️ [경고] {warning}")
+    for skipped in plan.skipped_tasks:
+        print(f"⏭️ 건너뜀: {skipped.input_file.name} ({skipped.detail})")
+
+    summary_warnings = list(plan.warnings)
     if not tasks:
-        print("[안내] 변환 대상 파일이 없습니다.")
+        print("[안내] 실행할 변환 대상이 없습니다.")
+        summary = ConversionSummary(
+            format_type=format_type,
+            tasks=[task.snapshot() for task in plan.skipped_tasks],
+            warnings=summary_warnings,
+            elapsed_seconds=time.perf_counter() - started,
+        )
+        _write_cli_report(args.report, summary)
         return 0
 
-    print(f"=== HwpMate v{VERSION} CLI 일괄 변환 시작 ===")
-    print(f"변환 대상: 총 {len(tasks)}개 파일 | 목표 형식: {format_type}")
-    if plan.warnings:
-        for w in plan.warnings:
-            print(f"⚠️ [경고] {w}")
-
     if not PYWIN32_AVAILABLE:
-        print("[오류] pywin32 라이브러리가 필요합니다. pip install pywin32 후 다시 실행하세요.", file=sys.stderr)
-        return 1
+        return _cli_error("pywin32 라이브러리가 필요합니다. pip install pywin32 후 다시 실행하세요.")
+
+    # GUI 또는 다른 CLI 와 같은 한글 COM·출력 파일을 동시에 다루지 않게 한다.
+    instance_lock = SingleInstanceLock()
+    if not instance_lock.try_lock():
+        return _cli_error("HwpMate(GUI 또는 다른 CLI)가 이미 실행 중입니다. 종료한 뒤 다시 실행하세요.")
 
     converter = HWPConverter()
+    options = TaskRunOptions.from_plan(plan)
+    runtime_warnings: list[str] = []
     try:
-        converter.initialize(manage_com_apartment=True)
-        if hasattr(converter, "pdf_export_mode"):
+        try:
+            converter.auto_continue_compat_dialogs = not args.no_auto_continue
+            converter.initialize(manage_com_apartment=True)
             converter.pdf_export_mode = normalize_pdf_export_mode(args.pdf_export_mode)
-    except Exception as exc:
-        print(f"[오류] 한글 COM 초기화 실패: {exc}", file=sys.stderr)
-        return 1
+            runtime_warnings.extend(collect_converter_warnings(converter))
+        except Exception as exc:
+            return _cli_error(f"한글 COM 초기화 실패: {exc}")
 
-    success_count = 0
-    fail_count = 0
-    skip_count = 0
+        used_output_path_keys: set[str] = set()
+        total = len(tasks)
+        try:
+            for idx, task in enumerate(tasks):
+                prefix = f"[{idx + 1}/{total}]"
+                print(f"{prefix} 🔄 {task.input_file.name} ➔ {task.output_file.name} ...", end=" ", flush=True)
+                runtime_warnings.extend(
+                    execute_task(
+                        task,
+                        converter,
+                        options,
+                        planner=planner,
+                        used_output_path_keys=used_output_path_keys,
+                        cancel_check=lambda: False,
+                        on_status=lambda text: print(f"({text})", end=" ", flush=True),
+                    )
+                )
+                if task.status == "성공":
+                    print("✅ 성공")
+                else:
+                    print(f"❌ {task.status}: {task.detail}")
 
-    try:
-        for idx, task in enumerate(tasks):
-            prefix = f"[{idx + 1}/{len(tasks)}]"
-            if task.status == "건너뜀":
-                print(f"{prefix} ⏭️ 건너뜀: {task.input_file.name} ({task.detail})")
-                skip_count += 1
-                continue
-
-            print(f"{prefix} 🔄 변환 중: {task.input_file.name} ➔ {task.output_file.name}...", end=" ", flush=True)
-            ok, err = converter.convert_file(task.input_file, task.output_file, format_type)
-            if ok:
-                print("✅ 성공")
-                success_count += 1
-            else:
-                print(f"❌ 실패: {err}")
-                fail_count += 1
+                if (idx + 1) % CONVERTER_RECYCLE_BATCH_COUNT == 0 and (idx + 1) < total:
+                    recycle_error = recycle_converter(converter, options)
+                    if recycle_error is not None:
+                        message = f"한글 프로세스 재순환 실패로 남은 작업을 중단했습니다: {recycle_error}"
+                        fail_pending_tasks(tasks, message)
+                        runtime_warnings.append(message)
+                        print(f"[오류] {message}", file=sys.stderr)
+                        break
+        except KeyboardInterrupt:
+            for task in tasks:
+                if task.status in {"대기", "진행중"}:
+                    task.status = "취소됨"
+                    task.error = "사용자 취소 (Ctrl+C)"
+            runtime_warnings.append("사용자가 Ctrl+C 로 변환을 중단했습니다.")
+        note = compat_dialog_note(converter)
+        if note:
+            runtime_warnings.append(note)
     finally:
         try:
             converter.cleanup()
         except Exception:
             pass
+        instance_lock.release()
 
+    summary = ConversionSummary(
+        format_type=format_type,
+        tasks=[task.snapshot() for task in tasks] + [task.snapshot() for task in plan.skipped_tasks],
+        warnings=summary_warnings + runtime_warnings,
+        elapsed_seconds=time.perf_counter() - started,
+        progid_used=converter.progid_used,
+    )
     print("=" * 45)
-    print(f"변환 완료 요약: 성공 {success_count}건, 실패 {fail_count}건, 건너뜀 {skip_count}건")
-    return 0 if fail_count == 0 else 1
+    print(
+        f"변환 완료 요약: 성공 {summary.success_count}건, 실패 {summary.failed_count}건, "
+        f"건너뜀 {summary.skipped_count}건, 취소 {summary.canceled_count}건"
+    )
+    for warning in runtime_warnings:
+        print(f"⚠️ {warning}")
+    try:
+        report = _write_cli_report(args.report, summary)
+        if report:
+            print(f"결과 저장: {report}")
+    except Exception as exc:
+        print(f"[경고] 결과 저장 실패: {exc}", file=sys.stderr)
+    return 0 if summary.failed_count == 0 and summary.canceled_count == 0 else 1
 
 
 def handle_exception(exc_type, exc_value, exc_traceback) -> None:

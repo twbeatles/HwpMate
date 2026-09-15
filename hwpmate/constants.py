@@ -12,7 +12,14 @@ FORMAT_TYPES: dict[str, FormatSpec] = {
     "HWPX": FormatSpec(ext=".hwpx", save_format="HWPX", icon="📘", desc="한글 표준 문서"),
     "PDF": FormatSpec(ext=".pdf", save_format="PDF", icon="📕", desc="PDF 문서"),
     "DOCX": FormatSpec(ext=".docx", save_format="OOXML", icon="📄", desc="MS Word"),
-    "ODT": FormatSpec(ext=".odt", save_format="ODT", icon="🌐", desc="ODF 텍스트"),
+    # 한글 2022(12.0) 실측: "ODT" 는 SaveAs False, "ODF" 로만 .odt 생성
+    "ODT": FormatSpec(
+        ext=".odt",
+        save_format="ODF",
+        icon="🌐",
+        desc="ODF 텍스트",
+        alt_save_formats=("ODT",),
+    ),
     "HTML": FormatSpec(ext=".html", save_format="HTML", icon="🌍", desc="웹 문서"),
     "RTF": FormatSpec(ext=".rtf", save_format="RTF", icon="📋", desc="서식있는 텍스트"),
     "TXT": FormatSpec(ext=".txt", save_format="TEXT", icon="📝", desc="텍스트 문서"),

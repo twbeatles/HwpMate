@@ -121,6 +121,9 @@ class AppearanceController:
         auto_accept = getattr(self.window, "auto_accept_security_check", None)
         if auto_accept is not None:
             auto_accept.setEnabled(not busy)
+        auto_continue = getattr(self.window, "auto_continue_compat_check", None)
+        if auto_continue is not None:
+            auto_continue.setEnabled(not busy)
         pdf_combo = getattr(self.window, "pdf_export_mode_combo", None)
         if pdf_combo is not None:
             pdf_combo.setEnabled(not busy)

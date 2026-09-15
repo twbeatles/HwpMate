@@ -17,6 +17,12 @@ from .admin import (
     is_admin,
     is_running_under_idle,
 )
+from .hwp_dialog_responder import (
+    COMPAT_DIALOG_TITLES,
+    HwpDialogAutoResponder,
+    find_hwp_compat_dialogs,
+    respond_hwp_compat_dialogs,
+)
 from .hwp_window_control import (
     _BM_CLICK,
     _SECURITY_ACCEPT_BUTTON_TEXTS,
@@ -43,6 +49,8 @@ from .window_query import (
 )
 
 __all__ = [
+    "COMPAT_DIALOG_TITLES",
+    "HwpDialogAutoResponder",
     "NATIVE_DND_DISABLE_ENV",
     "NATIVE_DND_FORCE_ENV",
     "NativeDropFilter",
@@ -62,11 +70,13 @@ __all__ = [
     "bring_hwp_windows_to_foreground",
     "ctypes",
     "enable_drag_drop_for_admin",
+    "find_hwp_compat_dialogs",
     "get_native_admin_drag_drop_policy",
     "hide_hwp_main_windows",
     "is_admin",
     "is_likely_hwp_security_dialog",
     "is_running_under_idle",
+    "respond_hwp_compat_dialogs",
     "suppress_hwp_ui_flash",
     "try_accept_hwp_security_dialog",
 ]
