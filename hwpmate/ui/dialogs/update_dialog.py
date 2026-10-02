@@ -49,23 +49,22 @@ class UpdateDialog(QDialog):
 
         # 제목 라벨
         self.title_label = QLabel("🎉 새로운 HwpMate 버전이 출시되었습니다!")
-        self.title_label.setStyleSheet("font-size: 15px; font-weight: bold;")
+        self.title_label.setStyleSheet("font-size: 13pt; font-weight: bold;")
         layout.addWidget(self.title_label)
 
         # 버전 정보 라벨
         size_mb = self.manifest.artifact_size / (1024 * 1024)
         info_text = (
-            f"현재 버전: <b>v{VERSION}</b>  ➔  최신 버전: <b style='color: #4CAF50;'>v{self.manifest.version}</b>\n"
+            f"현재 버전: <b>v{VERSION}</b>  ➔  최신 버전: <b style='color: #4CAF50;'>v{self.manifest.version}</b><br>"
             f"다운로드 크기: <b>{size_mb:.1f} MB</b>"
         )
         self.info_label = QLabel(info_text)
         self.info_label.setTextFormat(Qt.TextFormat.RichText)
-        self.info_label.setStyleSheet("font-size: 13px; line-height: 1.4;")
         layout.addWidget(self.info_label)
 
         # 진행 상태 라벨
         self.status_label = QLabel("새 버전으로 업데이트하시겠습니까?")
-        self.status_label.setStyleSheet("font-size: 12px; color: #888888;")
+        self.status_label.setProperty("subheading", True)
         layout.addWidget(self.status_label)
 
         # 프로그레스바 (초기 숨김)
@@ -85,6 +84,7 @@ class UpdateDialog(QDialog):
 
         self.release_notes_btn = QPushButton("릴리즈 노트")
         self.release_notes_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.release_notes_btn.setProperty("secondary", True)
         self.release_notes_btn.clicked.connect(self._open_release_notes)
         button_layout.addWidget(self.release_notes_btn)
 
@@ -92,14 +92,12 @@ class UpdateDialog(QDialog):
 
         self.cancel_btn = QPushButton("나중에")
         self.cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.cancel_btn.setProperty("secondary", True)
         self.cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(self.cancel_btn)
 
         self.action_btn = QPushButton("지금 업데이트")
         self.action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.action_btn.setStyleSheet(
-            "background-color: #0078D4; color: white; font-weight: bold; padding: 6px 16px;"
-        )
         self.action_btn.clicked.connect(self._on_action_clicked)
         button_layout.addWidget(self.action_btn)
 

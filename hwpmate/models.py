@@ -49,6 +49,8 @@ class AppConfig:
     output_path: str = ""
     last_folder: str = ""
     last_output: str = ""
+    # 파일 추가 대화상자의 마지막 폴더
+    last_file_dir: str = ""
 
     def get(self, key: str, default: Any = None) -> Any:
         return getattr(self, key, default)

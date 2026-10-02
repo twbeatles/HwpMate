@@ -80,6 +80,8 @@ class MainWindow(QMainWindow):
     auto_accept_security_check: QCheckBox
     auto_continue_compat_check: QCheckBox
     pdf_export_mode_combo: QComboBox
+    pdf_mode_widget: QWidget
+    file_list_count_label: QLabel
     retry_spin: QSpinBox
     start_btn: QPushButton
     cancel_btn: QPushButton

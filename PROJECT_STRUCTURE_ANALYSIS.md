@@ -85,7 +85,8 @@
 | `services/update_manifest.py`, `services/update_installer.py` | Ed25519 매니페스트, 스트리밍 다운로드, 부모 종료 대기·교체 재시도·롤백 상태·스테이징 정리 |
 | `ui/main_window_controllers/update.py` | 업데이트 확인/다운로드/적용(변환 중 보류, 시작 확인 1회) |
 | `windows_integration/` | 관리자 DnD·한글 창 전면화/숨김·모두 허용·NativeDropFilter |
-| `ui/theme/`, `ui/toast.py`, `ui/widgets.py`, `ui/dialogs/` | 테마 QSS·토스트·위젯·사전 점검/결과 다이얼로그 |
+| `ui/theme/` | `palette.py`(라이트/다크 색 토큰) → `stylesheet.py`(공용 QSS 템플릿) + `icons.py`(체크·화살표 PNG 런타임 생성) → `manager.py`(앱 전역 QSS·QPalette 적용) |
+| `ui/toast.py`, `ui/widgets.py`, `ui/dialogs/` | 메인 창 내부 오버레이 토스트(불투명 배경 직접 그림)·드롭 영역/형식 카드·사전 점검/결과 다이얼로그 |
 | `ui/main_window.py` | `MainWindow` import 경로를 유지하는 조립 루트와 호환 래퍼 |
 | `ui/main_window_ui/` | 콜백 객체 기반 메인 윈도우 레이아웃 빌더 (`types`/`builder`) |
 | `ui/main_window_controllers/state.py` | `MainWindowState` 런타임 상태 모델 |
@@ -105,7 +106,7 @@
   - `backup_enabled`, `backup_max_files_per_stem` (기본 20), `retry_count`, `auto_accept_security_dialog`, `auto_continue_compat_dialog` (기본 True)
   - `pdf_export_mode` (`saveas_first` | `print_to_pdf_ex_first`)
 - 추가 저장 키:
-  - `folder_path`, `output_path`, `last_folder`, `last_output`
+  - `folder_path`, `output_path`, `last_folder`, `last_output`, `last_file_dir`(파일 추가 대화상자 마지막 폴더)
 - 결과 감사 필드: `save_format`, `export_method`, `progid_used`, `output_size`, `output_mtime` 등
 - 런타임 주요 상태:
   - `self.file_list`, `self._file_set`
@@ -280,8 +281,12 @@
 
 ## 14. 버전 동기화 기준
 
+### v9.1.2 UI/UX 리팩토링 (2026-10-02)
+- 앱 버전과 PyInstaller 산출물 이름은 `9.1.2` / `HWP변환기_v9.1.2.exe`(릴리즈 `HwpMate-v9.1.2.exe`)입니다.
+- 테마(`ui/theme/`: palette·stylesheet·icons·manager), 토스트 오버레이, 입력→변환 흐름 변경은 `update_history.md` 2026-10-02 항목을 참고하세요.
+
 ### v9.1.1 감사 조치 (2026-09-15)
-- 앱 버전과 PyInstaller 산출물 이름은 `9.1.1` / `HWP변환기_v9.1.1.exe`(릴리즈 `HwpMate-v9.1.1.exe`)입니다.
+- 앱 버전과 PyInstaller 산출물 이름은 `9.1.1` / `HWP변환기_v9.1.1.exe`(릴리즈 `HwpMate-v9.1.1.exe`)였습니다.
 - 한글 2022(12.0.0.4605) 실측 기준: 이미지 산출물 `{stem}NNN`, ODT 형식 문자열 `ODF`, `Clear(3)` 원본 저장, 호환 문서 WPF 확인 창.
 - GUI·CLI가 `task_runner`를 공유하며, CLI는 단일 인스턴스 잠금·`--report`·`--no-auto-continue`를 지원합니다.
 - 실제 COM 검증: 11개 형식 × 2쪽 문서, 복합 문서(표·각주·다단·수식) DOCX/RTF/ODT/PDF/PNG, GUI 워커 E2E, CLI E2E 모두 성공 (`PROJECT_AUDIT.md` §10).

@@ -406,15 +406,24 @@ class ConversionController:
 
             if self.state.scan_worker and self.state.scan_worker.isRunning():
                 if self.state.scan_mode == "add_files":
-                    raise ValueError("파일 스캔이 진행 중입니다. 스캔 완료 후 다시 시도하세요.")
-                # 폴더 미리보기는 취소하지 않고 완료를 기다려 캐시를 확보한다.
-                self.window.status_label.setText("폴더 스캔 완료 대기 중...")
-                if not self.window.file_selection_controller.wait_for_active_scan(FOLDER_SCAN_WAIT_MS):
-                    self._abort_if_close_requested()
-                    raise ValueError(
-                        "폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요."
-                    )
-                self._waited_for_folder_scan = True
+                    # 드롭/추가 직후 바로 시작해도 목록이 완성될 때까지 기다렸다가 진행한다.
+                    self.window.status_label.setText("파일 목록 스캔 완료 대기 중...")
+                    if not self.window.file_selection_controller.wait_for_active_scan(
+                        FOLDER_SCAN_WAIT_MS
+                    ):
+                        self._abort_if_close_requested()
+                        raise ValueError("파일 스캔이 아직 진행 중입니다. 스캔 완료 후 다시 시도하세요.")
+                else:
+                    # 폴더 미리보기는 취소하지 않고 완료를 기다려 캐시를 확보한다.
+                    self.window.status_label.setText("폴더 스캔 완료 대기 중...")
+                    if not self.window.file_selection_controller.wait_for_active_scan(
+                        FOLDER_SCAN_WAIT_MS
+                    ):
+                        self._abort_if_close_requested()
+                        raise ValueError(
+                            "폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요."
+                        )
+                    self._waited_for_folder_scan = True
 
             self._abort_if_close_requested()
 
@@ -623,12 +632,25 @@ class ConversionController:
             elapsed = time.time() - self.state.conversion_start_time
             avg_time = elapsed / current
             remaining = avg_time * (total - current)
-            remaining_str = f" (남은 시간: {int(remaining)}초)" if remaining > 0 else ""
+            remaining_str = (
+                f" · 남은 시간 약 {self._format_duration(remaining)}" if remaining >= 1 else ""
+            )
         else:
             remaining_str = ""
 
         self.window.progress_label.setText(f"{current} / {total}{remaining_str}")
         self.window.status_label.setText(f"변환 중: {filename}")
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        total = max(0, int(round(seconds)))
+        minutes, secs = divmod(total, 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours:
+            return f"{hours}시간 {minutes}분"
+        if minutes:
+            return f"{minutes}분 {secs}초"
+        return f"{secs}초"
 
     def on_status_updated(self, text: str) -> None:
         self.window.status_label.setText(text)
@@ -652,12 +674,12 @@ class ConversionController:
 
         if summary.failed_count == 0 and summary.canceled_count == 0:
             self.window.toast.show_message(
-                f"✅ 성공 {summary.success_count}개, 건너뜀 {summary.skipped_count}개 ({elapsed_str})",
+                f"변환 완료 — 성공 {summary.success_count}개, 건너뜀 {summary.skipped_count}개 ({elapsed_str})",
                 "🎉",
             )
         else:
             self.window.toast.show_message(
-                f"⚠️ 성공 {summary.success_count} / 실패 {summary.failed_count} / 취소 {summary.canceled_count} ({elapsed_str})",
+                f"변환 종료 — 성공 {summary.success_count} / 실패 {summary.failed_count} / 취소 {summary.canceled_count} ({elapsed_str})",
                 "⚠️",
             )
 
@@ -742,8 +764,20 @@ class ConversionController:
         self.window._set_converting_state(False)
         self.window.progress_bar.setValue(0)
         self.window.progress_label.setText("0 / 0")
-        self.window.status_label.setText("대기 중")
         summary = self.state.last_summary
+        # 결과 창을 닫은 뒤에도 마지막 결과를 상태 줄에 남겨 둔다.
+        if summary is not None:
+            parts = [f"성공 {summary.success_count}개"]
+            if summary.failed_count:
+                parts.append(f"실패 {summary.failed_count}개")
+            if summary.skipped_count:
+                parts.append(f"건너뜀 {summary.skipped_count}개")
+            if summary.canceled_count:
+                parts.append(f"취소 {summary.canceled_count}개")
+            icon = "✅" if not (summary.failed_count or summary.canceled_count) else "⚠️"
+            self.window.status_label.setText(f"{icon} 마지막 변환 완료 — {', '.join(parts)}")
+        else:
+            self.window.status_label.setText("대기 중")
         if summary and any(
             "강제 종료는 비활성화" in warning or "스냅샷" in warning
             for warning in summary.warnings

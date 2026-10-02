@@ -489,11 +489,18 @@ class FileSelectionController:
         if self._input_locked():
             return
         initial = self.window.config.get("last_folder", "")
-        folder = QFileDialog.getExistingDirectory(self.window, "폴더 선택", initial)
-        if folder:
-            self.window.folder_entry.setText(folder)
-            self.window.config["last_folder"] = folder
-            self.start_folder_preview_scan(folder)
+        is_folder_mode = self.window.folder_radio.isChecked()
+        title = "폴더 선택" if is_folder_mode else "목록에 추가할 폴더 선택"
+        folder = QFileDialog.getExistingDirectory(self.window, title, initial)
+        if not folder:
+            return
+        self.window.config["last_folder"] = folder
+        if not is_folder_mode:
+            # 파일 모드에서는 숨겨진 폴더 입력란을 바꾸지 않고, 폴더 안 파일을 목록에 추가한다.
+            self.add_files([folder])
+            return
+        self.window.folder_entry.setText(folder)
+        self.start_folder_preview_scan(folder)
 
     def select_output(self) -> None:
         if self._input_locked("변환 중에는 출력 폴더를 변경할 수 없습니다"):
@@ -507,13 +514,17 @@ class FileSelectionController:
     def browse_files(self) -> None:
         if self._input_locked():
             return
+        initial = str(self.window.config.get("last_file_dir", "") or "")
+        if initial and not Path(initial).is_dir():
+            initial = ""
         files, _ = QFileDialog.getOpenFileNames(
             self.window,
-            "파일 선택",
-            "",
-            "한글 파일 (*.hwp *.hwpx);;모든 파일 (*.*)",
+            "변환할 한글 문서 선택",
+            initial,
+            "한글 문서 (*.hwp *.hwpx);;모든 파일 (*.*)",
         )
         if files:
+            self.window.config["last_file_dir"] = str(Path(files[0]).parent)
             self.add_files(files)
 
     def add_files(self, files: list[str]) -> None:
@@ -575,6 +586,17 @@ class FileSelectionController:
     def update_file_count(self) -> None:
         count = self.window.file_store.count
         self.window.file_count_label.setText(f"📄 파일: {count}개")
+        list_label = getattr(self.window, "file_list_count_label", None)
+        if list_label is not None:
+            list_label.setText(f"{count}개 파일" if count else "추가된 파일 없음")
+
+    def show_file_list_status(self) -> None:
+        """파일 모드 전환 시 상태 표시줄을 현재 목록 기준으로 맞춘다."""
+        count = self.window.file_store.count
+        if count:
+            self.window.status_label.setText(f"📄 변환 대기 파일 {count}개")
+        else:
+            self.window.status_label.setText("변환할 파일을 추가하세요 (드래그 앤 드롭 또는 파일 추가)")
 
     def _input_locked(self, message: str = "변환 중에는 입력을 변경할 수 없습니다") -> bool:
         worker = self.state.worker

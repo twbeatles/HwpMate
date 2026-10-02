@@ -22,8 +22,12 @@ class AppearanceController:
         self._save_config = save_config_func
 
     def apply_theme(self) -> None:
-        theme_css = ThemeManager.get_theme(self.window.current_theme)
-        self.window.setStyleSheet(theme_css)
+        self.window.current_theme = ThemeManager.normalize(self.window.current_theme)
+        # 앱 전체(대화상자·메뉴·툴팁·트레이 메뉴)에 같은 테마를 적용한다.
+        ThemeManager.apply_theme(self.window.current_theme, self.window)
+        toast = getattr(self.window, "toast", None)
+        if toast is not None and hasattr(toast, "apply_theme"):
+            toast.apply_theme()
 
     def toggle_theme(self) -> None:
         if self.window.current_theme == "dark":
@@ -56,12 +60,27 @@ class AppearanceController:
     def update_format_cards(self) -> None:
         for fmt_key, card in self.window.format_cards.items():
             card.setSelected(self.state.selected_format == fmt_key)
+        # PDF 내보내기 전략은 PDF 를 고른 경우에만 의미가 있다.
+        pdf_mode_widget = getattr(self.window, "pdf_mode_widget", None)
+        if pdf_mode_widget is not None:
+            pdf_mode_widget.setVisible(str(self.state.selected_format).upper() == "PDF")
 
-    def update_mode_ui(self, *_: object) -> None:
+    def update_mode_ui(self, *args: object) -> None:
         self.window._cancel_active_scan()
         is_folder_mode = self.window.folder_radio.isChecked()
         self.window.folder_widget.setVisible(is_folder_mode)
         self.window.files_widget.setVisible(not is_folder_mode)
+        # 라디오 전환(시그널 호출)으로 폴더 모드에 돌아왔는데, 전환 과정에서 미리보기 스캔이
+        # 취소돼 캐시가 비었다면 다시 스캔해 변환 가능 수를 갱신한다.
+        if args and is_folder_mode:
+            if self.state.folder_scan_ready:
+                self.window.file_selection_controller.refresh_folder_preview_count()
+            else:
+                restart = getattr(self.window, "_maybe_start_restored_folder_scan", None)
+                if callable(restart):
+                    restart()
+        elif args and not is_folder_mode:
+            self.window.file_selection_controller.show_file_list_status()
 
     def update_output_ui(self, *_: object) -> None:
         same_location = self.window.same_location_check.isChecked()

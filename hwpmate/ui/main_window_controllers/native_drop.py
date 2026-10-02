@@ -5,10 +5,8 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from ...constants import FEEDBACK_RESET_DELAY
 from ...logging_config import get_logger
 from ...path_utils import canonicalize_path
 from ...windows_integration import NativeDropFilter, get_native_admin_drag_drop_policy
@@ -97,20 +95,20 @@ class NativeDropController:
                 self.window.config["folder_path"] = folder
                 self.window._start_folder_preview_scan(folder)
                 if hasattr(self.window, "toast"):
-                    self.window.toast.show_message("📁 폴더 드롭을 받아 미리보기 스캔을 시작합니다", "✅")
+                    self.window.toast.show_message("폴더 드롭을 받아 미리보기 스캔을 시작합니다", "✅")
                 return
 
             QMessageBox.warning(
                 self.window,
                 "경고",
-                "폴더 모드에서는 폴더 1개만 드롭할 수 있습니다.\n파일이나 다중 경로 드롭은 지원하지 않습니다.",
+                "폴더 모드에서는 폴더 1개만 드롭할 수 있습니다.\n"
+                "개별 파일이나 여러 경로를 변환하려면 「파일 개별 선택」 모드로 바꾼 뒤 다시 드롭하세요.",
             )
             return
 
         self.window._add_files(normalized)
-        if hasattr(self.window, "drop_area") and self.window.drop_area:
-            self.window.drop_area.icon_label.setText("✅")
-            self.window.drop_area.text_label.setText(f"{len(normalized)}개 경로 스캔 시작")
-            QTimer.singleShot(FEEDBACK_RESET_DELAY, self.window.drop_area._reset_appearance)
+        drop_area = getattr(self.window, "drop_area", None)
+        if drop_area is not None:
+            drop_area.show_feedback("✅", f"{len(normalized)}개 경로 스캔 시작")
         if hasattr(self.window, "toast"):
-            self.window.toast.show_message(f"📂 {len(normalized)}개 경로를 스캔합니다", "✅")
+            self.window.toast.show_message(f"{len(normalized)}개 경로를 스캔합니다", "✅")

@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -19,6 +20,7 @@ from PyQt6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QSpinBox,
+    QStyledItemDelegate,
     QTableWidget,
     QTabWidget,
     QVBoxLayout,
@@ -46,13 +48,21 @@ from ..widgets import DropArea, FormatCard
 from .types import MainWindowCallbacks, MainWindowWidgets
 
 
+def _field_label(text: str, width: int = 110) -> QLabel:
+    label = QLabel(text)
+    label.setProperty("fieldLabel", True)
+    label.setFixedWidth(width)
+    return label
+
+
 def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallbacks) -> MainWindowWidgets:
-    window.setWindowTitle(f"HWP 변환기 v{VERSION} - PyQt6")
+    window.setWindowTitle(f"HWP 변환기 v{VERSION}")
     window.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
     window.resize(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT)
 
     # 스크롤 영역 설정
     scroll_area = QScrollArea()
+    scroll_area.setObjectName("mainScroll")
     scroll_area.setWidgetResizable(True)
     scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     scroll_area.setFrameShape(QFrame.Shape.NoFrame)
@@ -60,57 +70,69 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
 
     # 스크롤 컨텐츠 위젯
     scroll_content = QWidget()
+    scroll_content.setObjectName("scrollContent")
     scroll_area.setWidget(scroll_content)
 
     main_layout = QVBoxLayout(scroll_content)
-    main_layout.setSpacing(15)
-    main_layout.setContentsMargins(25, 25, 25, 25)
+    main_layout.setSpacing(12)
+    main_layout.setContentsMargins(22, 18, 22, 18)
 
     # === 헤더 ===
     header_layout = QHBoxLayout()
+    header_layout.setSpacing(8)
 
+    title_box = QVBoxLayout()
+    title_box.setSpacing(2)
     title_label = QLabel("HWP / HWPX 변환기")
     title_label.setProperty("heading", True)
-    header_layout.addWidget(title_label)
+    title_box.addWidget(title_label)
+    subtitle_label = QLabel("한글 문서를 PDF · DOCX · 이미지 등으로 한 번에 변환합니다")
+    subtitle_label.setProperty("subheading", True)
+    title_box.addWidget(subtitle_label)
+    header_layout.addLayout(title_box)
 
     header_layout.addStretch()
 
     # 업데이트 확인 버튼
     window.update_btn = QPushButton("🔄 업데이트")
     window.update_btn.setProperty("secondary", True)
-    window.update_btn.setFixedWidth(105)
+    window.update_btn.setMinimumWidth(105)
     window.update_btn.setToolTip("최신 버전이 있는지 확인합니다")
     window.update_btn.clicked.connect(callbacks.check_updates)
-    header_layout.addWidget(window.update_btn)
+    header_layout.addWidget(window.update_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
 
     # 테마 전환 버튼
     window.theme_btn = QPushButton("🌙 다크" if window.current_theme == "dark" else "☀️ 라이트")
     window.theme_btn.setProperty("secondary", True)
-    window.theme_btn.setFixedWidth(100)
+    window.theme_btn.setMinimumWidth(100)
     window.theme_btn.setToolTip("다크 모드와 라이트 모드를 전환합니다")
     window.theme_btn.clicked.connect(callbacks.toggle_theme)
-    header_layout.addWidget(window.theme_btn)
+    header_layout.addWidget(window.theme_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
 
     main_layout.addLayout(header_layout)
 
+    # === ① 입력 (모드 + 대상) ===
+    input_group = QGroupBox("① 변환할 문서")
+    input_layout = QVBoxLayout(input_group)
+    input_layout.setSpacing(12)
 
-    # === 모드 선택 ===
-    mode_group = QGroupBox("변환 모드")
-    mode_layout = QVBoxLayout(mode_group)
-    mode_layout.setSpacing(8)
-
+    mode_row = QHBoxLayout()
+    mode_row.setSpacing(10)
     window.mode_group = QButtonGroup(window)
 
-    window.folder_radio = QRadioButton("📁 폴더 일괄 변환 (폴더 내 모든 파일)")
-    window.folder_radio.setToolTip("폴더 내 모든 HWP/HWPX 파일을 일괄 변환합니다")
-    window.files_radio = QRadioButton("📄 파일 개별 선택 (원하는 파일만)")
-    window.files_radio.setToolTip("원하는 파일만 선택하여 변환합니다")
+    window.folder_radio = QRadioButton("📁 폴더 일괄 변환")
+    window.folder_radio.setProperty("modeOption", True)
+    window.folder_radio.setToolTip("폴더 안의 HWP/HWPX 파일을 모두 찾아 변환합니다")
+    window.files_radio = QRadioButton("📄 파일 개별 선택")
+    window.files_radio.setProperty("modeOption", True)
+    window.files_radio.setToolTip("원하는 파일만 골라 변환합니다 (폴더를 넣으면 하위 파일까지 추가)")
 
     window.mode_group.addButton(window.folder_radio, 0)
     window.mode_group.addButton(window.files_radio, 1)
 
-    mode_layout.addWidget(window.folder_radio)
-    mode_layout.addWidget(window.files_radio)
+    mode_row.addWidget(window.folder_radio, 1)
+    mode_row.addWidget(window.files_radio, 1)
+    input_layout.addLayout(mode_row)
 
     saved_mode = window.config.get("mode", "folder")
     if saved_mode == "folder":
@@ -120,38 +142,32 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
 
     window.folder_radio.toggled.connect(callbacks.update_mode_ui)
 
-    main_layout.addWidget(mode_group)
-
-    # === 입력 영역 ===
-    input_group = QGroupBox("입력")
-    input_layout = QVBoxLayout(input_group)
-    input_layout.setSpacing(12)
-
     # 폴더 모드 위젯
     window.folder_widget = QWidget()
     folder_layout = QVBoxLayout(window.folder_widget)
     folder_layout.setContentsMargins(0, 0, 0, 0)
-    folder_layout.setSpacing(10)
+    folder_layout.setSpacing(8)
 
     folder_row = QHBoxLayout()
-    folder_row.setSpacing(10)
+    folder_row.setSpacing(8)
     window.folder_entry = QLineEdit()
-    window.folder_entry.setPlaceholderText("변환할 폴더를 선택하세요...")
+    window.folder_entry.setPlaceholderText("변환할 폴더를 선택하거나 창에 폴더를 끌어다 놓으세요")
     window.folder_entry.setReadOnly(True)
-    window.folder_entry.setMinimumHeight(40)
+    window.folder_entry.setMinimumHeight(36)
     folder_row.addWidget(window.folder_entry)
 
-    window.folder_btn = QPushButton("찾아보기")
+    window.folder_btn = QPushButton("폴더 선택")
     window.folder_btn.setProperty("secondary", True)
-    window.folder_btn.setFixedWidth(100)
-    window.folder_btn.setMinimumHeight(40)
+    window.folder_btn.setMinimumWidth(100)
+    window.folder_btn.setMinimumHeight(36)
+    window.folder_btn.setToolTip("변환할 폴더를 선택합니다 (Ctrl+Shift+O)")
     window.folder_btn.clicked.connect(callbacks.select_folder)
     folder_row.addWidget(window.folder_btn)
 
     folder_layout.addLayout(folder_row)
 
     window.include_sub_check = QCheckBox("하위 폴더 포함")
-    window.include_sub_check.setToolTip("하위 폴더의 파일도 함께 변환합니다")
+    window.include_sub_check.setToolTip("하위 폴더의 파일도 함께 변환합니다 (앱이 만든 backup 폴더는 제외)")
     window.include_sub_check.setChecked(window.config.get("include_sub", True))
     window.include_sub_check.toggled.connect(callbacks.include_sub_toggled)
     folder_layout.addWidget(window.include_sub_check)
@@ -167,12 +183,13 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
     window.files_widget = QWidget()
     files_layout = QVBoxLayout(window.files_widget)
     files_layout.setContentsMargins(0, 0, 0, 0)
-    files_layout.setSpacing(12)
+    files_layout.setSpacing(10)
 
     # 드롭 영역 - 고정 높이
     window.drop_area = DropArea()
-    window.drop_area.setFixedHeight(120)
+    window.drop_area.setFixedHeight(112)
     window.drop_area.files_dropped.connect(callbacks.add_files)
+    window.drop_area.browse_requested.connect(callbacks.browse_files)
     files_layout.addWidget(window.drop_area)
 
     # 버튼 행
@@ -181,42 +198,54 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
 
     window.add_btn = QPushButton("➕ 파일 추가")
     window.add_btn.setProperty("secondary", True)
-    window.add_btn.setMinimumHeight(36)
+    window.add_btn.setMinimumHeight(34)
     window.add_btn.setToolTip("파일 선택 대화상자를 엽니다 (Ctrl+O)")
     window.add_btn.clicked.connect(callbacks.browse_files)
     btn_row.addWidget(window.add_btn)
 
     window.remove_btn = QPushButton("➖ 선택 제거")
     window.remove_btn.setProperty("secondary", True)
-    window.remove_btn.setMinimumHeight(36)
+    window.remove_btn.setMinimumHeight(34)
     window.remove_btn.setToolTip("선택한 파일을 목록에서 제거합니다 (Delete)")
     window.remove_btn.clicked.connect(callbacks.remove_selected)
     btn_row.addWidget(window.remove_btn)
 
     window.clear_btn = QPushButton("🗑️ 전체 제거")
     window.clear_btn.setProperty("secondary", True)
-    window.clear_btn.setMinimumHeight(36)
+    window.clear_btn.setMinimumHeight(34)
     window.clear_btn.setToolTip("모든 파일을 목록에서 제거합니다 (Ctrl+Delete)")
     window.clear_btn.clicked.connect(callbacks.clear_all)
     btn_row.addWidget(window.clear_btn)
 
     btn_row.addStretch()
+
+    window.file_list_count_label = QLabel("추가된 파일 없음")
+    window.file_list_count_label.setProperty("subheading", True)
+    btn_row.addWidget(window.file_list_count_label)
     files_layout.addLayout(btn_row)
 
-    # 파일 테이블 - 고정 높이
+    # 파일 테이블
     window.file_table = QTableWidget()
     window.file_table.setColumnCount(2)
-    window.file_table.setHorizontalHeaderLabels(["파일명", "경로"])
+    window.file_table.setHorizontalHeaderLabels(["파일명", "위치"])
     horizontal_header = window.file_table.horizontalHeader()
     vertical_header = window.file_table.verticalHeader()
     assert horizontal_header is not None
     assert vertical_header is not None
     horizontal_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
     horizontal_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+    horizontal_header.setHighlightSections(False)
     window.file_table.setAlternatingRowColors(True)
     window.file_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+    window.file_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+    # 셀 편집은 실제 파일 목록과 동기화되지 않으므로 막는다.
+    window.file_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+    window.file_table.setWordWrap(False)
+    window.file_table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+    window.file_table.setShowGrid(False)
     window.file_table.setFixedHeight(180)
     vertical_header.setVisible(False)
+    vertical_header.setDefaultSectionSize(30)
     window.file_table.setSortingEnabled(False)  # 정렬 비활성화 - file_list 동기화 문제 방지
     files_layout.addWidget(window.file_table)
 
@@ -224,68 +253,27 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
 
     main_layout.addWidget(input_group)
 
-    # === 출력 설정 ===
-    output_group = QGroupBox("출력")
-    output_layout = QVBoxLayout(output_group)
-    output_layout.setSpacing(10)
-
-    window.same_location_check = QCheckBox("입력 파일과 같은 위치에 저장")
-    window.same_location_check.setToolTip("변환된 파일을 원본과 같은 폴더에 저장합니다")
-    window.same_location_check.setChecked(window.config.get("same_location", True))
-    window.same_location_check.toggled.connect(callbacks.update_output_ui)
-    output_layout.addWidget(window.same_location_check)
-
-    output_row = QHBoxLayout()
-    output_row.setSpacing(10)
-    output_label = QLabel("저장 폴더:")
-    output_label.setFixedWidth(70)
-    output_row.addWidget(output_label)
-
-    window.output_entry = QLineEdit()
-    window.output_entry.setPlaceholderText("저장할 폴더를 선택하세요...")
-    window.output_entry.setReadOnly(True)
-    window.output_entry.setMinimumHeight(40)
-    output_row.addWidget(window.output_entry)
-
-    window.output_btn = QPushButton("찾아보기")
-    window.output_btn.setProperty("secondary", True)
-    window.output_btn.setFixedWidth(100)
-    window.output_btn.setMinimumHeight(40)
-    window.output_btn.clicked.connect(callbacks.select_output)
-    output_row.addWidget(window.output_btn)
-
-    output_layout.addLayout(output_row)
-
-    # 저장된 출력 경로 복원
-    saved_output = window.config.get("output_path", "")
-    if saved_output and Path(saved_output).exists():
-        window.output_entry.setText(saved_output)
-
-    main_layout.addWidget(output_group)
-
-    # === 변환 옵션 ===
-    options_group = QGroupBox("변환 형식")
+    # === ② 변환 형식 ===
+    options_group = QGroupBox("② 변환 형식")
     options_layout = QVBoxLayout(options_group)
-    options_layout.setSpacing(15)
-
-    # 변환 형식 카드 UI (Tab Widget 사용)
-    from PyQt6.QtWidgets import QGridLayout, QTabWidget
+    options_layout.setSpacing(10)
 
     window.format_tabs = QTabWidget()
+    window.format_tabs.setDocumentMode(False)
     window.format_cards = {}
 
     # 탭별 포맷 정의
     tabs_config = FORMAT_GROUPS
+    max_cols = 4
 
     for tab_name, formats in tabs_config.items():
         tab_widget = QWidget()
         tab_layout = QGridLayout(tab_widget)
-        tab_layout.setSpacing(15)
-        tab_layout.setContentsMargins(15, 15, 15, 15)
+        tab_layout.setSpacing(10)
+        tab_layout.setContentsMargins(12, 12, 12, 12)
 
         row = 0
         col = 0
-        max_cols = 4
 
         for fmt_key in formats:
             if fmt_key not in FORMAT_TYPES:
@@ -293,13 +281,13 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
 
             info = FORMAT_TYPES[fmt_key]
             card = FormatCard(
-                fmt_key, 
-                info['icon'], 
-                fmt_key, 
+                fmt_key,
+                info['icon'],
+                fmt_key,
                 info['desc']
             )
             card.clicked.connect(callbacks.format_card_clicked)
-            card.setMinimumSize(120, 120) # 크기 충분히 확보 (텍스트 잘림 방지)
+            card.setMinimumSize(120, 96)
             card.setMaximumWidth(1000)
 
             tab_layout.addWidget(card, row, col)
@@ -310,10 +298,10 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
                 col = 0
                 row += 1
 
-        # 빈 공간 채우기 (레이아웃 틀어짐 방지)
-        if col > 0:
-            tab_layout.setColumnStretch(max_cols-1, 1)
-        tab_layout.setRowStretch(row+1, 1)
+        # 열 너비를 균등하게 유지 (카드 수가 적은 탭에서도 크기 일정)
+        for column in range(max_cols):
+            tab_layout.setColumnStretch(column, 1)
+        tab_layout.setRowStretch(row + 1, 1)
 
         window.format_tabs.addTab(tab_widget, tab_name)
 
@@ -330,74 +318,18 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
             window.format_tabs.setCurrentIndex(i)
             break
 
-    callbacks.update_format_cards()
-
     options_layout.addWidget(window.format_tabs)
 
-    # 덮어쓰기 옵션
-    window.overwrite_check = QCheckBox("기존 파일 덮어쓰기 (체크 해제 시 번호 자동 추가)")
-    window.overwrite_check.setToolTip("같은 이름의 파일이 있으면 덮어씁니다")
-    window.overwrite_check.setChecked(window.config.get("overwrite", False))
-    options_layout.addWidget(window.overwrite_check)
-
-    window.backup_check = QCheckBox("변환 전 원본 백업")
-    window.backup_check.setToolTip("원본 파일을 각 폴더의 backup 폴더에 복사한 뒤 변환합니다")
-    window.backup_check.setChecked(window.config.get("backup_enabled", True))
-    options_layout.addWidget(window.backup_check)
-
-    backup_max_row = QHBoxLayout()
-    backup_max_row.setSpacing(10)
-    backup_max_label = QLabel("백업 보관 개수:")
-    backup_max_label.setFixedWidth(100)
-    backup_max_row.addWidget(backup_max_label)
-    window.backup_max_spin = QSpinBox()
-    window.backup_max_spin.setRange(BACKUP_MAX_FILES_PER_STEM_MIN, BACKUP_MAX_FILES_PER_STEM_MAX)
-    try:
-        backup_max_val = int(
-            window.config.get("backup_max_files_per_stem", BACKUP_MAX_FILES_PER_STEM)
-            or BACKUP_MAX_FILES_PER_STEM
-        )
-    except (TypeError, ValueError):
-        backup_max_val = BACKUP_MAX_FILES_PER_STEM
-    window.backup_max_spin.setValue(backup_max_val)
-    window.backup_max_spin.setToolTip(
-        "같은 원본 파일명(stem)의 backup 폴더 내 복사본을 최대 몇 개까지 남길지입니다. "
-        "초과 시 오래된 백업부터 삭제합니다."
-    )
-    window.backup_max_spin.setFixedWidth(80)
-    backup_max_row.addWidget(window.backup_max_spin)
-    backup_max_row.addWidget(QLabel("개 (파일당)"))
-    backup_max_row.addStretch()
-    options_layout.addLayout(backup_max_row)
-
-    window.auto_accept_security_check = QCheckBox("보안 허용 창 「모두 허용」 자동 시도")
-    window.auto_accept_security_check.setToolTip(
-        "보안 모듈 등록에 실패한 환경에서 한글 「모두 허용」 창을 best-effort 로 클릭합니다. "
-        "모듈이 정상 등록되면 자동으로 생략됩니다. 기업 정책에 따라 끌 수 있습니다."
-    )
-    window.auto_accept_security_check.setChecked(
-        window.config.get("auto_accept_security_dialog", True)
-    )
-    options_layout.addWidget(window.auto_accept_security_check)
-
-    window.auto_continue_compat_check = QCheckBox("호환 형식 저장 확인 창 「계속」 자동 선택")
-    window.auto_continue_compat_check.setToolTip(
-        "DOCX·RTF 등으로 저장할 때 한글이 띄우는 「호환 문서 — 문서 내용의 배치가 변경될 수 있습니다. "
-        "저장을 계속할까요?」 창에 자동으로 「계속」합니다. 앱이 띄운 한글 프로세스에만 적용됩니다. "
-        "끄면 변환이 창에서 멈추며 직접 눌러야 합니다."
-    )
-    window.auto_continue_compat_check.setChecked(
-        window.config.get("auto_continue_compat_dialog", True)
-    )
-    options_layout.addWidget(window.auto_continue_compat_check)
-
-    pdf_mode_row = QHBoxLayout()
+    # PDF 내보내기 전략 (PDF 선택 시에만 표시)
+    window.pdf_mode_widget = QWidget()
+    pdf_mode_row = QHBoxLayout(window.pdf_mode_widget)
+    pdf_mode_row.setContentsMargins(0, 0, 0, 0)
     pdf_mode_row.setSpacing(10)
-    pdf_mode_label = QLabel("PDF 내보내기:")
-    pdf_mode_label.setFixedWidth(100)
-    pdf_mode_row.addWidget(pdf_mode_label)
+    pdf_mode_row.addWidget(_field_label("PDF 내보내기"))
 
     window.pdf_export_mode_combo = QComboBox()
+    # QSS 의 항목 패딩/호버 규칙이 적용되도록 styled delegate 를 사용한다.
+    window.pdf_export_mode_combo.setItemDelegate(QStyledItemDelegate(window.pdf_export_mode_combo))
     window.pdf_export_mode_combo.addItem(
         "SaveAs 우선 (용지 품질)",
         PDF_EXPORT_SAVEAS_FIRST,
@@ -417,44 +349,147 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
     idx = window.pdf_export_mode_combo.findData(saved_pdf_mode)
     window.pdf_export_mode_combo.setCurrentIndex(idx if idx >= 0 else 0)
     pdf_mode_row.addWidget(window.pdf_export_mode_combo, 1)
-    options_layout.addLayout(pdf_mode_row)
+    options_layout.addWidget(window.pdf_mode_widget)
+
+    callbacks.update_format_cards()
+
+    main_layout.addWidget(options_group)
+
+    # === ③ 저장 위치 ===
+    output_group = QGroupBox("③ 저장 위치")
+    output_layout = QVBoxLayout(output_group)
+    output_layout.setSpacing(8)
+
+    window.same_location_check = QCheckBox("원본 문서와 같은 폴더에 저장")
+    window.same_location_check.setToolTip("변환된 파일을 원본과 같은 폴더에 저장합니다")
+    window.same_location_check.setChecked(window.config.get("same_location", True))
+    window.same_location_check.toggled.connect(callbacks.update_output_ui)
+    output_layout.addWidget(window.same_location_check)
+
+    output_row = QHBoxLayout()
+    output_row.setSpacing(8)
+
+    window.output_entry = QLineEdit()
+    window.output_entry.setPlaceholderText("다른 폴더에 저장하려면 위 옵션을 끄고 폴더를 선택하세요")
+    window.output_entry.setReadOnly(True)
+    window.output_entry.setMinimumHeight(36)
+    output_row.addWidget(window.output_entry)
+
+    window.output_btn = QPushButton("폴더 선택")
+    window.output_btn.setProperty("secondary", True)
+    window.output_btn.setMinimumWidth(100)
+    window.output_btn.setMinimumHeight(36)
+    window.output_btn.clicked.connect(callbacks.select_output)
+    output_row.addWidget(window.output_btn)
+
+    output_layout.addLayout(output_row)
+
+    # 저장된 출력 경로 복원
+    saved_output = window.config.get("output_path", "")
+    if saved_output and Path(saved_output).exists():
+        window.output_entry.setText(saved_output)
+
+    window.overwrite_check = QCheckBox("같은 이름의 결과 파일 덮어쓰기 (끄면 번호를 붙여 새로 저장)")
+    window.overwrite_check.setToolTip(
+        "같은 이름의 결과 파일이 있으면 덮어씁니다. 원본 .hwp/.hwpx 문서는 덮어쓰지 않습니다."
+    )
+    window.overwrite_check.setChecked(window.config.get("overwrite", False))
+    output_layout.addWidget(window.overwrite_check)
+
+    main_layout.addWidget(output_group)
+
+    # === 고급 옵션 ===
+    advanced_group = QGroupBox("고급 옵션")
+    advanced_layout = QVBoxLayout(advanced_group)
+    advanced_layout.setSpacing(6)
+
+    backup_row = QHBoxLayout()
+    backup_row.setSpacing(10)
+    window.backup_check = QCheckBox("변환 전 원본 백업")
+    window.backup_check.setToolTip("원본 파일을 각 폴더의 backup 폴더에 복사한 뒤 변환합니다")
+    window.backup_check.setChecked(window.config.get("backup_enabled", True))
+    backup_row.addWidget(window.backup_check)
+    backup_row.addStretch()
+
+    backup_row.addWidget(QLabel("보관 개수"))
+    window.backup_max_spin = QSpinBox()
+    window.backup_max_spin.setRange(BACKUP_MAX_FILES_PER_STEM_MIN, BACKUP_MAX_FILES_PER_STEM_MAX)
+    try:
+        backup_max_val = int(
+            window.config.get("backup_max_files_per_stem", BACKUP_MAX_FILES_PER_STEM)
+            or BACKUP_MAX_FILES_PER_STEM
+        )
+    except (TypeError, ValueError):
+        backup_max_val = BACKUP_MAX_FILES_PER_STEM
+    window.backup_max_spin.setValue(backup_max_val)
+    window.backup_max_spin.setSuffix(" 개")
+    window.backup_max_spin.setToolTip(
+        "같은 원본 파일명(stem)의 backup 폴더 내 복사본을 최대 몇 개까지 남길지입니다. "
+        "초과 시 오래된 백업부터 삭제합니다."
+    )
+    window.backup_max_spin.setMinimumWidth(96)
+    backup_row.addWidget(window.backup_max_spin)
+    advanced_layout.addLayout(backup_row)
 
     retry_row = QHBoxLayout()
     retry_row.setSpacing(10)
-    retry_label = QLabel("실패 시 재시도:")
-    retry_label.setFixedWidth(100)
+    retry_label = QLabel("실패 시 자동 재시도")
     retry_row.addWidget(retry_label)
+    retry_row.addStretch()
 
     window.retry_spin = QSpinBox()
     window.retry_spin.setRange(0, 3)
     window.retry_spin.setValue(int(window.config.get("retry_count", 1)))
-    window.retry_spin.setToolTip("파일별 변환 실패 시 재시도 횟수입니다")
-    window.retry_spin.setFixedWidth(80)
+    window.retry_spin.setSuffix(" 회")
+    window.retry_spin.setToolTip("파일별 변환 실패 시 재시도 횟수입니다 (0~3회)")
+    window.retry_spin.setMinimumWidth(96)
     retry_row.addWidget(window.retry_spin)
-    retry_row.addWidget(QLabel("회"))
-    retry_row.addStretch()
-    options_layout.addLayout(retry_row)
+    advanced_layout.addLayout(retry_row)
 
-    main_layout.addWidget(options_group)
+    separator = QFrame()
+    separator.setProperty("separator", True)
+    separator.setFrameShape(QFrame.Shape.NoFrame)
+    advanced_layout.addWidget(separator)
+
+    window.auto_accept_security_check = QCheckBox("보안 허용 창 「모두 허용」 자동 시도")
+    window.auto_accept_security_check.setToolTip(
+        "보안 모듈 등록에 실패한 환경에서 한글 「모두 허용」 창을 best-effort 로 클릭합니다. "
+        "모듈이 정상 등록되면 자동으로 생략됩니다. 기업 정책에 따라 끌 수 있습니다."
+    )
+    window.auto_accept_security_check.setChecked(
+        window.config.get("auto_accept_security_dialog", True)
+    )
+    advanced_layout.addWidget(window.auto_accept_security_check)
+
+    window.auto_continue_compat_check = QCheckBox("호환 형식 저장 확인 창 「계속」 자동 선택")
+    window.auto_continue_compat_check.setToolTip(
+        "DOCX·RTF 등으로 저장할 때 한글이 띄우는 「호환 문서 — 문서 내용의 배치가 변경될 수 있습니다. "
+        "저장을 계속할까요?」 창에 자동으로 「계속」합니다. 앱이 띄운 한글 프로세스에만 적용됩니다. "
+        "끄면 변환이 창에서 멈추며 직접 눌러야 합니다."
+    )
+    window.auto_continue_compat_check.setChecked(
+        window.config.get("auto_continue_compat_dialog", True)
+    )
+    advanced_layout.addWidget(window.auto_continue_compat_check)
+
+    main_layout.addWidget(advanced_group)
 
     # === 실행 버튼 ===
     btn_layout = QHBoxLayout()
     btn_layout.setSpacing(10)
 
     window.start_btn = QPushButton("🚀 변환 시작")
-    window.start_btn.setMinimumHeight(55)
+    window.start_btn.setMinimumHeight(50)
     window.start_btn.setToolTip("선택한 파일을 변환합니다 (Ctrl+Enter)")
-    font = window.start_btn.font()
-    font.setPointSize(12)
-    font.setBold(True)
-    window.start_btn.setFont(font)
+    window.start_btn.setProperty("large", True)
     window.start_btn.clicked.connect(callbacks.start_conversion)
     btn_layout.addWidget(window.start_btn)
 
     window.cancel_btn = QPushButton("⏹️ 취소")
-    window.cancel_btn.setProperty("secondary", True)
-    window.cancel_btn.setMinimumHeight(55)
-    window.cancel_btn.setFixedWidth(100)
+    window.cancel_btn.setProperty("danger", True)
+    window.cancel_btn.setProperty("large", True)
+    window.cancel_btn.setMinimumHeight(50)
+    window.cancel_btn.setMinimumWidth(110)
     window.cancel_btn.setToolTip("진행 중인 변환을 취소합니다 (Esc)")
     window.cancel_btn.setEnabled(False)
     window.cancel_btn.clicked.connect(callbacks.cancel_conversion)
@@ -464,11 +499,10 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
 
     # 팁 메시지
     tip_label = QLabel(
-        "💡 Tip: 앱이 한컴 보안승인 모듈을 자동 등록하면 파일별 허용 팝업 없이 진행됩니다. "
-        "모듈 실패 시에만 허용 창이 뜨며, 그때 '모두 허용'을 누르세요."
+        "💡 앱이 한컴 보안승인 모듈을 자동 등록하면 파일별 허용 팝업 없이 진행됩니다. "
+        "모듈 등록에 실패한 경우에만 허용 창이 뜨며, 그때 「모두 허용」을 누르세요."
     )
-    tip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    tip_label.setStyleSheet("color: #ff9f43; font-weight: bold; margin-top: 5px;")
+    tip_label.setProperty("hint", True)
     tip_label.setWordWrap(True)
     main_layout.addWidget(tip_label)
 
@@ -478,22 +512,25 @@ def build_main_window_ui(window: Any, config: Any, callbacks: MainWindowCallback
     progress_layout.setSpacing(8)
 
     window.status_label = QLabel("준비됨")
-    window.status_label.setMinimumHeight(25)
+    window.status_label.setProperty("statusText", True)
+    window.status_label.setWordWrap(True)
+    window.status_label.setMinimumHeight(22)
     progress_layout.addWidget(window.status_label)
 
     window.progress_bar = QProgressBar()
     window.progress_bar.setValue(0)
-    window.progress_bar.setMinimumHeight(28)
+    window.progress_bar.setMinimumHeight(22)
+    window.progress_bar.setTextVisible(True)
     progress_layout.addWidget(window.progress_bar)
 
     window.progress_label = QLabel("0 / 0")
+    window.progress_label.setProperty("subheading", True)
     window.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     progress_layout.addWidget(window.progress_label)
 
     main_layout.addWidget(progress_group)
 
-    # 하단 여백
-    main_layout.addSpacing(20)
+    main_layout.addStretch(1)
 
     return MainWindowWidgets(
         theme_btn=window.theme_btn,

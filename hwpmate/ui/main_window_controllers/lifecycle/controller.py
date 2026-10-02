@@ -179,10 +179,11 @@ class LifecycleController:
     <p><b>3. 단축키</b></p>
     <ul>
     <li>Ctrl+O: 파일 추가</li>
-    <li>Ctrl+Shift+O: 폴더 선택</li>
+    <li>Ctrl+Shift+O: 폴더 선택 (파일 모드에서는 폴더 안 문서를 목록에 추가)</li>
     <li>Ctrl+Enter: 변환 시작</li>
     <li>Esc: 변환 취소</li>
     <li>Delete: 선택 파일 제거</li>
+    <li>Ctrl+Delete: 파일 목록 전체 제거</li>
     </ul>
     """
         QMessageBox.information(self.window, "사용법", usage_text)

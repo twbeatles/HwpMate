@@ -43,6 +43,7 @@ class ConfigRepository:
             "output_path",
             "last_folder",
             "last_output",
+            "last_file_dir",
             "pdf_export_mode",
         }
         for key in string_keys:

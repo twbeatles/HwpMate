@@ -16,6 +16,7 @@ HWP 변환기 v9.0 - PyInstaller 빌드 설정
   공개 경로는 패키지 __init__ re-export. 정적 import 유지 — 핵심 패키지를 hiddenimports 에 명시.
 2026-08-05: 감사 잔여 개선 — 소유 PID 한정 UI 억제, PDF 매직·확장 경로, 변환용 폴더 캐시 연령,
   backup_max_files_per_stem UI/설정. 신규 datas 없음. hiddenimports 패키지 목록 유지.
+2026-10-02: UI/UX 리팩토링(ui/theme 패키지 분리, 토스트 오버레이) — 신규 datas·hiddenimports 불필요 (hwpmate.ui.theme 패키지는 기존 항목에 포함).
 """
 
 from pathlib import Path
@@ -143,7 +144,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='HWP변환기_v9.1.1',
+    name='HWP변환기_v9.1.2',
 
     debug=False,
     bootloader_ignore_signals=False,
