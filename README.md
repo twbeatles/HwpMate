@@ -2,11 +2,11 @@
 
 <p align="center">
   <a href="https://github.com/twbeatles/HwpMate/releases/latest">
-    <img src="https://img.shields.io/badge/Release-v9.1.2-blue.svg?style=for-the-badge&logo=github" alt="Latest Release" />
+    <img src="https://img.shields.io/badge/Release-v9.2.0-blue.svg?style=for-the-badge&logo=github" alt="Latest Release" />
   </a>
   <img src="https://img.shields.io/badge/Platform-Windows_10%2F11_(64--bit)-lightgrey.svg?style=for-the-badge&logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/Tests-222%20Passed-success.svg?style=for-the-badge" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-283%20Passed-success.svg?style=for-the-badge" alt="Tests" />
   <img src="https://img.shields.io/badge/Type%20Check-Pyright%200%20Errors-blueviolet.svg?style=for-the-badge" alt="Type Check" />
 </p>
 
@@ -20,7 +20,7 @@
 > ### 🚀 [초고속 다운로드 (무설치 포터블)]
 > Python 설치나 복잡한 환경 설정 없이, 아래 링크에서 단일 실행 파일(`.exe`)을 다운로드하여 즉시 사용하실 수 있습니다.
 > 
-> 👉 **[최신 버전 HwpMate-v9.1.2.exe 다운로드 (GitHub Releases)](https://github.com/twbeatles/HwpMate/releases/latest)**  
+> 👉 **[최신 버전 HwpMate-v9.2.0.exe 다운로드 (GitHub Releases)](https://github.com/twbeatles/HwpMate/releases/latest)**  
 > *(다운로드 후 마우스 오른쪽 버튼을 클릭하여 **'관리자 권한으로 실행'**해 주세요.)*
 
 ---
@@ -31,6 +31,7 @@
 - [시스템 요구사항](#requirements)
 - [1분 퀵스타트 (GUI 사용법)](#quick-start)
 - [커맨드라인(CLI) 자동화 변환](#cli)
+- [AI 에이전트 연동 (MCP)](#mcp)
 - [주요 단축키](#shortcuts)
 - [자주 묻는 질문 및 문제 해결 (FAQ)](#faq)
 - [개발자 및 기여 가이드](#developer-guide)
@@ -59,6 +60,8 @@
   새 버전 출시 시 앱 내에서 원클릭으로 안전하게 업데이트됩니다. 서명·해시·크기 검증에 실패한 파일은 교체하지 않으며, 교체 후 실행 검증(`--smoke`)에 실패하면 이전 버전으로 **자동 롤백**하고 다시 실행합니다. 변환 작업 중에는 업데이트 적용이 보류됩니다.
 * 💻 **직관적인 모던 GUI & 헤드리스 CLI 지원**:
   초보자를 위한 미려하고 직관적인 GUI 화면과, 업무 자동화·배치 스크립트를 위한 터미널 CLI 명령어를 모두 제공합니다.
+* 🤖 **AI 에이전트 연동 (로컬 MCP 서버)**:
+  Codex·Claude Code 등 에이전트가 명시적 승인 하에 변환을 계획·실행·검증할 수 있는 `stdio` 전용 MCP 서버(`python -m hwpmate.mcp`)를 제공합니다. 미리보기→승인→제출→검증 흐름, 단일 worker, 원본 보호 정책을 그대로 따릅니다.
 
 ---
 
@@ -103,7 +106,7 @@
 ```
 
 ### 1단계: 프로그램 실행
-다운로드한 `HwpMate-v9.1.2.exe` 파일을 마우스 우클릭한 뒤 **[관리자 권한으로 실행]**을 클릭합니다.
+다운로드한 `HwpMate-v9.2.0.exe` 파일을 마우스 우클릭한 뒤 **[관리자 권한으로 실행]**을 클릭합니다.
 
 ### 2단계: 문서 또는 폴더 추가
 * **폴더 통째로 변환할 때**: 상단 모드를 **[폴더 일괄 변환]**으로 두고, 변환할 폴더를 창으로 끌어다 놓거나 `[폴더 선택]`을 누릅니다. (하위 폴더를 포함하려면 체크박스 선택)
@@ -127,22 +130,22 @@ HwpMate는 GUI 창 없이 윈도우 작업 스케줄러, 배치 파일(`.bat`), 
 
 ```powershell
 # 1. 단일 파일 변환 (HWP -> PDF)
-HwpMate-v9.1.2.exe --input "C:\문서\보고서.hwp" --format PDF
+HwpMate-v9.2.0.exe --input "C:\문서\보고서.hwp" --format PDF
 
 # 2. 폴더 전체 일괄 변환 (하위 폴더 포함, MS Word DOCX로 변환)
-HwpMate-v9.1.2.exe --input "C:\업무자료" --format DOCX --recursive --output "C:\변환완료"
+HwpMate-v9.2.0.exe --input "C:\업무자료" --format DOCX --recursive --output "C:\변환완료"
 
 # 3. 초고속 변환 (백업 생성 안 함, 기존 파일 덮어쓰기)
-HwpMate-v9.1.2.exe --input "C:\문서폴더" --format PDF --overwrite --no-backup
+HwpMate-v9.2.0.exe --input "C:\문서폴더" --format PDF --overwrite --no-backup
 
 # 4. 모아찍기 해제 인쇄 모드로 PDF 변환 (실패 시 2회 재시도)
-HwpMate-v9.1.2.exe --input "C:\공문서" --format PDF --pdf-export-mode print_to_pdf_ex_first --retry 2
+HwpMate-v9.2.0.exe --input "C:\공문서" --format PDF --pdf-export-mode print_to_pdf_ex_first --retry 2
 
 # 5. 결과를 JSON으로 저장 (CSV는 .csv 확장자)
-HwpMate-v9.1.2.exe --input "C:\문서폴더" --format DOCX --report "C:\변환결과\result.json"
+HwpMate-v9.2.0.exe --input "C:\문서폴더" --format DOCX --report "C:\변환결과\result.json"
 
 # 6. 시스템 및 COM 의존성 무결성 진단 (스모크 테스트)
-HwpMate-v9.1.2.exe --smoke
+HwpMate-v9.2.0.exe --smoke
 ```
 
 > CLI는 GUI와 같은 변환 엔진(백업 → 출력 충돌 회피 → 재시도 → 산출물 검증)을 사용합니다. 같은 한글 COM·출력 파일을 동시에 다루지 않도록 **GUI 또는 다른 CLI가 실행 중이면 오류 코드 1로 종료**합니다. 실패·취소가 없으면 종료 코드 0입니다.
@@ -162,6 +165,19 @@ HwpMate-v9.1.2.exe --smoke
 | `--report` | | (없음) | 변환 결과를 CSV 또는 JSON 파일로 저장 (확장자로 형식 결정, 감사 필드 포함) |
 | `--no-auto-continue` | | `False` | 한글 「호환 문서(배치가 변경될 수 있습니다)」 확인 창에 자동으로 계속하지 않음 |
 | `--smoke` | | `False` | GUI를 띄우지 않고 의존성 및 모듈 무결성 점검 실행 후 종료 |
+
+---
+
+## <a id="mcp"></a>🤖 AI 에이전트 연동 (MCP)
+
+HwpMate는 로컬 `stdio` 전용 MCP 서버를 내장합니다. 에이전트는 `preview → (사용자 승인) → submit → status/result → validate` 흐름으로만 변환을 실행하며, 기존 GUI·CLI의 변환 엔진·원본 보호·단일 실행 잠금을 그대로 사용합니다.
+
+```powershell
+pip install -r requirements-mcp.txt
+python -m hwpmate.mcp
+```
+
+자세한 도구 레퍼런스·보안 모델·클라이언트 설정은 [docs/MCP.md](docs/MCP.md), [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md), [docs/MCP_SECURITY.md](docs/MCP_SECURITY.md), [docs/MCP_CLIENT_SETUP.md](docs/MCP_CLIENT_SETUP.md)를 참고하세요.
 
 ---
 

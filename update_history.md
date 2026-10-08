@@ -4,12 +4,20 @@
 
 ## 현재 상태
 
-- 앱 버전: `v9.1.2`
+- 앱 버전: `v9.2.0`
 - 주 엔트리포인트: `hwptopdf-hwpx_v4.py`
 - 빌드 설정: `hwp_converter.spec`
 - 정적 검사 기준: `pyrightconfig.json`
-- 배포 산출물: `dist/HWP변환기_v9.1.2.exe` (릴리즈: `HwpMate-v9.1.2.exe`)
+- 배포 산출물: `dist/HWP변환기_v9.2.0.exe` (릴리즈: `HwpMate-v9.2.0.exe`)
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
+
+## 2026-10-08 로컬 MCP 서버 추가 (v9.2.0)
+
+- **신규 `hwpmate/mcp/` 패키지:** Codex·Claude Code 등 에이전트가 명시적 승인 하에 변환을 계획·실행·검증하는 로컬 `stdio` 전용 MCP 서버(`python -m hwpmate.mcp`, 의존성 `requirements-mcp.txt` 분리).
+- **도구 8종:** `get_capabilities`·`list_supported_formats`·`preview_conversion`(읽기 전용 3종), `submit_conversion`·`get_job_status`·`get_job_result`, `cancel_job`(대기 중만)·`validate_artifacts`(매직 서명 검증). Resources 3종·Prompts 3종 포함.
+- **안전 설계:** 기존 CLI subprocess 호출(`shell=False`), 단일 worker + 기존 `SingleInstanceLock` 우회 금지, 허용 루트 fail closed, `overwrite=false`·백업 유지 고정, 승인 토큰+idempotency, 큐 만료·보존 정리·출력 재검증.
+- **문서:** `docs/MCP.md`, `docs/MCP_SECURITY.md`, `docs/MCP_TOOLS.md`, `docs/MCP_CLIENT_SETUP.md`, README에 MCP 절 추가.
+- **검증:** `pytest` 283 passed, `pyright` 0 errors, 실제 stdio 핸드셰이크 테스트 통과. Windows 실기(한글 COM)·클라이언트 연결은 현장 확인 필요.
 
 ## 2026-10-02 UI/UX 리팩토링 (라이트/다크 테마·토스트·입력→변환 흐름) (v9.1.2)
 
