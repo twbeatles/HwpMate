@@ -54,6 +54,27 @@ def _noop(_: str) -> None:
     return None
 
 
+def verify_claimed_artifacts(task: ConversionTask) -> str | None:
+    """엔진이 보고한 산출물이 실제로 존재·비어 있지 않은지 확인한다.
+
+    실제 HWPConverter 는 성공 시 항상 비어 있지 않은 산출물 목록을 보고하므로,
+    보고된 파일이 없거나 비어 있으면 COM 성공 이후의 삭제·경쟁·중간 실패로 보고
+    실패로 전환한다. 산출물을 보고하지 않는 엔진(구형 fake 포함)은 기존 신뢰를 유지한다.
+    """
+    claimed = [Path(path) for path in (task.created_files or [])]
+    if not claimed:
+        return None
+    for path in claimed:
+        try:
+            if not path.is_file():
+                return f"출력 산출물을 확인할 수 없습니다: {path.name}"
+            if path.stat().st_size <= 0:
+                return f"출력 산출물이 비어 있습니다: {path.name}"
+        except OSError as exc:
+            return f"출력 산출물을 확인할 수 없습니다: {path.name} ({exc})"
+    return None
+
+
 def execute_task(
     task: ConversionTask,
     converter: ConverterEngine,
@@ -78,7 +99,9 @@ def execute_task(
             task.backup_file = backup(task.input_file)
         except Exception as e:
             task.backup_error = str(e)
-            logger.warning(f"백업 실패 (계속 진행): {e}")
+            message = f"백업 실패 (계속 진행): {task.input_file.name} ({e})"
+            runtime_warnings.append(message)
+            logger.warning(message)
 
     original_output = task.output_file
     on_stage("출력 경로 확인")
@@ -129,6 +152,12 @@ def execute_task(
             task.retry_count += 1
             on_status(f"재시도 중: {task.input_file.name} ({task.retry_count}/{options.retry_count})")
             time.sleep(RETRY_DELAY_SECONDS)
+
+    if success:
+        artifact_error = verify_claimed_artifacts(task)
+        if artifact_error is not None:
+            success = False
+            error = artifact_error
 
     if success:
         task.status = "성공"

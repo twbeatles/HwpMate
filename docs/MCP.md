@@ -37,7 +37,7 @@ max_files_per_job = 50
 [paths]
 input_roots = ["C:/Work/HWP-Input"]
 output_roots = ["C:/Work/HWP-Output"]
-cli_executable = "C:/Program Files/HwpMate/HwpMate-v9.2.0.exe"
+cli_executable = "C:/Program Files/HwpMate/HwpMate-v9.2.1-arm64.exe"
 ```
 
 - 허용 루트가 없으면 변환 도구는 fail closed(거부)한다.

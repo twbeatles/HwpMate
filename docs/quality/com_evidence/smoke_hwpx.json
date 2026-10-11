@@ -1,0 +1,104 @@
+{
+  "summary": {
+    "format_type": "PDF,DOCX,PNG,HTML,TXT",
+    "total_requested": 5,
+    "success_count": 5,
+    "failed_count": 0,
+    "skipped_count": 0,
+    "canceled_count": 0,
+    "elapsed_seconds": 25.71135400000003,
+    "progid_used": null,
+    "warnings": [
+      "Administrator privileges are recommended for HWP COM smoke verification."
+    ]
+  },
+  "tasks": [
+    {
+      "input_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\input\\sample_ko.hwpx",
+      "output_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\smoke_hwpx\\PDF\\sample_ko.pdf",
+      "status": "성공",
+      "detail": "",
+      "retry_count": 0,
+      "backup_file": "",
+      "backup_error": "",
+      "created_files": [
+        "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\smoke_hwpx\\PDF\\sample_ko.pdf"
+      ],
+      "output_size": 20701,
+      "output_mtime": 1791722661.583814,
+      "save_format": "PDF",
+      "export_method": "saveas_3",
+      "progid_used": "HWPFrame.HwpObject"
+    },
+    {
+      "input_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\input\\sample_ko.hwpx",
+      "output_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\smoke_hwpx\\DOCX\\sample_ko.docx",
+      "status": "성공",
+      "detail": "",
+      "retry_count": 0,
+      "backup_file": "",
+      "backup_error": "",
+      "created_files": [
+        "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\smoke_hwpx\\DOCX\\sample_ko.docx"
+      ],
+      "output_size": 6454,
+      "output_mtime": 1791722666.124554,
+      "save_format": "OOXML",
+      "export_method": "saveas_3",
+      "progid_used": "HWPFrame.HwpObject"
+    },
+    {
+      "input_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\input\\sample_ko.hwpx",
+      "output_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\smoke_hwpx\\PNG\\sample_ko.png",
+      "status": "성공",
+      "detail": "",
+      "retry_count": 0,
+      "backup_file": "",
+      "backup_error": "",
+      "created_files": [
+        "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\smoke_hwpx\\PNG\\sample_ko001.png",
+        "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\smoke_hwpx\\PNG\\sample_ko002.png",
+        "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\smoke_hwpx\\PNG\\sample_ko003.png"
+      ],
+      "output_size": 103416,
+      "output_mtime": 1791722670.220386,
+      "save_format": "PNG",
+      "export_method": "saveas_3",
+      "progid_used": "HWPFrame.HwpObject"
+    },
+    {
+      "input_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\input\\sample_ko.hwpx",
+      "output_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\smoke_hwpx\\HTML\\sample_ko.html",
+      "status": "성공",
+      "detail": "",
+      "retry_count": 0,
+      "backup_file": "",
+      "backup_error": "",
+      "created_files": [
+        "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\smoke_hwpx\\HTML\\sample_ko.html"
+      ],
+      "output_size": 27313,
+      "output_mtime": 1791722674.5193808,
+      "save_format": "HTML",
+      "export_method": "saveas_3",
+      "progid_used": "HWPFrame.HwpObject"
+    },
+    {
+      "input_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\input\\sample_ko.hwpx",
+      "output_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\smoke_hwpx\\TXT\\sample_ko.txt",
+      "status": "성공",
+      "detail": "",
+      "retry_count": 0,
+      "backup_file": "",
+      "backup_error": "",
+      "created_files": [
+        "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\smoke_hwpx\\TXT\\sample_ko.txt"
+      ],
+      "output_size": 4731,
+      "output_mtime": 1791722678.5734441,
+      "save_format": "TEXT",
+      "export_method": "saveas_3",
+      "progid_used": "HWPFrame.HwpObject"
+    }
+  ]
+}

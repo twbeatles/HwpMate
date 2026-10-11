@@ -184,3 +184,26 @@ def test_cli_no_auto_continue_flag_disables_compat_dialog_response(tmp_path: Pat
     _run_cli_conversion(_parse_args(["--input", str(doc), "--no-backup", "--no-auto-continue"]))
 
     assert ScriptedCliConverter.instances[0].auto_continue_compat_dialogs is False
+
+
+def test_cli_survives_non_utf8_console_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """실 COM 현장 결함 회귀: cp949 콘솔에서 ⚠️ 경고 출력이 UnicodeEncodeError 로 죽지 않는다."""
+    import io
+    import sys as sys_module
+
+    doc = tmp_path / "a.hwp"
+    doc.write_bytes(b"dummy")
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "a.pdf").write_bytes(b"planted")  # 충돌 경고(⚠️) 경로를 강제한다.
+    _patch_cli(monkeypatch, script=[True])
+
+    ascii_out = io.TextIOWrapper(io.BytesIO(), encoding="ascii")
+    ascii_err = io.TextIOWrapper(io.BytesIO(), encoding="ascii")
+    monkeypatch.setattr(sys_module, "stdout", ascii_out)
+    monkeypatch.setattr(sys_module, "stderr", ascii_err)
+
+    ret = _run_cli_conversion(_parse_args(["--input", str(doc), "--format", "PDF", "--output", str(out)]))
+
+    assert ret == 0
+    assert (out / "a.pdf").read_bytes() == b"planted"

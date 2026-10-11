@@ -4,12 +4,20 @@
 
 ## 현재 상태
 
-- 앱 버전: `v9.2.0`
+- 앱 버전: `v9.2.1`
 - 주 엔트리포인트: `hwptopdf-hwpx_v4.py`
 - 빌드 설정: `hwp_converter.spec`
 - 정적 검사 기준: `pyrightconfig.json`
-- 배포 산출물: `dist/HWP변환기_v9.2.0.exe` (릴리즈: `HwpMate-v9.2.0.exe`)
+- 배포 산출물: `dist/HWP변환기_v9.2.1.exe` (릴리즈: `HwpMate-v9.2.1-arm64.exe`, ARM64)
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
+
+## 2026-10-11 Python 3.15·의존성 업그레이드 (v9.2.1)
+
+- **런타임:** Python 3.15.0 (로컬 `.venv` 재생성), CI(`windows-latest`)도 3.12 → 3.15.
+- **의존성:** `mcp` 2.2.0 → 2.3.0 (`requirements-dev.txt`·`requirements-mcp.txt`). PyQt6 6.11.0·pywin32 312·pytest 9.1.1 등은 이미 최신. `cryptography`는 ARM64 바이너리 휠 부재로 46.0.3 유지.
+- **수정:** cp949 콘솔 CLI 이모지 출력 충돌 수정 (`_ensure_cli_printable_output`, 회귀 테스트 포함), P0/P1 테스트 34건 보강, `com_real`·`gui_real`·`release_vm` 마커 분리.
+- **검증:** `pytest` 316 passed·`pyright` clean (3.15), 실 COM 5종·CLI·Worker·MCP E2E 성공. 증거 `docs/quality/`.
+- **주의:** 자동업데이트용 `updates/latest.json`은 서명키 없이 갱신할 수 없어 v9.2.0 기준 유지. v9.2.1은 GitHub 수동 다운로드용(ARM64).
 
 ## 2026-10-08 로컬 MCP 서버 추가 (v9.2.0)
 

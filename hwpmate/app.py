@@ -56,6 +56,20 @@ def _ensure_cli_console_output() -> None:
         pass
 
 
+def _ensure_cli_printable_output() -> None:
+    """cp949 등 비 UTF-8 콘솔에서 이모지 출력이 UnicodeEncodeError 로 죽지 않게 한다.
+
+    인코딩 자체는 바꾸지 않고(errors만 replace) 파이프·리다이렉션 동작을 유지한다.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            reconfigure = getattr(stream, "reconfigure", None)
+            if callable(reconfigure):
+                reconfigure(errors="replace")
+        except Exception:
+            pass
+
+
 def _write_json_line(stream: object, line: str) -> bool:
     payload = f"{line}\n"
     write = getattr(stream, "write", None)
@@ -291,6 +305,7 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
     from .constants import CONVERTER_RECYCLE_BATCH_COUNT, MAX_RETRY_COUNT
 
     _ensure_cli_console_output()
+    _ensure_cli_printable_output()
     started = time.perf_counter()
     input_path = Path(args.input).resolve()
     if not input_path.exists():

@@ -1,0 +1,51 @@
+{
+  "summary": {
+    "format_type": "PDF",
+    "total_requested": 2,
+    "success_count": 2,
+    "failed_count": 0,
+    "skipped_count": 0,
+    "canceled_count": 0,
+    "elapsed_seconds": 6.1990871000000425,
+    "progid_used": "HWPFrame.HwpObject",
+    "warnings": [
+      "출력 경로 충돌 1개는 자동으로 새 이름으로 저장됩니다."
+    ]
+  },
+  "tasks": [
+    {
+      "input_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\input\\sample_ko.hwp",
+      "output_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\cli_pdf\\sample_ko.pdf",
+      "status": "성공",
+      "detail": "",
+      "retry_count": 0,
+      "backup_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\input\\backup\\sample_ko_20261011_214555_599123.hwp",
+      "backup_error": "",
+      "created_files": [
+        "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\cli_pdf\\sample_ko.pdf"
+      ],
+      "output_size": 20701,
+      "output_mtime": 1791722756.9454687,
+      "save_format": "PDF",
+      "export_method": "saveas_3",
+      "progid_used": "HWPFrame.HwpObject"
+    },
+    {
+      "input_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\input\\sample_ko.hwpx",
+      "output_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\cli_pdf\\sample_ko (1).pdf",
+      "status": "성공",
+      "detail": "",
+      "retry_count": 0,
+      "backup_file": "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\input\\backup\\sample_ko_20261011_214556_969177.hwpx",
+      "backup_error": "",
+      "created_files": [
+        "C:\\twbeatles-repos\\HwpMate\\.qa-scratch\\output\\cli_pdf\\sample_ko (1).pdf"
+      ],
+      "output_size": 20701,
+      "output_mtime": 1791722758.1445093,
+      "save_format": "PDF",
+      "export_method": "saveas_3",
+      "progid_used": "HWPFrame.HwpObject"
+    }
+  ]
+}

@@ -66,6 +66,8 @@ class ArtifactConverter(StubConverter):
         result = super().convert_file(
             input_path, output_path, format_type, cancel_check=cancel_check
         )
+        # 실제 엔진처럼 보고한 산출물을 디스크에 남긴다.
+        Path(output_path).write_bytes(b"%PDF-1.4 faithful-fake\n")
         self.last_created_files = [Path(output_path)]
         self.last_output_size = 123
         self.last_output_mtime = 1777777777.0
