@@ -1,10 +1,10 @@
 {
   "payload": {
-    "artifact_url": "https://github.com/twbeatles/HwpMate/releases/download/v9.2.0/HwpMate-v9.2.0.exe",
-    "expires_at": "2027-10-08T00:52:02Z",
-    "sha256": "f669bb36f544d0c01fdfb2944082d87529d3ac55e23f4daecd1c140f25a0da27",
-    "size": 45603028,
-    "version": "9.2.0"
+    "artifact_url": "https://github.com/twbeatles/HwpMate/releases/download/v9.2.1/HwpMate-v9.2.1.exe",
+    "expires_at": "2027-10-11T13:08:05Z",
+    "sha256": "8f338dfe2ec246efaa1dde4f7cfaa11700766502b6c2ad83e727cbdf570cfb44",
+    "size": 45604596,
+    "version": "9.2.1"
   },
-  "signature": "BGyO1Uzl9MrkEt6mFgw0fuJWyrE+FByL/C3SVJrM3sCYj7ML1JAdDXok1h/KAw4x54Jvfi6iSeA6XLgWgWdDDA=="
+  "signature": "Juj0s8ObggJhs6vpWNWHsuSifF8SmHEyntooCiqD01S7KGQIthLTlsusv1148ewS9AFNDx4/0DbJPwBZvHWsAQ=="
 }
