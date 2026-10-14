@@ -91,7 +91,10 @@ def _render(shape: str, color: str, size: int, path: Path) -> None:
         draw(painter, float(size))
     finally:
         painter.end()
-    if not image.save(str(path), "PNG"):
+    # 형식 인자 생략: 경로는 항상 .png 이므로 Qt 가 PNG 로 추론한다.
+    # (PySide6 6.12 스텁은 bytes 를 요구하지만 런타임은 bytes 를 거부하고,
+    #  str 은 런타임에 동작해도 스텁을 통과 못 하므로 양쪽을 모두 만족하는 생략을 쓴다.)
+    if not image.save(str(path)):
         raise OSError(f"아이콘 저장 실패: {path}")
 
 
