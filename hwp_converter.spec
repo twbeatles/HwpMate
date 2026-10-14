@@ -19,6 +19,8 @@ HWP 변환기 v9.0 - PyInstaller 빌드 설정
 2026-10-02: UI/UX 리팩토링(ui/theme 패키지 분리, 토스트 오버레이) — 신규 datas·hiddenimports 불필요 (hwpmate.ui.theme 패키지는 기존 항목에 포함).
 """
 
+import os
+import sys
 from pathlib import Path
 
 block_cipher = None
@@ -118,6 +120,15 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
+
+# Python 3.15 abi3t: cryptography _rust.pyd links python3t.dll
+# (<prefix>\abi3t-compat), which PyInstaller does not auto-collect.
+# Without it the frozen exe dies with "DLL load failed while importing _rust".
+_py3t_dll = os.path.join(sys.base_prefix, 'abi3t-compat', 'python3t.dll')
+_py3t_dest = 'python3t.dll'
+if os.path.isfile(_py3t_dll) and not any(
+        (b[0] or '').lower() == _py3t_dest for b in a.binaries):
+    a.binaries.append((_py3t_dest, _py3t_dll, 'BINARY'))
 
 # 불필요한 바이너리 제거 (경량화)
 # 중요: Qt6Network / opengl32sw / d3dcompiler 는 Qt6Gui·렌더링 런타임 의존성이라 제거하면
