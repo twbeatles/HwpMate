@@ -70,7 +70,7 @@ def test_write_results_csv_contains_all_statuses(tmp_path: Path) -> None:
 
 def test_preflight_dialog_includes_print_and_permission_notices(qapp, tmp_path: Path) -> None:
     del qapp
-    from PyQt6.QtWidgets import QTextEdit
+    from PySide6.QtWidgets import QTextEdit
 
     input_file = tmp_path / "doc.hwp"
     input_file.write_text("x", encoding="utf-8")
@@ -89,7 +89,7 @@ def test_preflight_dialog_includes_print_and_permission_notices(qapp, tmp_path: 
 
 def test_preflight_dialog_truncates_large_detail_list(qapp, tmp_path: Path) -> None:
     del qapp
-    from PyQt6.QtWidgets import QTextEdit
+    from PySide6.QtWidgets import QTextEdit
 
     from hwpmate.constants import PREFLIGHT_DETAIL_MAX_TASKS
 

@@ -8,8 +8,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QSignalBlocker
-from PyQt6.QtWidgets import QFileDialog, QMessageBox, QTableWidgetItem
+from PySide6.QtCore import QSignalBlocker
+from PySide6.QtWidgets import QFileDialog, QMessageBox, QTableWidgetItem
 
 from ....constants import (
     FOLDER_SCAN_WAIT_MS,
@@ -65,7 +65,7 @@ class FileSelectionController:
         processEvents 로 캐시 갱신 슬롯을 실행한다.
         종료 요청(close_requested)이 있으면 즉시 False 를 반환한다.
         """
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
 
         worker = self.state.scan_worker
         if not worker or not worker.isRunning():

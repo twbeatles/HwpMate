@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from typing import Iterable, List, Optional, Set
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 
 from ..constants import SCAN_BATCH_SIZE, SUPPORTED_EXTENSIONS
 from ..logging_config import get_logger
@@ -15,10 +15,10 @@ logger = get_logger(__name__)
 class FileScanWorker(QThread):
     """파일/폴더 입력을 비동기로 스캔하고 배치 단위로 전달"""
 
-    batch_found = pyqtSignal(list)          # list[str]
-    scan_progress = pyqtSignal(int, int)    # current_root, total_roots
-    scan_finished = pyqtSignal(int, bool)   # total_found, canceled
-    scan_error = pyqtSignal(str)
+    batch_found = Signal(list)          # list[str]
+    scan_progress = Signal(int, int)    # current_root, total_roots
+    scan_finished = Signal(int, bool)   # total_found, canceled
+    scan_error = Signal(str)
 
     def __init__(
         self,

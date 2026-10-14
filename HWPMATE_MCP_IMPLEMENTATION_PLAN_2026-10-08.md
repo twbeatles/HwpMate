@@ -25,7 +25,7 @@
 
 ### 1.1 현재 배포·사용 모델
 
-- HwpMate는 PyQt6 GUI와 헤드리스 CLI를 가진 Windows 한글 문서 일괄 변환기다.
+- HwpMate는 PySide6 GUI와 헤드리스 CLI를 가진 Windows 한글 문서 일괄 변환기다.
 - `.hwp`와 `.hwpx`를 입력받고 `PDF`, `DOCX`, `HWPX`, `HWP`, `ODT`, `HTML`, `RTF`, `TXT`, `PNG`, `JPG`, `BMP`, `GIF` 등 `FORMAT_TYPES`에 열거된 형식으로 변환한다.
 - 기존 `hwpmate/app.py`는 `argparse` CLI를 이미 제공하며, `--input`, `--format`, `--output`, `--recursive`, `--overwrite`, `--no-backup`, `--retry`, `--pdf-export-mode`, `--report`, `--no-auto-continue`를 인식한다.
 - `_run_cli_conversion()`은 `TaskPlanner.build_tasks()`, `resolve_output_conflicts()`, `HWPConverter.initialize(manage_com_apartment=True)`, `execute_task()`, `recycle_converter()`를 사용한다.
@@ -50,7 +50,7 @@
 
 #### 특히 중요한 기술적 사실
 
-1. `hwpmate/app.py`가 파일 상단에서 `PyQt6.QtWidgets`와 GUI `MainWindow`를 import한다. **MCP 서버 진입점에서 `hwpmate.app`을 import하지 않는 구조**가 처음에는 더 안정적이다. 기존 CLI를 별도 프로세스로 실행한다.
+1. `hwpmate/app.py`가 파일 상단에서 `PySide6.QtWidgets`와 GUI `MainWindow`를 import한다. **MCP 서버 진입점에서 `hwpmate.app`을 import하지 않는 구조**가 처음에는 더 안정적이다. 기존 CLI를 별도 프로세스로 실행한다.
 2. `--smoke`는 import 및 업데이트 모듈 검사와 `PYWIN32_AVAILABLE` 등의 정보를 제공하지만, **한글 COM 실제 변환 성공을 보증하지 않는다**. `hwp_capabilities` 및 선택적 COM 현장 검증을 별도로 정의한다.
 3. CLI는 화면용 진행 메시지를 stdout에 출력한다. **stdout을 MCP JSON-RPC 채널로 사용하는 같은 프로세스 안에서 CLI를 호출하면 프로토콜이 깨진다.** subprocess stdout/stderr를 파일/파이프로 수집하고 MCP stdout으로 전달하지 않는다.
 4. `_run_cli_conversion()`이 `--report`로 만든 JSON 파일은 결과 파싱용으로 활용할 수 있다. **CLI 종료 코드만으로 개별 파일 성공을 판정하지 않는다.**

@@ -8,7 +8,7 @@ from ctypes import wintypes
 from pathlib import Path
 from typing import Any, Callable, ClassVar, List, Optional, Set, Tuple
 
-from PyQt6.QtCore import QAbstractNativeEventFilter
+from PySide6.QtCore import QAbstractNativeEventFilter
 
 from ..constants import SUPPORTED_EXTENSIONS
 from ..logging_config import get_logger
@@ -19,7 +19,7 @@ WINDOWS_GENERIC_MSG = b"windows_generic_MSG"
 
 
 def _event_type_bytes(event_type: Any) -> bytes:
-    """PyQt6 버전별로 bytes / QByteArray 로 올 수 있는 eventType 을 정규화."""
+    """PySide6 버전별로 bytes / QByteArray 로 올 수 있는 eventType 을 정규화."""
     if isinstance(event_type, (bytes, bytearray)):
         return bytes(event_type)
     data = getattr(event_type, "data", None)

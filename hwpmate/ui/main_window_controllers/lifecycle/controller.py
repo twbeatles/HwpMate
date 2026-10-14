@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from PyQt6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
-from PyQt6.QtWidgets import QLabel, QMenu, QMessageBox, QStyle, QSystemTrayIcon
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtWidgets import QLabel, QMenu, QMessageBox, QStyle, QSystemTrayIcon
 
 from ....constants import (
     FORMAT_GROUPS,

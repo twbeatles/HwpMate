@@ -275,7 +275,7 @@
 
 ## 13. 정적 분석 및 인코딩 기준 (2026-03-10)
 - `pyrightconfig.json`이 저장소 기본 정적 분석 기준이며, `basic` 모드에서 오류 0건을 유지합니다.
-- PyQt6의 `menuBar()`, `statusBar()`, `style()`, `mimeData()` 등 `Optional` 반환값은 직접 체이닝하지 않고 로컬 변수 + `None` 가드로 처리합니다.
+- PySide6의 `menuBar()`, `statusBar()`, `style()`, `mimeData()` 등 `Optional` 반환값은 직접 체이닝하지 않고 로컬 변수 + `None` 가드로 처리합니다.
 - COM 객체는 동적 호출 그대로 두지 않고 최소 `Protocol` 타입을 선언해 Pylance가 `None`/동적 속성 오류를 남기지 않게 유지합니다.
 - 텍스트 파일은 `.editorconfig` 기준으로 UTF-8, LF, final newline을 사용합니다.
 

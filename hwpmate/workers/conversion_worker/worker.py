@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from typing import Callable, Optional, Protocol
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 
 from ...logging_config import get_logger
 from ...constants import CONVERTER_RECYCLE_BATCH_COUNT, MAX_RETRY_COUNT
@@ -37,12 +37,12 @@ from .task_runner import (
 class ConversionWorker(QThread):
     """변환 작업 워커 스레드"""
 
-    progress_updated = pyqtSignal(int, int, str)  # current, total, filename
-    status_updated = pyqtSignal(str)
-    task_completed = pyqtSignal(object)  # ConversionSummary
-    stage_updated = pyqtSignal(str, float)
+    progress_updated = Signal(int, int, str)  # current, total, filename
+    status_updated = Signal(str)
+    task_completed = Signal(object)  # ConversionSummary
+    stage_updated = Signal(str, float)
     # 보안 모듈 등록·소유 PID 등 UI 폴링 정책용 (initialize 직후)
-    engine_status_updated = pyqtSignal(object)
+    engine_status_updated = Signal(object)
 
     _com_initialized = False
 

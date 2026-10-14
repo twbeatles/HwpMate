@@ -13,8 +13,8 @@ import tempfile
 from pathlib import Path
 from typing import Callable
 
-from PyQt6.QtCore import QPointF, Qt
-from PyQt6.QtGui import QColor, QImage, QPainter, QPainterPath, QPen
+from PySide6.QtCore import QPointF, Qt
+from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath, QPen
 
 from ...logging_config import get_logger
 

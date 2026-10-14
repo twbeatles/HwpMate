@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import QApplication, QWidget
+from PySide6.QtGui import QColor, QPalette
+from PySide6.QtWidgets import QApplication, QWidget
 
 from .dark import DARK_THEME
 from .light import LIGHT_THEME

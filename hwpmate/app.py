@@ -8,7 +8,7 @@ import sys
 import time
 from typing import Optional
 
-from PyQt6.QtWidgets import QApplication, QMessageBox, QStyleFactory
+from PySide6.QtWidgets import QApplication, QMessageBox, QStyleFactory
 
 from .app_instance import SingleInstanceLock
 from .constants import FORMAT_TYPES, SUPPORTED_EXTENSIONS, VERSION

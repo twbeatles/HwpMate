@@ -5,7 +5,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ...logging_config import get_logger
 from ...path_utils import canonicalize_path

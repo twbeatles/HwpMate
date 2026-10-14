@@ -7,8 +7,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ....constants import (
     BACKUP_MAX_FILES_PER_STEM,

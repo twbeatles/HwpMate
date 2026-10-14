@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QMouseEvent
-from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
+from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QMouseEvent
+from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 from ..constants import FEEDBACK_RESET_DELAY, SUPPORTED_EXTENSIONS
 from ..logging_config import get_logger
@@ -20,9 +20,9 @@ class DropArea(QFrame):
     Windows 네이티브 WM_DROPFILES만 사용합니다.
     """
     
-    files_dropped = pyqtSignal(list)
+    files_dropped = Signal(list)
     # 클릭 시 파일 선택 요청 — 메인 창의 browse_files 흐름(입력 잠금·최근 폴더)을 재사용한다.
-    browse_requested = pyqtSignal()
+    browse_requested = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -202,7 +202,7 @@ class DropArea(QFrame):
 class FormatCard(QFrame):
     """변환 형식 선택 카드"""
     
-    clicked = pyqtSignal(str)  # format_type 시그널
+    clicked = Signal(str)  # format_type 시그널
     
     def __init__(self, format_type: str, icon: str, title: str, description: str, parent=None):
         super().__init__(parent)

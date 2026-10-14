@@ -9,7 +9,7 @@ from ...workers.conversion_worker import ConversionWorker
 from ...workers.file_scan_worker import FileScanWorker
 
 if TYPE_CHECKING:
-    from PyQt6.QtCore import QTimer
+    from PySide6.QtCore import QTimer
 
 
 @dataclass

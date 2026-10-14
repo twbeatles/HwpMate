@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QRectF, QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPainterPath, QPaintEvent
-from PyQt6.QtWidgets import QGraphicsOpacityEffect, QHBoxLayout, QLabel, QMainWindow, QWidget
+from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QRectF, QTimer, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPainterPath, QPaintEvent
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QHBoxLayout, QLabel, QMainWindow, QWidget
 
 from ..constants import TOAST_DURATION_DEFAULT, TOAST_FADE_DURATION
 from ..logging_config import get_logger
@@ -45,7 +45,7 @@ class ToastWidget(QWidget):
     이제 부모 창의 자식 오버레이로 띄우고 배경·그림자를 paintEvent 에서 직접 그린다.
     """
 
-    closed = pyqtSignal(object)
+    closed = Signal(object)
 
     def __init__(self, parent: Optional[QWidget] = None, palette: Optional[ThemePalette] = None):
         super().__init__(parent)

@@ -230,7 +230,7 @@ python -m hwpmate.mcp
 git clone https://github.com/twbeatles/HwpMate.git
 cd HwpMate
 
-# 개발용 의존성 설치 (PyQt6, pywin32, cryptography, pytest 등)
+# 개발용 의존성 설치 (PySide6, pywin32, cryptography, pytest 등)
 pip install -r requirements-dev.txt
 ```
 

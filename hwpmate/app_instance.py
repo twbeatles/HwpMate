@@ -4,7 +4,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from PyQt6.QtCore import QLockFile
+from PySide6.QtCore import QLockFile
 
 LOCK_FILE_NAME = "HwpMate.lock"
 

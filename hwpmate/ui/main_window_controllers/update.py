@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
+from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 from ...constants import (
     UPDATE_MANIFEST_URL_DEFAULT,
@@ -40,9 +40,9 @@ logger = get_logger(__name__)
 class UpdateCheckWorker(QThread):
     """업데이트 매니페스트 확인 워커."""
 
-    finished_with_update = pyqtSignal(object)  # ReleaseManifest
-    finished_no_update = pyqtSignal()
-    finished_with_error = pyqtSignal(str)
+    finished_with_update = Signal(object)  # ReleaseManifest
+    finished_no_update = Signal()
+    finished_with_error = Signal(str)
 
     def __init__(self, manifest_url: str, public_key: str, current_version: str) -> None:
         super().__init__()
@@ -69,9 +69,9 @@ class UpdateCheckWorker(QThread):
 class UpdateDownloadWorker(QThread):
     """업데이트 파일 다운로드 워커."""
 
-    progress = pyqtSignal(int, int)  # current, total
-    download_finished = pyqtSignal(object)  # Path (staged file)
-    download_failed = pyqtSignal(str)
+    progress = Signal(int, int)  # current, total
+    download_finished = Signal(object)  # Path (staged file)
+    download_failed = Signal(str)
 
     def __init__(self, manifest: ReleaseManifest, staging_root: Path) -> None:
         super().__init__()
@@ -344,7 +344,7 @@ class UpdateController(QObject):
             return
 
         logger.info("업데이트 헬퍼 프로세스 시작 완료, 애플리케이션 종료")
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
 
         # 헬퍼는 이 프로세스 종료를 실제로 기다린다. 창 종료 흐름(설정 저장·스캔 정리)을 거친 뒤 끝낸다.
         self.window.close()

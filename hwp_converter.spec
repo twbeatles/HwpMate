@@ -41,29 +41,29 @@ if _SECURITY_README.is_file():
 
 # 제외할 불필요한 모듈 목록 (경량화)
 # 주의: ssl / asyncio / concurrent 는 stdlib·Qt·로깅 경로에서 간접 사용될 수 있어 제외하지 않음
-# 주의: PyQt6.QtNetwork 파이썬 래퍼는 제외해도 되지만 Qt6Network.dll 바이너리는 반드시 유지
+# 주의: PySide6.QtNetwork 파이썬 래퍼는 제외해도 되지만 Qt6Network.dll 바이너리는 반드시 유지
 EXCLUDES = [
     # 테스트/디버깅
     'pytest', 'unittest', 'test', 'tests',
     
-    # 사용하지 않는 PyQt6 모듈 (파이썬 바인딩만 제외 — 네이티브 DLL 필터와 별개)
-    'PyQt6.QtWebEngine', 'PyQt6.QtWebEngineCore', 'PyQt6.QtWebEngineWidgets',
-    'PyQt6.QtMultimedia', 'PyQt6.QtMultimediaWidgets',
-    'PyQt6.QtBluetooth', 'PyQt6.QtNfc',
-    'PyQt6.QtQuick', 'PyQt6.QtQuick3D', 'PyQt6.QtQml',
-    'PyQt6.QtSql',
-    'PyQt6.QtOpenGL', 'PyQt6.QtOpenGLWidgets',
-    'PyQt6.QtSvg', 'PyQt6.QtSvgWidgets',
-    'PyQt6.QtPdf', 'PyQt6.QtPdfWidgets',
-    'PyQt6.QtDesigner', 'PyQt6.QtHelp',
-    'PyQt6.QtRemoteObjects', 'PyQt6.QtSensors',
-    'PyQt6.QtSerialPort', 'PyQt6.QtPositioning',
-    'PyQt6.QtTextToSpeech', 'PyQt6.Qt3DCore',
-    'PyQt6.Qt3DInput', 'PyQt6.Qt3DLogic',
-    'PyQt6.Qt3DRender', 'PyQt6.Qt3DExtras',
-    'PyQt6.QtCharts', 'PyQt6.QtStateMachine',
-    'PyQt6.QtWebSockets', 'PyQt6.QtSerialBus',
-    'PyQt6.QtSpatialAudio',
+    # 사용하지 않는 PySide6 모듈 (파이썬 바인딩만 제외 — 네이티브 DLL 필터와 별개)
+    'PySide6.QtWebEngine', 'PySide6.QtWebEngineCore', 'PySide6.QtWebEngineWidgets',
+    'PySide6.QtMultimedia', 'PySide6.QtMultimediaWidgets',
+    'PySide6.QtBluetooth', 'PySide6.QtNfc',
+    'PySide6.QtQuick', 'PySide6.QtQuick3D', 'PySide6.QtQml',
+    'PySide6.QtSql',
+    'PySide6.QtOpenGL', 'PySide6.QtOpenGLWidgets',
+    'PySide6.QtSvg', 'PySide6.QtSvgWidgets',
+    'PySide6.QtPdf', 'PySide6.QtPdfWidgets',
+    'PySide6.QtDesigner', 'PySide6.QtHelp',
+    'PySide6.QtRemoteObjects', 'PySide6.QtSensors',
+    'PySide6.QtSerialPort', 'PySide6.QtPositioning',
+    'PySide6.QtTextToSpeech', 'PySide6.Qt3DCore',
+    'PySide6.Qt3DInput', 'PySide6.Qt3DLogic',
+    'PySide6.Qt3DRender', 'PySide6.Qt3DExtras',
+    'PySide6.QtCharts', 'PySide6.QtStateMachine',
+    'PySide6.QtWebSockets', 'PySide6.QtSerialBus',
+    'PySide6.QtSpatialAudio',
     
     # 사용하지 않는 기타 모듈
     'PIL', 'numpy', 'pandas', 'matplotlib',

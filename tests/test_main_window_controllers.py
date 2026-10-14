@@ -593,7 +593,7 @@ def test_folder_conversion_starts_even_when_scan_is_slower_than_cancel_wait(
 
     import hwpmate.ui.main_window_controllers.file_selection.controller as selection_module
     import hwpmate.workers.file_scan_worker as scan_module
-    from PyQt6.QtWidgets import QMessageBox
+    from PySide6.QtWidgets import QMessageBox
 
     window, _ = create_window(monkeypatch, qapp)
     (tmp_path / "a.hwp").write_text("x", encoding="utf-8")

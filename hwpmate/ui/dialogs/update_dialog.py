@@ -3,8 +3,8 @@ from __future__ import annotations
 import webbrowser
 from typing import Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -21,9 +21,9 @@ from ...services.update_manifest import ReleaseManifest
 class UpdateDialog(QDialog):
     """업데이트 안내 및 진행 대화상자."""
 
-    update_accepted = pyqtSignal()
-    download_cancelled = pyqtSignal()
-    apply_restart_requested = pyqtSignal()
+    update_accepted = Signal()
+    download_cancelled = Signal()
+    apply_restart_requested = Signal()
 
     def __init__(
         self,
