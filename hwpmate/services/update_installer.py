@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -38,6 +38,23 @@ _WAIT_OBJECT_0 = 0x00000000
 _WAIT_TIMEOUT = 0x00000102
 _ERROR_INVALID_PARAMETER = 87
 _STILL_ACTIVE = 259
+
+# PyInstaller onefile 부트로더가 자식 프로세스에 물려주는 환경 변수 접두/이름.
+# 헬퍼·재기동·스모크 자식은 설치된 exe 를 직접 실행하므로 번들 임시 폴더를
+# 가리키는 부모 측 값을 물려받으면 안 된다.
+_BOOTLOADER_ENV_PREFIXES = ("_MEI", "_PYI", "PYINSTALLER")
+_BOOTLOADER_ENV_EXACT = frozenset({"_MEIPASS", "_MEIPASS2"})
+
+
+def clean_bootloader_env(source: Mapping[str, str] | None = None) -> dict[str, str]:
+    """PyInstaller 부트로더 환경 변수를 제거한 자식 프로세스용 환경을 반환한다."""
+    base: Mapping[str, str] = os.environ if source is None else source
+    cleaned = dict(base)
+    for key in list(cleaned.keys()):
+        upper = key.upper()
+        if upper in _BOOTLOADER_ENV_EXACT or upper.startswith(_BOOTLOADER_ENV_PREFIXES):
+            del cleaned[key]
+    return cleaned
 
 
 class UpdateApplyError(RuntimeError):
@@ -336,6 +353,10 @@ def stream_update_artifact(
 
 
 def _validate_apply_paths(target: Path, staged: Path, backup: Path) -> None:
+    """교체 경로의 형태·존재를 검증한다.
+
+    이전 시도가 남긴 낡은 백업은 덮어쓰므로 존재해도 오류가 아니다.
+    """
     paths = [target.resolve(), staged.resolve(), backup.resolve()]
     if len(set(paths)) != 3:
         raise ValueError("대상, 스테이징, 백업 경로는 서로 달라야 합니다.")
@@ -345,9 +366,59 @@ def _validate_apply_paths(target: Path, staged: Path, backup: Path) -> None:
         raise ValueError("백업 파일은 대상 설치 디렉터리에 위치해야 합니다.")
     if not target.is_file() or not staged.is_file():
         raise FileNotFoundError("대상 파일 또는 스테이징 파일이 존재하지 않습니다.")
-    if backup.exists():
-        raise FileExistsError(f"백업 파일이 이미 존재합니다: {backup}")
     backup.parent.mkdir(parents=True, exist_ok=True)
+
+
+def _newest_swap_backup(target_path: Path, *, exclude: Path | None = None) -> Path | None:
+    """설치 디렉터리에서 대상의 교체 백업 후보 중 최신 파일을 찾는다."""
+    try:
+        candidates = [
+            path.resolve()
+            for path in target_path.parent.glob(f"{target_path.name}.v*.bak")
+            if path.is_file()
+        ]
+    except OSError:
+        return None
+    if exclude is not None:
+        candidates = [path for path in candidates if path != exclude]
+    if not candidates:
+        return None
+
+    def _sort_key(path: Path) -> tuple[float, str]:
+        try:
+            return (path.stat().st_mtime, path.name)
+        except OSError:
+            return (0.0, path.name)
+
+    return sorted(candidates, key=_sort_key, reverse=True)[0]
+
+
+def recover_interrupted_swap(
+    target: str | Path,
+    backup: str | Path,
+    *,
+    attempts: int = UPDATE_REPLACE_ATTEMPTS,
+    delay: float = UPDATE_REPLACE_DELAY_SECONDS,
+) -> Path | None:
+    """두 이동 사이 중단으로 설치본이 없으면 백업을 설치본으로 되돌린다.
+
+    복구에 사용한 백업 경로를 반환하고, 복구가 필요 없으면 None 을 반환한다.
+    """
+    target_path = Path(target).resolve()
+    backup_path = Path(backup).resolve()
+    if target_path.exists():
+        return None
+    if backup_path.parent != target_path.parent or backup_path == target_path:
+        return None
+    chosen: Path | None = None
+    if backup_path.is_file():
+        chosen = backup_path
+    else:
+        chosen = _newest_swap_backup(target_path)
+    if chosen is None:
+        return None
+    _replace_with_retry(chosen, target_path, attempts=attempts, delay=delay)
+    return chosen
 
 
 def cleanup_update_backups(target: str | Path, *, keep_count: int | None = None) -> None:
@@ -381,6 +452,21 @@ def apply_staged_update(
     target_path = Path(target).resolve()
     staged_path = Path(staged).resolve()
     backup_path = Path(backup).resolve()
+    if not target_path.exists():
+        # 두 이동 사이에서 중단된 이전 교체가 설치본을 비워 두었으면 백업으로 되돌린다.
+        try:
+            recover_interrupted_swap(
+                target_path,
+                backup_path,
+                attempts=replace_attempts,
+                delay=replace_delay,
+            )
+        except OSError as exc:
+            raise UpdateApplyError(
+                "이전 교체 중단 후 복구에 실패했습니다. "
+                f"백업 파일로 수동 복구가 필요합니다: {backup_path} ({exc})",
+                status=UPDATE_STATUS_FAILED,
+            ) from exc
     _validate_apply_paths(target_path, staged_path, backup_path)
     if expected_size is not None and staged_path.stat().st_size != int(expected_size):
         raise ValueError("교체 전 업데이트 파일 크기가 일치하지 않습니다.")
@@ -391,22 +477,38 @@ def apply_staged_update(
                 digest.update(chunk)
         if digest.hexdigest().lower() != str(expected_sha256).strip().lower():
             raise ValueError("교체 전 업데이트 파일 해시가 일치하지 않습니다.")
-    shutil.copy2(target_path, backup_path)
+
+    # 실행 중인 exe 는 덮어쓰기·삭제가 막혀도 이름 변경은 되므로,
+    # 설치본→백업→새 파일→설치본 순서의 이동 2회로 교체한다.
+    # 낡은 백업은 첫 이동이 덮어쓰고, 첫 이동 실패 시 설치본은 그대로 남는다.
+    try:
+        _replace_with_retry(
+            target_path, backup_path, attempts=replace_attempts, delay=replace_delay
+        )
+    except OSError as exc:
+        raise UpdateApplyError(
+            f"실행 파일 교체에 실패해 이전 버전을 유지합니다: {exc}",
+            status=UPDATE_STATUS_FAILED,
+        ) from exc
 
     try:
         _replace_with_retry(
             staged_path, target_path, attempts=replace_attempts, delay=replace_delay
         )
     except OSError as exc:
-        # 교체 전이므로 대상은 이전 버전 그대로다. 백업 사본은 불필요하므로 정리한다
-        # (남기면 같은 버전의 다음 업데이트가 FileExistsError 로 계속 실패).
         try:
-            backup_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+            _replace_with_retry(
+                backup_path, target_path, attempts=replace_attempts, delay=replace_delay
+            )
+        except Exception as rollback_exc:
+            raise UpdateApplyError(
+                "업데이트 적용과 롤백 복구가 모두 실패했습니다. "
+                f"백업 파일로 수동 복구가 필요합니다: {backup_path} ({rollback_exc})",
+                status=UPDATE_STATUS_FAILED,
+            ) from exc
         raise UpdateApplyError(
-            f"실행 파일 교체에 실패해 이전 버전을 유지합니다: {exc}",
-            status=UPDATE_STATUS_FAILED,
+            f"업데이트 적용 실패로 이전 버전으로 복구됨: {exc}",
+            status=UPDATE_STATUS_ROLLED_BACK,
         ) from exc
 
     try:
@@ -416,6 +518,7 @@ def apply_staged_update(
                 timeout=60,
                 check=False,
                 capture_output=True,
+                env=clean_bootloader_env(),
             )
             smoke_ok = completed.returncode == 0
         else:
@@ -478,4 +581,5 @@ def launch_update_helper(
         ],
         close_fds=True,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        env=clean_bootloader_env(),
     )

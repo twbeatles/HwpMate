@@ -119,3 +119,33 @@ def test_app_apply_update_relaunches_after_rollback(tmp_path: Path, monkeypatch:
     assert app_module._run_apply_update(args) == 1
     assert relaunched == [tmp_path / "app.exe"]
     assert json.loads(result_file.read_text(encoding="utf-8"))["status"] == "rolled_back"
+
+
+def test_relaunch_uses_clean_bootloader_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+
+    import hwpmate.app as app_module
+
+    monkeypatch.setenv("_MEIPASS2", "C:\\fake\\_mei")
+    monkeypatch.setenv("_PYI_TEST", "1")
+    captured: dict[str, object] = {}
+
+    def fake_popen(argv, **kwargs):
+        captured.update(kwargs)
+        captured["argv"] = argv
+
+        class _Proc:
+            pass
+
+        return _Proc()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    app_module._relaunch(tmp_path / "app.exe")
+
+    env = captured.get("env")
+    assert isinstance(env, dict)
+    assert "_MEIPASS2" not in env
+    assert "_PYI_TEST" not in env

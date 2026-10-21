@@ -21,6 +21,7 @@ from .services.update_installer import (
     UPDATE_STATUS_APPLIED,
     UPDATE_STATUS_ROLLED_BACK,
     apply_staged_update,
+    clean_bootloader_env,
     update_status_for_exception,
     wait_for_file_writable,
     wait_for_process_exit,
@@ -232,7 +233,7 @@ def _relaunch(target: Path) -> None:
     try:
         import subprocess
 
-        subprocess.Popen([str(target.resolve())])
+        subprocess.Popen([str(target.resolve())], env=clean_bootloader_env())
     except Exception:
         pass
 

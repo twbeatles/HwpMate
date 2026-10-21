@@ -272,6 +272,7 @@ HwpMate는 COM 경계(소유 PID 한정 강제 종료, SaveAs 2→3 인자 폴�
   - `_wait_for_parent`를 모킹하지 않고, 살아 있는 자식 PID에 대해 콘솔 없는 프로세스에서 호출하면 타임아웃 전에 반환하지 않아야 합니다.
   - `os.replace`를 두 번 모두 `PermissionError`로 패치하면 결과 상태가 `failed`이고 `.bak`이 정리되어야 합니다.
   - 기존 `.bak`이 있을 때도 재시도가 성공 경로로 진행되어야 합니다.
+- **조치 (v9.2.3):** `apply_staged_update`를 설치본→백업→새 파일→설치본 이동 2회 교체로 변경했다. 낡은 백업은 첫 이동이 덮어쓰므로 `_validate_apply_paths`의 `FileExistsError`를 제거했고, 두 이동 사이 중단(설치본 없음·백업 있음)은 `recover_interrupted_swap`이 다음 실행에서 복구한다. 헬퍼·재기동·`--smoke` 자식에는 `clean_bootloader_env()`를 적용했다. 회귀 테스트 9건 추가(`tests/test_update_installer.py` 8건, `tests/test_apply_update_script.py` 1건), `pytest` 326 passed·`pyright` 0 errors.
 
 ---
 

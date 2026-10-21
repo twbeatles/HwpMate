@@ -4,12 +4,19 @@
 
 ## 현재 상태
 
-- 앱 버전: `v9.2.1`
+- 앱 버전: `v9.2.3`
 - 주 엔트리포인트: `hwptopdf-hwpx_v4.py`
 - 빌드 설정: `hwp_converter.spec`
 - 정적 검사 기준: `pyrightconfig.json`
-- 배포 산출물: `dist/HWP변환기_v9.2.1.exe` (릴리즈: `HwpMate-v9.2.1-arm64.exe`, ARM64)
+- 배포 산출물: `dist/HWP변환기_v9.2.3.exe` (릴리즈: `HwpMate-v9.2.3.exe`)
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
+
+## 2026-10-21 자동 업데이트 exe 교체 방식 변경 (v9.2.3)
+
+- **원인:** 구 교체는 설치본을 백업으로 복사한 뒤 원본 위에 덮어썼다. Windows 에서는 실행 중이거나 막 종료 중인 exe 를 덮어쓸 수 없어 WinError 5 로 실패했고, 롤백 덮어쓰기도 같은 이유로 실패해 백업이 남았다. 남은 백업 때문에 다음 시도는 `백업 파일이 이미 존재합니다` 로 즉시 실패했다.
+- **수정:** 설치본을 백업 이름으로 옮기고 새 exe 를 그 자리로 옮기는 이동 2회로 교체한다. 첫 이동 실패 시 설치본은 그대로 남고, 이전 시도가 남긴 낡은 백업은 첫 이동이 덮어쓴다. 두 이동 사이에서 중단돼 설치본이 없으면 다음 실행에서 백업으로 복구한 뒤 교체한다 (`recover_interrupted_swap`, 전달된 백업이 없으면 같은 설치본의 최신 `v*.bak` 후보로 복구).
+- **환경:** 헬퍼(`launch_update_helper`), 재기동(`_relaunch`), 스모크(`--smoke` 자식) 실행에 PyInstaller 부트로더 환경 변수(`_MEI*`·`_PYI*`·`PYINSTALLER*`·`_MEIPASS(2)`)를 제거한 `clean_bootloader_env()` 를 적용했다.
+- **주의:** `updates/latest.json` 은 릴리즈 워크플로(`release.yml`, 태그 `v9.2.3`)에서 서명·발행하므로 이 변경에서 손대지 않았다. 릴리즈하려면 `hwpmate/constants.py`(`VERSION = "9.2.3"`)와 태그를 일치시킨 뒤 태그 푸시.
 
 ## 2026-10-11 Python 3.15·의존성 업그레이드 (v9.2.1)
 

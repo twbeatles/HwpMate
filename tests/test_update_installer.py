@@ -277,3 +277,234 @@ def test_wait_for_process_exit_accepts_missing_pid() -> None:
     from hwpmate.services.update_installer import wait_for_process_exit
 
     assert wait_for_process_exit(0) is True
+
+
+def test_apply_staged_update_overwrites_stale_backup(tmp_path: Path) -> None:
+    """이전 시도가 남긴 낡은 백업이 있어도 덮어쓰고 교체에 성공한다."""
+    target = tmp_path / "app.exe"
+    staged = tmp_path / "staged.exe"
+    backup = tmp_path / "app.exe.v9.0.bak"
+    target.write_bytes(b"old")
+    staged.write_bytes(b"new")
+    backup.write_bytes(b"stale")
+
+    apply_staged_update(
+        target=target,
+        staged=staged,
+        backup=backup,
+        smoke_runner=lambda p: True,
+    )
+
+    assert target.read_bytes() == b"new"
+    assert backup.read_bytes() == b"old"
+
+
+def test_apply_staged_update_first_move_failure_keeps_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """첫 이동(설치본→백업) 실패 시 설치본은 그대로 남는다."""
+    import hwpmate.services.update_installer as installer
+
+    target = tmp_path / "app.exe"
+    staged = tmp_path / "staged.exe"
+    backup = tmp_path / "app.exe.v9.0.bak"
+    target.write_bytes(b"old")
+    staged.write_bytes(b"new")
+    backup.write_bytes(b"stale")
+    real_replace = installer.os.replace
+
+    def fail_first_move(src, dst):
+        if str(src) == str(target.resolve()):
+            raise PermissionError("target locked")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(installer.os, "replace", fail_first_move)
+
+    with pytest.raises(UpdateApplyError) as exc_info:
+        apply_staged_update(
+            target=target,
+            staged=staged,
+            backup=backup,
+            smoke_runner=lambda p: True,
+            replace_attempts=2,
+            replace_delay=0,
+        )
+
+    assert exc_info.value.status == "failed"
+    assert target.read_bytes() == b"old"
+    assert staged.read_bytes() == b"new"
+    assert backup.read_bytes() == b"stale"
+
+
+def test_apply_staged_update_recovers_interrupted_swap(tmp_path: Path) -> None:
+    """두 이동 사이 중단(설치본 없음·백업 있음)이면 다음 실행에서 복구 후 교체한다."""
+    target = tmp_path / "app.exe"
+    staged = tmp_path / "staged.exe"
+    backup = tmp_path / "app.exe.v9.0.bak"
+    backup.write_bytes(b"old")
+    staged.write_bytes(b"new")
+    assert not target.exists()
+
+    apply_staged_update(
+        target=target,
+        staged=staged,
+        backup=backup,
+        smoke_runner=lambda p: True,
+    )
+
+    assert target.read_bytes() == b"new"
+    assert backup.read_bytes() == b"old"
+    assert not staged.exists()
+
+
+def test_apply_staged_update_recovers_interrupted_swap_with_glob_backup(
+    tmp_path: Path,
+) -> None:
+    """전달된 백업 경로가 없어도 같은 설치본의 다른 백업을 찾아 복구한다."""
+    target = tmp_path / "app.exe"
+    staged = tmp_path / "staged.exe"
+    old_backup = tmp_path / "app.exe.v9.0.bak"
+    new_backup = tmp_path / "app.exe.v9.1.bak"
+    old_backup.write_bytes(b"old")
+    staged.write_bytes(b"new")
+    assert not target.exists()
+    assert not new_backup.exists()
+
+    apply_staged_update(
+        target=target,
+        staged=staged,
+        backup=new_backup,
+        smoke_runner=lambda p: True,
+    )
+
+    assert target.read_bytes() == b"new"
+    assert new_backup.read_bytes() == b"old"
+    assert not old_backup.exists()
+
+
+def test_apply_staged_update_second_move_failure_restores_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """두 번째 이동(새 파일→설치본) 실패 시 백업을 설치본으로 되돌린다."""
+    import hwpmate.services.update_installer as installer
+
+    target = tmp_path / "app.exe"
+    staged = tmp_path / "staged.exe"
+    backup = tmp_path / "app.exe.v9.0.bak"
+    target.write_bytes(b"old")
+    staged.write_bytes(b"new")
+    real_replace = installer.os.replace
+    calls: list[int] = []
+
+    def fail_second_move(src, dst):
+        calls.append(1)
+        if len(calls) == 2:
+            raise PermissionError("staged locked")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(installer.os, "replace", fail_second_move)
+
+    with pytest.raises(UpdateApplyError) as exc_info:
+        apply_staged_update(
+            target=target,
+            staged=staged,
+            backup=backup,
+            smoke_runner=lambda p: True,
+            replace_attempts=1,
+            replace_delay=0,
+        )
+
+    assert exc_info.value.status == "rolled_back"
+    assert target.read_bytes() == b"old"
+    assert not backup.exists()
+    assert staged.read_bytes() == b"new"
+
+
+def test_clean_bootloader_env_strips_pyinstaller_vars(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hwpmate.services.update_installer import clean_bootloader_env
+
+    monkeypatch.setenv("_MEIPASS2", "C:\\fake\\_mei")
+    monkeypatch.setenv("_PYI_PARENT", "1")
+    monkeypatch.setenv("PYINSTALLER_TMP", "x")
+
+    cleaned = clean_bootloader_env()
+
+    assert "_MEIPASS2" not in cleaned
+    assert "_PYI_PARENT" not in cleaned
+    assert "PYINSTALLER_TMP" not in cleaned
+    assert cleaned.get("PATH") is not None
+
+    source = {"_MEIPASS": "y", "KEEP": "1", "PyInstaller_Foo": "z"}
+    assert clean_bootloader_env(source) == {"KEEP": "1"}
+
+
+def test_launch_update_helper_uses_clean_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hwpmate.services.update_installer as installer
+
+    monkeypatch.setenv("_MEIPASS2", "C:\\fake\\_mei")
+    monkeypatch.setenv("_PYI_TEST", "1")
+    monkeypatch.setattr(installer.shutil, "copy2", lambda *args, **kwargs: None)
+    captured: dict[str, object] = {}
+
+    def fake_popen(argv, **kwargs):
+        captured.update(kwargs)
+        captured["argv"] = argv
+
+        class _Proc:
+            pass
+
+        return _Proc()
+
+    monkeypatch.setattr(installer.subprocess, "Popen", fake_popen)
+
+    installer.launch_update_helper(
+        target=tmp_path / "app.exe",
+        staged=tmp_path / "staged.exe",
+        backup=tmp_path / "app.exe.v9.0.bak",
+        parent_pid=1234,
+        expected_sha256="0" * 64,
+        expected_size=1,
+        result_file=tmp_path / "result.json",
+    )
+
+    env = captured.get("env")
+    assert isinstance(env, dict)
+    assert "_MEIPASS2" not in env
+    assert "_PYI_TEST" not in env
+
+
+def test_apply_staged_update_smoke_uses_clean_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hwpmate.services.update_installer as installer
+
+    target = tmp_path / "app.exe"
+    staged = tmp_path / "staged.exe"
+    backup = tmp_path / "app.exe.v9.0.bak"
+    target.write_bytes(b"old")
+    staged.write_bytes(b"new")
+    monkeypatch.setenv("_MEIPASS2", "C:\\fake\\_mei")
+    monkeypatch.setenv("PYINSTALLER_X", "1")
+    captured: dict[str, object] = {}
+
+    def fake_run(argv, **kwargs):
+        captured.update(kwargs)
+
+        class _Completed:
+            returncode = 0
+
+        return _Completed()
+
+    monkeypatch.setattr(installer.subprocess, "run", fake_run)
+
+    apply_staged_update(target=target, staged=staged, backup=backup)
+
+    env = captured.get("env")
+    assert isinstance(env, dict)
+    assert "_MEIPASS2" not in env
+    assert "PYINSTALLER_X" not in env
+    assert target.read_bytes() == b"new"
