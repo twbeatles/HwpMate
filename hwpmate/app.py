@@ -188,6 +188,9 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="한글 「호환 문서(배치가 변경될 수 있습니다)」 확인 창에 자동으로 계속하지 않습니다.",
     )
 
+    # MCP 등 상위 실행기용: 이 CLI가 띄운 한글 PID 기록 (강제 종료된 CLI의 고아 정리용)
+    parser.add_argument("--owned-pids-file", default="", help=argparse.SUPPRESS)
+
     # 자동 업데이트 내부 헬퍼 인자
     parser.add_argument("--apply-update", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--update-target", default="", help=argparse.SUPPRESS)
@@ -291,6 +294,19 @@ def _write_cli_report(report_path: str, summary: ConversionSummary) -> str | Non
             path = path.with_suffix(".csv")
         write_results_csv(path, summary)
     return str(path)
+
+
+def _write_owned_pids(path_text: str, pids: set[int]) -> None:
+    """소유 한글 PID 목록을 원자적으로 기록한다 (best-effort, 실패해도 변환은 계속)."""
+    target = str(path_text or "").strip()
+    if not target:
+        return
+    try:
+        from .services.update_installer import atomic_write_json
+
+        atomic_write_json(Path(target).resolve(), {"pids": sorted(int(pid) for pid in pids)})
+    except Exception as exc:
+        logger.warning(f"소유 한글 PID 기록 실패(무시): {exc}")
 
 
 def _run_cli_conversion(args: argparse.Namespace) -> int:
@@ -397,6 +413,7 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
         try:
             converter.auto_continue_compat_dialogs = not args.no_auto_continue
             converter.initialize(manage_com_apartment=True)
+            _write_owned_pids(args.owned_pids_file, set(getattr(converter, "owned_pids", ()) or ()))
             converter.pdf_export_mode = normalize_pdf_export_mode(args.pdf_export_mode)
             runtime_warnings.extend(collect_converter_warnings(converter))
         except Exception as exc:
@@ -426,6 +443,7 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
 
                 if (idx + 1) % CONVERTER_RECYCLE_BATCH_COUNT == 0 and (idx + 1) < total:
                     recycle_error = recycle_converter(converter, options)
+                    _write_owned_pids(args.owned_pids_file, set(getattr(converter, "owned_pids", ()) or ()))
                     if recycle_error is not None:
                         message = f"한글 프로세스 재순환 실패로 남은 작업을 중단했습니다: {recycle_error}"
                         fail_pending_tasks(tasks, message)
@@ -446,6 +464,8 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
             converter.cleanup()
         except Exception:
             pass
+        # 정상 정리 후에는 상위 실행기가 아무것도 종료하지 않도록 비운다.
+        _write_owned_pids(args.owned_pids_file, set())
         instance_lock.release()
 
     summary = ConversionSummary(

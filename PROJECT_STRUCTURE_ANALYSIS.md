@@ -12,6 +12,7 @@
 - 보안 세션·계획 잠금·DLL 무결성 반영 일자: 2026-08-03
 - SOLID 패키지 분할 반영 일자: 2026-08-05
 - 감사 잔여 개선( PID 가드·PDF 매직·확장 경로·변환 캐시·백업 상한 UI) 반영 일자: 2026-08-05
+- MCP 서버 구조·2026-10-22 감사 조치(설정 검증·타임아웃 정리·권한 상승 감지) 반영 일자: 2026-10-22
 - 대상 저장소: `D:\github\HwpMate`
 - 분석 목적: "다양한 기능 추가"를 위한 현재 구조, 제약, 확장 포인트 파악
 
@@ -52,6 +53,8 @@
 | `hwpmate/services/update_*.py` | 추적 | 서명 매니페스트 검증·다운로드·교체/롤백 |
 | `scripts/` | 스크립트 | 업데이트 적용/매니페스트 생성/릴리즈 키 검증 |
 | `hwpmate/ui/{dialogs,theme,main_window_ui}/` | 패키지 | UI 다이얼로그·테마·레이아웃 빌더 |
+| `hwpmate/mcp/` | 패키지 | 로컬 stdio MCP 서버 (`python -m hwpmate.mcp`, Qt 비의존) |
+| `docs/MCP*.md` | 추적 | MCP 설치·도구·보안·클라이언트 설정 |
 
 현재 구조는 `hwpmate/` 기준 **기능별 하위 패키지** 아키텍처이며, 공개 import 경로는 `__init__.py` re-export로 유지하고 루트 래퍼·배포 흐름은 동일합니다.
 
@@ -95,6 +98,12 @@
 | `ui/main_window_controllers/conversion/` | 작업 계획, 사전 점검, 변환 워커, 결과/취소 처리 |
 | `ui/main_window_controllers/native_drop.py` | 네이티브 WM_DROPFILES 초기화와 모드별 드롭 처리 |
 | `ui/main_window_controllers/lifecycle/` | 메뉴, 단축키, 트레이, 설정 저장, 종료 이벤트 |
+| `mcp/config.py` | `config.toml`·`HWPMATE_MCP_*` 로드, 타입·허용 루트 검증(`McpConfigError`), 고정 정책 키 경고 |
+| `mcp/policy.py` | 허용 루트 containment·UNC·reparse 거부 |
+| `mcp/planner_adapter.py` | 읽기 전용 미리보기(`TaskPlanner` 재사용)·`plan_id` TTL·stat 기반 `PLAN_STALE` |
+| `mcp/jobs.py` | 단일 worker 큐·idempotency(원자 저장·기록 기반 재구성)·입력/출력 실행 직전 재검증·timeout/BUSY 미실행 기록 |
+| `mcp/runner.py` | CLI subprocess(`shell=False`), 권한 상승(740) 감지, timeout 시 프로세스 트리 종료 + `--owned-pids-file` 소유 한글 PID 정리 |
+| `mcp/report_reader.py`, `mcp/validator.py` | CLI `--report` 파싱·상태 분류, 산출물 존재·크기·매직 검증 |
 
 > 공개 import 경로는 패키지 `__init__.py` re-export 로 유지됩니다.  
 > 예: `from hwpmate.services.hwp_converter import HWPConverter`, `from hwpmate.windows_integration import NativeDropFilter`

@@ -25,7 +25,7 @@ python -m hwpmate.mcp
 
 ## 설정
 
-설정 파일: `%LOCALAPPDATA%\HwpMate\HwpMate\mcp\config.toml` — 예시:
+설정 파일: `%LOCALAPPDATA%\HwpMate\mcp\config.toml` (`--config <경로>`로 변경 가능) — 예시:
 
 ```toml
 [mcp]
@@ -33,16 +33,38 @@ transport = "stdio"
 enabled = true
 max_queued_jobs = 3
 max_files_per_job = 50
+job_timeout_seconds = 3600   # 입력 파일 1개(CLI 1회)당 제한 시간
 
 [paths]
+# 반드시 목록([...])으로 적는다. 드라이브 전체("C:/")는 허용 루트로 쓸 수 없다.
 input_roots = ["C:/Work/HWP-Input"]
 output_roots = ["C:/Work/HWP-Output"]
-cli_executable = "C:/Program Files/HwpMate/HwpMate-v9.2.1-arm64.exe"
+# 소스 진입점 권장 (아래 '실행 권한' 참고)
+cli_executable = "C:/Tools/HwpMate/hwptopdf-hwpx_v4.py"
 ```
 
 - 허용 루트가 없으면 변환 도구는 fail closed(거부)한다.
-- 환경 변수 `HWPMATE_MCP_INPUT_ROOTS`·`HWPMATE_MCP_OUTPUT_ROOTS`·`HWPMATE_MCP_CLI`
+- 환경 변수 `HWPMATE_MCP_INPUT_ROOTS`·`HWPMATE_MCP_OUTPUT_ROOTS`(`;` 구분)·`HWPMATE_MCP_CLI`
   로도 지정할 수 있다.
+- 설정 파일 문법·형식이 잘못되면 서버는 시작하지 않고 stderr에 원인을 한 줄로 남긴다
+  (종료 코드 2). Windows 경로는 `"C:/Work"`처럼 `/`를 쓰거나 `'C:\Work'`처럼 작은따옴표로 감싼다.
+- 설정 파일을 쓰려면 Python 3.11 이상이 필요하다(`tomllib`). 3.10에서는 설정 파일이 있으면
+  시작을 거부한다.
+- `allow_overwrite`·`allow_disable_backup`·`allow_running_cancel`·`require_preview`·
+  `require_confirmation`·`allow_remote_http`·`max_parallel_conversions`는 안전상 고정값으로만
+  동작한다. 다른 값을 적으면 시작 로그와 `hwpmate_get_capabilities` 경고에 표시된다.
+
+### 실행 권한 (중요)
+
+배포 exe(`HwpMate-v*.exe`)는 관리자 권한 매니페스트(`requireAdministrator`)로 빌드된다.
+일반 권한으로 실행된 MCP 호스트(Claude Code·Codex 등)는 이 exe를 실행할 수 없으며
+(`WinError 740`), job은 `ELEVATION_REQUIRED`로 실패한다. 다음 중 하나를 사용한다.
+
+1. `cli_executable`에 소스 진입점 `hwptopdf-hwpx_v4.py`를 지정한다
+   (MCP 서버와 같은 Python으로 실행됨, 권장).
+2. MCP 호스트 자체를 관리자 권한으로 실행한 뒤 exe를 지정한다.
+
+`hwpmate_get_capabilities`의 `cli_requires_elevation`이 `true`이면 현재 권한으로 실행할 수 없는 상태다.
 
 ## 기본 흐름
 

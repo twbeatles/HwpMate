@@ -25,6 +25,7 @@ from .planner_adapter import PlanRecord
 from .report_reader import classify_job, read_cli_report
 from .runner import (
     build_cli_argv,
+    cleanup_owned_hwp_processes,
     is_busy_failure,
     is_com_unavailable_failure,
     resolve_cli_executable,
@@ -58,6 +59,16 @@ def recheck_output(cfg: McpConfig, record: JobRecord) -> Path:
     from .policy import check_output_dir
 
     return check_output_dir(cfg, record.output_dir)
+
+
+def recheck_input(cfg: McpConfig, input_file: str) -> Path:
+    """실행 직전 입력 파일을 허용 정책으로 재검증한다 (대기 큐 동안의 경로 교체 대응)."""
+    from .policy import check_input_path
+
+    resolved = check_input_path(cfg, input_file)
+    if not resolved.is_file():
+        raise McpError("INPUT_NOT_FOUND", f"입력 파일을 찾을 수 없습니다: {resolved}")
+    return resolved
 
 
 def _utcnow_iso() -> str:
@@ -143,18 +154,34 @@ class JobManager:
             tmp = self._record_path(record.job_id).with_suffix(".tmp")
             tmp.write_text(json.dumps(asdict(record), ensure_ascii=False, indent=2), encoding="utf-8")
             tmp.replace(self._record_path(record.job_id))
-        if record.idempotency_key:
-            self._idem[f"{record.idempotency_key}\x00{record.plan_hash}"] = record.job_id
-            (self._job_dir / "idempotency.json").write_text(
-                json.dumps(self._idem, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
+            if record.idempotency_key:
+                key = f"{record.idempotency_key}\x00{record.plan_hash}"
+                if self._idem.get(key) != record.job_id:
+                    self._idem[key] = record.job_id
+                    self._write_idempotency()
+
+    def _write_idempotency(self) -> None:
+        """idempotency 색인을 원자적으로 저장한다 (self._lock 보유 상태에서 호출)."""
+        path = self._job_dir / "idempotency.json"
+        tmp = path.with_name(f"idempotency.{secrets.token_hex(4)}.tmp")
+        try:
+            tmp.write_text(json.dumps(self._idem, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp.replace(path)
+        except OSError as exc:
+            logger.warning("idempotency 색인 저장 실패(job 기록으로 재구성 가능): %s", exc)
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def _load_all(self) -> None:
         idem_path = self._job_dir / "idempotency.json"
         if idem_path.is_file():
             try:
-                self._idem = json.loads(idem_path.read_text(encoding="utf-8"))
-            except (ValueError, OSError):
+                loaded = json.loads(idem_path.read_text(encoding="utf-8"))
+                self._idem = {str(k): str(v) for k, v in loaded.items()} if isinstance(loaded, dict) else {}
+            except (ValueError, OSError, AttributeError):
+                logger.warning("idempotency 색인이 손상되어 job 기록으로 재구성합니다.")
                 self._idem = {}
         for path in sorted(self._job_dir.glob("*.json")):
             if path.name == "idempotency.json":
@@ -166,6 +193,18 @@ class JobManager:
                 self._records[record.job_id] = record
             except (ValueError, OSError, TypeError):
                 continue
+        # 색인 파일이 없거나 손상돼도 job 기록이 원본이므로 항상 기록 기준으로 보강한다.
+        rebuilt = False
+        for job_id, record in self._records.items():
+            if not record.idempotency_key:
+                continue
+            key = f"{record.idempotency_key}\x00{record.plan_hash}"
+            if self._idem.get(key) != job_id:
+                self._idem[key] = job_id
+                rebuilt = True
+        if rebuilt:
+            with self._lock:
+                self._write_idempotency()
 
     def _cleanup_retention(self) -> None:
         days = self._cfg.job_retention_days
@@ -198,15 +237,11 @@ class JobManager:
             del self._records[job_id]
             removed += 1
         if removed:
-            self._idem = {
-                key: job_id for key, job_id in self._idem.items() if job_id in self._records
-            }
-            try:
-                (self._job_dir / "idempotency.json").write_text(
-                    json.dumps(self._idem, ensure_ascii=False, indent=2), encoding="utf-8"
-                )
-            except OSError:
-                pass
+            with self._lock:
+                self._idem = {
+                    key: job_id for key, job_id in self._idem.items() if job_id in self._records
+                }
+                self._write_idempotency()
             logger.info("보존 기간 만료 job 기록 %d건을 정리했습니다.", removed)
 
     def _recover_interrupted(self) -> None:
@@ -228,7 +263,8 @@ class JobManager:
     def submit(
         self, plan: PlanRecord, *, confirmation: str, idempotency_key: str
     ) -> JobRecord:
-        if self._cfg.require_confirmation and confirmation != CONFIRMATION_TOKEN:
+        # require_confirmation=false 는 적용하지 않는다 (config.FIXED_POLICY_VALUES).
+        if confirmation != CONFIRMATION_TOKEN:
             raise McpError("CONFIRMATION_REQUIRED", "명시적 승인 토큰이 필요합니다.")
         key = str(idempotency_key or "").strip()
         if not key:
@@ -355,7 +391,15 @@ class JobManager:
         busy_seen = False
         com_unavailable_seen = False
         for index, input_file in enumerate(record.inputs):
-            report_path = private_dir / f"step-{index:03d}.json"
+            try:
+                # 계획 이후 경로가 reparse point 등으로 바뀌었는지 실행 직전에 다시 확인한다.
+                recheck_input(cfg, input_file)
+            except McpError as exc:
+                self._append_failure(record, input_file, f"{exc.code}: {exc.message}")
+                continue
+            step_name = f"step-{index:03d}"
+            report_path = private_dir / f"{step_name}.json"
+            owned_pids_path = private_dir / f"{step_name}.pids.json"
             argv = build_cli_argv(
                 base,
                 input_path=input_file,
@@ -363,59 +407,38 @@ class JobManager:
                 output_dir=str(output_dir),
                 report_path=str(report_path),
                 retry_count=1,
+                owned_pids_path=str(owned_pids_path),
             )
             run = run_cli(
                 cfg,
                 argv=argv,
-                job_private_dir=private_dir / f"step-{index:03d}",
+                job_private_dir=private_dir / step_name,
                 report_path=report_path,
                 timeout_seconds=cfg.job_timeout_seconds,
                 step_name="convert",
             )
+            killed = cleanup_owned_hwp_processes(owned_pids_path)
+            if killed:
+                record.warnings.append(
+                    f"{Path(input_file).name}: CLI가 남긴 한글 프로세스 {len(killed)}개를 정리했습니다 (PID {', '.join(map(str, killed))})."
+                )
             if run.timed_out:
                 record.timed_out = True
-                record.items.append(
-                    {
-                        "input": input_file,
-                        "outputs": [],
-                        "status": "실패",
-                        "detail": f"제한 시간 초과({cfg.job_timeout_seconds}s)",
-                        "retry_count": 0,
-                    }
-                )
-                record.failed_count += 1
-                self._persist(record)
-                continue
+                self._append_failure(record, input_file, f"제한 시간 초과({cfg.job_timeout_seconds}s)")
+                # 한글이 응답하지 않는 상태일 가능성이 높아 남은 파일은 실행하지 않는다.
+                self._mark_not_run(record, record.inputs[index + 1 :], "이전 파일이 제한 시간을 초과해 중단")
+                break
             if is_com_unavailable_failure(run) and run.returncode != 0:
                 com_unavailable_seen = True
             if is_busy_failure(run) and run.returncode != 0:
                 busy_seen = True
-                record.items.append(
-                    {
-                        "input": input_file,
-                        "outputs": [],
-                        "status": "실패",
-                        "detail": "외부 HwpMate 실행 중 (BUSY_EXTERNAL_INSTANCE)",
-                        "retry_count": 0,
-                    }
-                )
-                record.failed_count += 1
-                self._persist(record)
+                self._append_failure(record, input_file, "외부 HwpMate 실행 중 (BUSY_EXTERNAL_INSTANCE)")
+                self._mark_not_run(record, record.inputs[index + 1 :], "외부 HwpMate 실행 중 (BUSY_EXTERNAL_INSTANCE)")
                 break
             try:
                 report = read_cli_report(report_path)
             except McpError:
-                record.items.append(
-                    {
-                        "input": input_file,
-                        "outputs": [],
-                        "status": "실패",
-                        "detail": f"REPORT_MISSING (CLI 종료 코드 {run.returncode})",
-                        "retry_count": 0,
-                    }
-                )
-                record.failed_count += 1
-                self._persist(record)
+                self._append_failure(record, input_file, f"REPORT_MISSING (CLI 종료 코드 {run.returncode})")
                 continue
             for item in report["items"]:
                 record.items.append(item)
@@ -427,15 +450,21 @@ class JobManager:
             record.warnings.extend(report.get("warnings", []))
             self._persist(record)
         record.finished_at = _utcnow_iso()
-        if busy_seen and record.success_count == 0 and record.failed_count > 0:
-            record.state = "rejected_busy"
+        if busy_seen:
+            if record.success_count == 0:
+                record.state = "rejected_busy"
+            else:
+                record.state = "partially_failed"
             record.error = {
                 "code": "BUSY_EXTERNAL_INSTANCE",
-                "message": "HwpMate(GUI 또는 다른 CLI)가 실행 중이어서 작업을 시작하지 못했습니다.",
+                "message": "HwpMate(GUI 또는 다른 CLI)가 실행 중이어서 일부 또는 전체 파일을 실행하지 못했습니다.",
             }
-        elif record.timed_out and record.success_count == 0:
-            record.state = "timeout"
-            record.error = {"code": "TIMEOUT", "message": "제한 시간 안에 변환이 끝나지 않았습니다."}
+        elif record.timed_out:
+            record.state = "timeout" if record.success_count == 0 else "partially_failed"
+            record.error = {
+                "code": "TIMEOUT",
+                "message": "제한 시간 안에 변환이 끝나지 않아 남은 파일 실행을 중단했습니다.",
+            }
         else:
             overall = {
                 "summary": {
@@ -455,6 +484,30 @@ class JobManager:
                     }
                 else:
                     record.error = {"code": "OUTPUT_VALIDATION_FAILED", "message": "일부 파일 변환에 실패했습니다."}
+        self._persist(record)
+
+    def _append_failure(self, record: JobRecord, input_file: str, detail: str) -> None:
+        record.items.append(
+            {"input": input_file, "outputs": [], "status": "실패", "detail": detail, "retry_count": 0}
+        )
+        record.failed_count += 1
+        self._persist(record)
+
+    def _mark_not_run(self, record: JobRecord, inputs: list[str], reason: str) -> None:
+        """실행하지 않은 입력도 결과에 남겨 requested 와 집계 합계가 맞도록 한다."""
+        if not inputs:
+            return
+        for input_file in inputs:
+            record.items.append(
+                {
+                    "input": input_file,
+                    "outputs": [],
+                    "status": "취소됨",
+                    "detail": f"미실행: {reason}",
+                    "retry_count": 0,
+                }
+            )
+        record.canceled_count += len(inputs)
         self._persist(record)
 
 

@@ -83,7 +83,9 @@ def validate_job_outputs(
                     files.append(entry)
                     continue
                 try:
-                    head = path.read_bytes()[:16]
+                    # 대형 PDF·이미지를 통째로 읽지 않고 서명 확인에 필요한 앞부분만 읽는다.
+                    with open(path, "rb") as handle:
+                        head = handle.read(16)
                 except OSError as exc:
                     entry["reasons"].append(f"읽기 실패: {exc}")
                     files.append(entry)

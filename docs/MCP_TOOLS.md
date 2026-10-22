@@ -7,6 +7,8 @@
 
 입력 없음. OS·앱 버전·CLI 경로 유효성·포맷 목록·환경 상태를 반환한다.
 `hancom_com_probe`는 항상 `not_run`이며, `--smoke`만으로 COM 가능을 선언하지 않는다.
+`cli_requires_elevation: true`이면 CLI exe가 관리자 권한을 요구하는데 MCP 프로세스가 일반 권한이라
+실행할 수 없으며, 이때 `cli_path_valid`도 `false`다. 적용되지 않는 설정 키는 `warnings`에 표시된다.
 
 ## hwpmate_list_supported_formats (읽기)
 
@@ -34,11 +36,14 @@ conflicts_renamed, requires_confirmation: true, warnings, preview: [{input, outp
 상태: `queued → running → succeeded | partially_failed | failed | timeout |
 canceled | interrupted | rejected_busy | expired`.
 대기 큐에서 `queue_wait_timeout_seconds`를 넘기면 실행 없이 `expired`가 된다.
+제한 시간 초과·외부 실행(BUSY)으로 중단되면 남은 입력은 `canceled_count`에 포함되므로
+`success + failed + skipped + canceled = requested`가 항상 성립한다.
 
 ## hwpmate_get_job_result (읽기)
 
 `{job_id, limit = 50 (최대 200), cursor = 0}` → `{total, items, next_cursor, warnings, error}`.
 `items[] = {input, outputs, status, detail, retry_count}`.
+`status`는 `성공 | 실패 | 건너뜀 | 취소됨`이며, 실행하지 않은 입력은 `취소됨` + `detail: "미실행: <사유>"`다.
 
 ## hwpmate_cancel_job (변경)
 

@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 
 from ..constants import FORMAT_TYPES
-from .config import McpConfig
+from .config import McpConfig, is_drive_root
 from .errors import McpError
 
 
@@ -79,10 +79,15 @@ def check_reparse_on_absolute(absolute: Path) -> None:
 
 
 def check_containment(resolved: Path, roots: list[str], *, kind: str) -> Path:
+    code = "INPUT_DENIED" if kind == "입력" else "OUTPUT_DENIED"
+    if isinstance(roots, str):
+        # 문자 단위 반복으로 드라이브 전체가 허용되는 것을 막는다 (설정 검증 우회 대비).
+        raise McpError(code, f"{kind} 허용 루트 설정 형식이 올바르지 않습니다 (목록 필요).")
     if not roots:
-        code = "INPUT_DENIED" if kind == "입력" else "OUTPUT_DENIED"
         raise McpError(code, f"{kind} 허용 루트가 설정되지 않아 {kind} 경로를 거부합니다.")
     for root in roots:
+        if not isinstance(root, str) or not root.strip() or is_drive_root(root):
+            continue
         try:
             anchor = Path(os.path.abspath(os.path.expanduser(str(root)))).resolve()
         except OSError:
@@ -92,7 +97,6 @@ def check_containment(resolved: Path, roots: list[str], *, kind: str) -> Path:
             return resolved
         except ValueError:
             continue
-    code = "INPUT_DENIED" if kind == "입력" else "OUTPUT_DENIED"
     raise McpError(code, f"{kind} 허용 범위를 벗어난 경로입니다: {resolved}")
 
 

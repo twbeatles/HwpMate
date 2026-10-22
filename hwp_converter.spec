@@ -155,7 +155,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='HWP변환기_v9.2.3',
+    name='HWP변환기_v9.2.4',
 
     debug=False,
     bootloader_ignore_signals=False,

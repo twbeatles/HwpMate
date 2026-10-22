@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/twbeatles/HwpMate/releases/latest">
-    <img src="https://img.shields.io/badge/Release-v9.2.3-blue.svg?style=for-the-badge&logo=github" alt="Latest Release" />
+    <img src="https://img.shields.io/badge/Release-v9.2.4-blue.svg?style=for-the-badge&logo=github" alt="Latest Release" />
   </a>
   <img src="https://img.shields.io/badge/Platform-Windows_10%2F11_(64--bit)-lightgrey.svg?style=for-the-badge&logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.10+" />
@@ -20,7 +20,7 @@
 > ### 🚀 [초고속 다운로드 (무설치 포터블)]
 > Python 설치나 복잡한 환경 설정 없이, 아래 링크에서 단일 실행 파일(`.exe`)을 다운로드하여 즉시 사용하실 수 있습니다.
 > 
-> 👉 **[최신 버전 HwpMate-v9.2.3.exe 다운로드 (GitHub Releases)](https://github.com/twbeatles/HwpMate/releases/latest)**  
+> 👉 **[최신 버전 HwpMate-v9.2.4.exe 다운로드 (GitHub Releases)](https://github.com/twbeatles/HwpMate/releases/latest)**  
 > *(x64용입니다. ARM64 PC는 v9.2.1 에셋을 사용하세요. 다운로드 후 마우스 오른쪽 버튼을 클릭하여 **'관리자 권한으로 실행'**해 주세요.)*
 
 ---
@@ -95,6 +95,7 @@
 * **필수 소프트웨어**: **한컴오피스 한글 2018 이상** (2018, 2020, 2022, 2024 등 정식 설치 버전)
 * **실행 권한**: **관리자 권한** (한글 COM 컴포넌트 제어 및 보안 모듈 레지스트리 등록에 필수)
 * *배포용 실행 파일(`.exe`) 사용 시 Python 설치는 전혀 필요 없습니다.*
+* *소스 실행은 Python 3.10 이상(GUI/CLI), MCP 서버의 설정 파일(`config.toml`) 사용은 Python 3.11 이상이 필요합니다.*
 
 ---
 
@@ -106,7 +107,7 @@
 ```
 
 ### 1단계: 프로그램 실행
-다운로드한 `HwpMate-v9.2.3.exe` 파일을 마우스 우클릭한 뒤 **[관리자 권한으로 실행]**을 클릭합니다.
+다운로드한 `HwpMate-v9.2.4.exe` 파일을 마우스 우클릭한 뒤 **[관리자 권한으로 실행]**을 클릭합니다.
 
 ### 2단계: 문서 또는 폴더 추가
 * **폴더 통째로 변환할 때**: 상단 모드를 **[폴더 일괄 변환]**으로 두고, 변환할 폴더를 창으로 끌어다 놓거나 `[폴더 선택]`을 누릅니다. (하위 폴더를 포함하려면 체크박스 선택)
@@ -130,22 +131,22 @@ HwpMate는 GUI 창 없이 윈도우 작업 스케줄러, 배치 파일(`.bat`), 
 
 ```powershell
 # 1. 단일 파일 변환 (HWP -> PDF)
-HwpMate-v9.2.3.exe --input "C:\문서\보고서.hwp" --format PDF
+HwpMate-v9.2.4.exe --input "C:\문서\보고서.hwp" --format PDF
 
 # 2. 폴더 전체 일괄 변환 (하위 폴더 포함, MS Word DOCX로 변환)
-HwpMate-v9.2.3.exe --input "C:\업무자료" --format DOCX --recursive --output "C:\변환완료"
+HwpMate-v9.2.4.exe --input "C:\업무자료" --format DOCX --recursive --output "C:\변환완료"
 
 # 3. 초고속 변환 (백업 생성 안 함, 기존 파일 덮어쓰기)
-HwpMate-v9.2.3.exe --input "C:\문서폴더" --format PDF --overwrite --no-backup
+HwpMate-v9.2.4.exe --input "C:\문서폴더" --format PDF --overwrite --no-backup
 
 # 4. 모아찍기 해제 인쇄 모드로 PDF 변환 (실패 시 2회 재시도)
-HwpMate-v9.2.3.exe --input "C:\공문서" --format PDF --pdf-export-mode print_to_pdf_ex_first --retry 2
+HwpMate-v9.2.4.exe --input "C:\공문서" --format PDF --pdf-export-mode print_to_pdf_ex_first --retry 2
 
 # 5. 결과를 JSON으로 저장 (CSV는 .csv 확장자)
-HwpMate-v9.2.3.exe --input "C:\문서폴더" --format DOCX --report "C:\변환결과\result.json"
+HwpMate-v9.2.4.exe --input "C:\문서폴더" --format DOCX --report "C:\변환결과\result.json"
 
 # 6. 시스템 및 COM 의존성 무결성 진단 (스모크 테스트)
-HwpMate-v9.2.3.exe --smoke
+HwpMate-v9.2.4.exe --smoke
 ```
 
 > CLI는 GUI와 같은 변환 엔진(백업 → 출력 충돌 회피 → 재시도 → 산출물 검증)을 사용합니다. 같은 한글 COM·출력 파일을 동시에 다루지 않도록 **GUI 또는 다른 CLI가 실행 중이면 오류 코드 1로 종료**합니다. 실패·취소가 없으면 종료 코드 0입니다.
@@ -176,6 +177,9 @@ HwpMate는 로컬 `stdio` 전용 MCP 서버를 내장합니다. 에이전트는 
 pip install -r requirements-mcp.txt
 python -m hwpmate.mcp
 ```
+
+> **요구 사항:** Python 3.11 이상, `config.toml`의 허용 루트(`input_roots`/`output_roots`, **목록 형식**) 설정.
+> 배포 exe는 관리자 권한을 요구하므로, 일반 권한 에이전트에서는 `cli_executable`에 소스 진입점(`hwptopdf-hwpx_v4.py`)을 지정하세요. 자세한 내용은 [docs/MCP.md](docs/MCP.md#실행-권한-중요)를 참고하세요.
 
 자세한 도구 레퍼런스·보안 모델·클라이언트 설정은 [docs/MCP.md](docs/MCP.md), [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md), [docs/MCP_SECURITY.md](docs/MCP_SECURITY.md), [docs/MCP_CLIENT_SETUP.md](docs/MCP_CLIENT_SETUP.md)를 참고하세요.
 
@@ -218,6 +222,9 @@ python -m hwpmate.mcp
 
 ### Q7. 변환 중 한글 프로그램을 만져도 되나요?
 > **A:** 변환 작업이 진행되는 동안에는 백그라운드에서 한글 프로세스가 초고속으로 문서를 열고 닫으므로, **한글 창을 직접 클릭하거나 조작하지 마세요.** 원활한 변환을 위해 변환 시작 전 열려있는 다른 한글 문서를 모두 저장하고 닫아주시는 것이 좋습니다.
+
+### Q8. 자동 업데이트 도중 PC가 꺼져서 실행 파일이 사라졌습니다.
+> **A:** 업데이트는 기존 실행 파일을 `<실행파일명>.exe.v<이전버전>.bak`으로 옮긴 뒤 새 파일을 제자리로 옮기는 두 단계로 진행됩니다. 두 단계 사이에서 중단되어 실행 파일이 없다면, 같은 폴더의 가장 최근 `*.exe.v*.bak` 파일 이름에서 `.v<버전>.bak`을 지워 원래 이름(예: `HwpMate-v9.2.4.exe`)으로 바꾸면 이전 버전으로 복구됩니다. 복구 후 앱에서 업데이트를 다시 적용하면 됩니다.
 
 ---
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from ..constants import FORMAT_TYPES, VERSION
 from . import MCP_SCHEMA_VERSION
 from .config import McpConfig
+from .runner import current_process_is_elevated, elevation_message, executable_requires_admin
 
 
 def _cli_status(cfg: McpConfig) -> tuple[bool, str]:
@@ -31,9 +32,15 @@ def _cli_status(cfg: McpConfig) -> tuple[bool, str]:
 
 def gather_capabilities(cfg: McpConfig) -> dict:
     cli_valid, cli_path = _cli_status(cfg)
-    warnings: list[str] = []
+    warnings: list[str] = list(cfg.config_warnings)
+    requires_elevation = False
     if not cli_valid:
         warnings.append("CLI 실행 파일이 설정되지 않았거나 존재하지 않아 변환 실행이 불가합니다.")
+    elif executable_requires_admin(Path(cli_path)) and not current_process_is_elevated():
+        # 파일은 있지만 이 MCP 프로세스 권한으로는 실행할 수 없다 (WinError 740).
+        requires_elevation = True
+        cli_valid = False
+        warnings.append(elevation_message(cli_path))
     warnings.append("실제 COM 변환 가능 여부는 현장 테스트 필요")
     return {
         "schema_version": MCP_SCHEMA_VERSION,
@@ -42,6 +49,7 @@ def gather_capabilities(cfg: McpConfig) -> dict:
         "app_version": VERSION,
         "cli_path": cli_path,
         "cli_path_valid": cli_valid,
+        "cli_requires_elevation": requires_elevation,
         "pywin32_available": importlib.util.find_spec("win32com") is not None,
         "hancom_com_probe": "not_run",
         "supported_formats": sorted(FORMAT_TYPES.keys()),

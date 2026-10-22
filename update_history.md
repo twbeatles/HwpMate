@@ -4,12 +4,24 @@
 
 ## 현재 상태
 
-- 앱 버전: `v9.2.3`
+- 앱 버전: `v9.2.4`
 - 주 엔트리포인트: `hwptopdf-hwpx_v4.py`
 - 빌드 설정: `hwp_converter.spec`
 - 정적 검사 기준: `pyrightconfig.json`
-- 배포 산출물: `dist/HWP변환기_v9.2.3.exe` (릴리즈: `HwpMate-v9.2.3.exe`)
+- 배포 산출물: `dist/HWP변환기_v9.2.4.exe` (릴리즈: `HwpMate-v9.2.4.exe`)
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
+
+## 2026-10-22 기능 감사(PROJECT_AUDIT.md) 조치 — MCP 안정성·보안 (v9.2.4)
+
+- **ISSUE-001 권한 상승:** 배포 exe(`uac_admin=True`)를 일반 권한 MCP 호스트에서 실행하면 `WinError 740`으로 모든 job이 `INTERNAL` 실패하던 문제를 `ELEVATION_REQUIRED`로 분리 보고. `hwpmate_get_capabilities`가 exe 매니페스트(`requireAdministrator`)와 현재 권한을 비교해 `cli_requires_elevation`·`cli_path_valid=false`를 보고. 문서 예시를 소스 진입점(`hwptopdf-hwpx_v4.py`)으로 변경.
+- **ISSUE-002 허용 루트 fail-open:** TOML에서 `input_roots = "C:/..."`처럼 문자열로 쓰면 문자 단위 반복으로 드라이브 전체가 허용되던 문제 수정. `McpConfig.from_mapping`이 문자열을 단일 원소 목록으로 감싸고, 그 외 타입·드라이브 전체 루트·필드 타입 오류는 `McpConfigError`로 시작 거부. `check_containment`도 문자열·드라이브 루트를 방어적으로 무시.
+- **ISSUE-003 timeout 고아 한글:** CLI 실행을 `Popen`으로 바꾸고 timeout 시 `taskkill /T`로 프로세스 트리(venv 런처·onefile 자식 포함)를 종료. CLI에 숨김 인자 `--owned-pids-file`을 추가해 소유 한글 PID를 기록(초기화·재순환 후 기록, 정상 정리 후 빈 목록)하고, MCP가 단계마다 남은 소유 PID만 이미지명 재확인 후 종료. timeout 후 남은 입력은 실행하지 않음.
+- **ISSUE-004 BUSY/timeout 집계:** 중단 시 남은 입력을 `취소됨`(`미실행: <사유>`)으로 기록해 `requested`와 집계 합계를 일치시키고, 부분 성공 후 BUSY/timeout은 `partially_failed` + `BUSY_EXTERNAL_INSTANCE`/`TIMEOUT` 오류 코드로 보고.
+- **ISSUE-005 설정 문법 오류:** `TOMLDecodeError`·형식 오류를 traceback 대신 stderr 한 줄 + 종료 코드 2로 처리. Python 3.10(`tomllib` 없음)에서 설정 파일이 있으면 조용히 무시하지 않고 시작 거부.
+- **Gap 조치:** 적용되지 않는 정책 키(`allow_overwrite` 등)는 시작 로그·capabilities 경고로 표시, `require_confirmation=false`도 무시하고 승인 토큰을 항상 검사. 실행 직전 각 입력 파일 재검증(`recheck_input`). `idempotency.json` 잠금 안 원자 저장 + job 기록 기반 재구성. validator가 서명 확인에 16바이트만 읽음.
+- **문서:** `docs/MCP.md` 설정 경로 오타(`HwpMate\HwpMate`) 수정·실행 권한 절 추가, `MCP_SECURITY.md`(승인 토큰 전제·timeout 정리·고정 정책), `MCP_TOOLS.md`, `MCP_CLIENT_SETUP.md`, README(요구 Python 버전·MCP 요구 사항·업데이트 중단 시 수동 복구 FAQ), `PROJECT_STRUCTURE_ANALYSIS.md`에 MCP 구조 추가.
+- **테스트:** `tests/mcp/test_audit_2026_10.py`(29건), CLI 소유 PID 기록 2건, `tests/test_forbidden_patterns.py`(물리 인쇄 Execute·`Clear(2/3)`·`taskkill /IM` 정적 금지 3건). `pytest` 360 passed, `pyright` 0 errors.
+- **실측(한글 2022, 일반 권한):** 소스 CLI로 MCP preview→submit→validate PDF 성공(소유 PID 기록 후 비움 확인), 586쪽 문서 DOCX 변환 중 timeout(4초) 시 소유 한글 PID 정리·잔여 Hwp.exe 없음 확인, 배포 exe에 대해 `cli_requires_elevation=true` 확인.
 
 ## 2026-10-21 자동 업데이트 exe 교체 방식 변경 (v9.2.3)
 

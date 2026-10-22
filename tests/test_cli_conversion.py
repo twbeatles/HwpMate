@@ -207,3 +207,58 @@ def test_cli_survives_non_utf8_console_output(tmp_path: Path, monkeypatch: pytes
 
     assert ret == 0
     assert (out / "a.pdf").read_bytes() == b"planted"
+
+
+class PidTrackingCliConverter(ScriptedCliConverter):
+    """초기화 시 소유 한글 PID 를 가진 것처럼 동작하고, 변환 중 기록 파일을 관찰한다."""
+
+    observed: list[dict] = []
+    pids_file: Path | None = None
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.owned_pids: set[int] = set()
+
+    def initialize(self, *, manage_com_apartment: bool = True) -> bool:
+        self.owned_pids = {4321}
+        return True
+
+    def convert_file(self, in_p: Any, out_p: Any, fmt: str = "PDF", *, cancel_check: Any = None) -> tuple[bool, str | None]:
+        import json
+
+        assert PidTrackingCliConverter.pids_file is not None
+        PidTrackingCliConverter.observed.append(json.loads(PidTrackingCliConverter.pids_file.read_text(encoding="utf-8")))
+        return super().convert_file(in_p, out_p, fmt, cancel_check=cancel_check)
+
+    def cleanup(self) -> None:
+        self.owned_pids.clear()
+
+
+def test_cli_records_and_clears_owned_pids_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    import hwpmate.app as app_module
+
+    doc = tmp_path / "a.hwp"
+    doc.write_bytes(b"dummy")
+    pids_file = tmp_path / "state" / "pids.json"
+    _patch_cli(monkeypatch, script=[True])
+    PidTrackingCliConverter.observed = []
+    PidTrackingCliConverter.pids_file = pids_file
+    monkeypatch.setattr(app_module, "HWPConverter", PidTrackingCliConverter)
+
+    ret = _run_cli_conversion(
+        _parse_args(["--input", str(doc), "--no-backup", "--owned-pids-file", str(pids_file)])
+    )
+
+    assert ret == 0
+    assert PidTrackingCliConverter.observed == [{"pids": [4321]}]
+    assert json.loads(pids_file.read_text(encoding="utf-8")) == {"pids": []}
+
+
+def test_cli_owned_pids_option_is_optional(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    doc = tmp_path / "a.hwp"
+    doc.write_bytes(b"dummy")
+    _patch_cli(monkeypatch, script=[True])
+    assert _run_cli_conversion(_parse_args(["--input", str(doc), "--no-backup"])) == 0
+    assert not list(tmp_path.glob("*.pids.json"))

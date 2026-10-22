@@ -4,10 +4,14 @@
 
 - 문서 변환은 읽기 전용이 아니다(출력·백업·report·로그 생성). 변환 제출에는
   명시적 승인 토큰(`approve_non_destructive_conversion`)과 `idempotency_key`가 필요하다.
+- 승인 토큰은 공개된 고정 문자열이므로 에이전트가 스스로 넣을 수 있다. **사람의 승인은
+  MCP 호스트의 도구 실행 승인 UI(제출 도구 호출 허용 여부)에 의존한다.** 자동 승인 모드에서
+  `hwpmate_submit_conversion`을 허용하지 않도록 호스트를 설정한다.
 - 도구 annotation(`readOnlyHint` 등)은 모델·호스트용 힌트이며 보안 통제가 아니다.
   경로 제한·승인·충돌 회피는 서버가 강제한다.
 - 기본값: `overwrite=false`, `backup=true`, `retry=1`, `pdf_export_mode=saveas_first`.
-  원본 `.hwp/.hwpx` 보호는 어떤 옵션에서도 우회할 수 없다.
+  원본 `.hwp/.hwpx` 보호는 어떤 옵션에서도 우회할 수 없다. `allow_overwrite` 등 정책 키는
+  고정값으로만 동작하며, 다른 값은 경고만 남긴다.
 - 초기에는 MCP `stdio`만 제공하며, 원격 HTTP 호출·무인 자동 승인·임의 `.exe` 실행·
   임의 명령 문자열 입력을 금지한다.
 
@@ -15,8 +19,12 @@
 
 - 모든 경로는 `resolve()` 후 허용 루트 containment를 검사한다.
   루트 미설정 시 변환 도구는 fail closed.
+- 허용 루트는 문자열 목록만 받는다. 형식이 틀리거나 드라이브 전체(`C:/`)를 루트로 지정하면
+  서버가 시작하지 않는다.
 - `..` 탈출·드라이브 밖 경로·UNC(기본 거부)·`\\?\` 확장 경로·symlink/junction
-  (기본 거부)은 차단하고, 실행 직전 계획을 재검증한다(`PLAN_STALE`).
+  (기본 거부)은 차단하고, 제출 시 계획을 재검증한다(`PLAN_STALE`).
+- 실행 직전에 출력 폴더와 **각 입력 파일**을 허용 정책으로 다시 검사한다. 대기 중 경로가
+  바뀌거나 삭제된 입력은 실행하지 않고 실패로 기록한다.
 - 출력은 승인된 output root 아래에만 둔다. 입력 근처 자동 저장은 기본 금지이므로
   미리보기·제출에는 출력 폴더 지정이 필수다.
 
@@ -27,6 +35,13 @@
   `BUSY_EXTERNAL_INSTANCE`로 보고하고, 소유하지 않은 한글 프로세스를 종료하지 않는다.
 - 실행 중 취소는 지원하지 않는다(`CANCELLATION_UNSUPPORTED_WHILE_RUNNING`).
   대기 중 작업만 취소할 수 있다.
+- CLI 1회(입력 파일 1개)가 `job_timeout_seconds`를 넘기면 CLI 프로세스 트리를 종료하고,
+  CLI가 `--owned-pids-file`에 기록한 **소유 한글 PID만** 이미지명 재확인 후 종료한다
+  (전역 `Hwp.exe` 종료 금지). 한글이 응답하지 않는 상태일 가능성이 높아 남은 입력은
+  실행하지 않고 `취소됨`(미실행)으로 기록한다. CLI가 비정상 종료해 남긴 소유 PID도 같은
+  방식으로 정리하며, 정리 내역은 job 경고에 남는다.
+- 외부 HwpMate 실행으로 중간에 `BUSY_EXTERNAL_INSTANCE`가 나면 남은 입력도 `취소됨`(미실행)으로
+  기록해 `requested`와 집계 합계가 항상 일치한다.
 
 ## 데이터 취급
 
@@ -42,16 +57,17 @@
 | `PLATFORM_UNSUPPORTED` | Windows가 아님 (예약) |
 | `HANCOM_UNAVAILABLE` | 한글 COM 초기화 불가 (현장 확인 필요) |
 | `CLI_NOT_TRUSTED` | 실행 파일 경로·검증 실패 |
+| `ELEVATION_REQUIRED` | CLI exe가 관리자 권한을 요구해 현재 권한으로 실행 불가 (WinError 740) |
 | `INPUT_DENIED` / `OUTPUT_DENIED` | 허용 범위 밖 경로·UNC·reparse |
 | `BAD_INPUT` / `BAD_FORMAT` | 한글 문서 아님·미지원 형식 |
 | `INPUT_TOO_LARGE` | 파일 수·총 크기 quota 초과 |
 | `PLAN_STALE` / `PLAN_EXPIRED` | 입력 변경·계획 만료 |
 | `CONFIRMATION_REQUIRED` | 명시적 승인 없음 |
-| `BUSY_EXTERNAL_INSTANCE` | GUI/다른 CLI 실행 중 |
+| `BUSY_EXTERNAL_INSTANCE` | GUI/다른 CLI 실행 중 (일부 성공 후 발생 시 `partially_failed`) |
 | `JOB_QUEUE_FULL` / `JOB_NOT_FOUND` / `JOB_NOT_DONE` | 큐·조회 상태 |
 | `IDEMPOTENCY_CONFLICT` | 같은 key로 다른 계획 제출 |
 | `REPORT_MISSING` | CLI 보고서 미생성·손상 (성공으로 보정 금지) |
 | `OUTPUT_VALIDATION_FAILED` | 산출물 검증 불통과 |
 | `CANCELLATION_UNSUPPORTED_WHILE_RUNNING` | 실행 중 취소 불가 |
-| `TIMEOUT` / `INTERRUPTED` / `INTERNAL` | 제한 시간·큐 만료·재시작 중단·내부 오류 |
+| `TIMEOUT` / `INTERRUPTED` / `INTERNAL` | 제한 시간(일부 성공 후 발생 시 `partially_failed`)·큐 만료·재시작 중단·내부 오류 |
 | `HANCOM_UNAVAILABLE` / `PLATFORM_UNSUPPORTED` | 한글 COM 실패 매핑·비Windows 실행 차단 |

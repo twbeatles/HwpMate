@@ -6,7 +6,7 @@ import argparse
 import sys
 
 from . import MCP_SCHEMA_VERSION
-from .config import McpConfig, load_config
+from .config import McpConfig, McpConfigError, load_config
 from .logging_utils import setup_stderr_logging
 from .server import run_stdio
 
@@ -26,8 +26,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.version:
         sys.stdout.write(MCP_SCHEMA_VERSION + "\n")
         return 0
-    cfg: McpConfig = load_config(args.config or None)
-    setup_stderr_logging()
+    logger = setup_stderr_logging()
+    try:
+        cfg: McpConfig = load_config(args.config or None)
+    except McpConfigError as exc:
+        # stdout 은 JSON-RPC 전용이므로 원인은 stderr 한 줄로만 알린다.
+        sys.stderr.write(f"[HwpMate MCP] 설정 오류로 시작하지 않습니다: {exc}\n")
+        return 2
+    for warning in cfg.config_warnings:
+        logger.warning(warning)
     try:
         run_stdio(cfg)
     except SystemExit as exc:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .models import FormatSpec
 
-VERSION = "9.2.3"
+VERSION = "9.2.4"
 
 SUPPORTED_EXTENSIONS = (".hwp", ".hwpx")
 BACKUP_DIR_NAME = "backup"

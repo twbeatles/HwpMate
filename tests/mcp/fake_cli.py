@@ -6,6 +6,9 @@ ConversionSummary.to_json_dict() 형태의 보고서를 기록한다.
   HWPMATE_FAKECLI_MODE: ok(기본) | busy | noreport | sleep
   HWPMATE_FAKECLI_SLEEP: sleep 모드 대기 초
   HWPMATE_FAKECLI_FAIL_NAMES: 실패로 처리할 입력 basename 목록 (쉼표 구분)
+  HWPMATE_FAKECLI_BUSY_NAMES / HWPMATE_FAKECLI_SLEEP_NAMES: 해당 입력에만 busy/sleep 적용
+  HWPMATE_FAKECLI_SPAWN_CHILD=1: 한글 프로세스 대역으로 장시간 자식을 띄우고
+      --owned-pids-file 에 PID를 기록 (정상 종료 시에는 자식 종료 후 빈 목록 기록)
 프로덕션 코드가 아니며 테스트에서 subprocess로만 실행한다.
 """
 
@@ -27,9 +30,33 @@ def main() -> int:
     parser.add_argument("--report", default="")
     parser.add_argument("--retry", default="1")
     parser.add_argument("--pdf-export-mode", default="saveas_first")
+    parser.add_argument("--owned-pids-file", default="")
     args = parser.parse_args()
 
+    def _names(key: str) -> set[str]:
+        return {name.strip().lower() for name in os.environ.get(key, "").split(",") if name.strip()}
+
     mode = os.environ.get("HWPMATE_FAKECLI_MODE", "ok")
+    input_name = Path(args.input).name.lower()
+    if input_name in _names("HWPMATE_FAKECLI_BUSY_NAMES"):
+        mode = "busy"
+    elif input_name in _names("HWPMATE_FAKECLI_SLEEP_NAMES"):
+        mode = "sleep"
+    child_pid = 0
+    if os.environ.get("HWPMATE_FAKECLI_SPAWN_CHILD") == "1" and args.owned_pids_file:
+        import subprocess
+
+        # 실제 한글은 DcomLaunch 가 띄워 CLI 프로세스 트리 밖에 있으므로,
+        # 중간 프로세스를 거쳐 트리에서 분리된 손자로 띄운다.
+        launcher = (
+            "import subprocess, sys; "
+            "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'], "
+            "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL); "
+            "print(p.pid)"
+        )
+        done = subprocess.run([sys.executable, "-c", launcher], capture_output=True, text=True, timeout=30)
+        child_pid = int(done.stdout.strip())
+        Path(args.owned_pids_file).write_text(json.dumps({"pids": [child_pid]}), encoding="utf-8")
     if mode == "busy":
         print("[오류] HwpMate(GUI 또는 다른 CLI)가 이미 실행 중입니다. 종료한 뒤 다시 실행하세요.", file=sys.stderr)
         return 1
@@ -40,6 +67,11 @@ def main() -> int:
         time.sleep(float(os.environ.get("HWPMATE_FAKECLI_SLEEP", "30")))
     if mode == "noreport":
         return 1
+    if child_pid:
+        import signal
+
+        os.kill(child_pid, signal.SIGTERM)
+        Path(args.owned_pids_file).write_text(json.dumps({"pids": []}), encoding="utf-8")
 
     fail_names = {name.strip().lower() for name in os.environ.get("HWPMATE_FAKECLI_FAIL_NAMES", "").split(",") if name.strip()}
     input_path = Path(args.input)
