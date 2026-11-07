@@ -13,6 +13,7 @@
 - SOLID 패키지 분할 반영 일자: 2026-08-05
 - 감사 잔여 개선( PID 가드·PDF 매직·확장 경로·변환 캐시·백업 상한 UI) 반영 일자: 2026-08-05
 - MCP 서버 구조·2026-10-22 감사 조치(설정 검증·타임아웃 정리·권한 상승 감지) 반영 일자: 2026-10-22
+- 2026-11-07 감사 조치(COM 실행 기반 소유 PID 판정·연결 끊김 즉시 재연결·보조 산출물 규칙 축소·사전 점검 제외 진행) 반영 일자: 2026-11-07
 - 대상 저장소: `D:\github\HwpMate`
 - 분석 목적: "다양한 기능 추가"를 위한 현재 구조, 제약, 확장 포인트 파악
 
@@ -77,13 +78,14 @@
 | `models.py` | `AppConfig`, `ConversionTask`, `PlannedConversion`, `ConversionSummary`, `FormatSpec` 데이터 모델 |
 | `services/file_selection_store.py` | 순서 유지 + 대소문자 비민감 중복 제거 |
 | `services/task_planner.py` | 모드별 작업 생성, 동일 형식 건너뜀 분리, 출력 충돌 해소 |
-| `services/hwp_converter/` | COM 연결·SaveAs/PDF 전략·Toolhelp PID (패키지; `com_types`/`process_snapshot`/`converter` 등) |
+| `services/hwp_converter/` | COM 연결·SaveAs/PDF 전략·Toolhelp PID (패키지; `com_types`/`process_snapshot`/`converter` 등). 소유 PID는 부모가 DcomLaunch(`svchost.exe`)인 한글만(`select_com_launched_pids`), 연결 끊김 HRESULT 감지·`is_alive()` |
+| `services/artifact_policy.py` | 보조 산출물 판정: 이미지 `{stem}NNN` 페이지 파일만, HTML 같은 stem 파일·`{stem}_files` 폴더·`PIC*`(스냅샷 전용), 원본 `.hwp/.hwpx` 제외 |
 | `services/hwp_print_settings/` | PrintMethod=0 리셋, PrintToPDFEx/RunToPDF, 가상 프린터 탐지 (물리 Print Execute 금지) |
 | `services/hwp_security_module.py` | 보안승인 DLL 설치·SHA-256·HKCU 등록 |
 | `services/hwp_security_session.py` | 전면화/자동 클릭 세션 정책 |
 | `workers/file_scan_worker.py` | 파일/폴더를 비동기 배치 스캔 |
 | `workers/conversion_worker/` | 순차 변환·백업·요약·engine_status (`worker`/`backup`/`summary`/`protocol`/`task_runner`) |
-| `workers/conversion_worker/task_runner.py` | Qt 비의존 작업 실행기(백업 → 런타임 경로 할당 → 재시도 → 감사 필드, 재순환 재시도) — GUI 워커와 CLI 공유 |
+| `workers/conversion_worker/task_runner.py` | Qt 비의존 작업 실행기(백업 → 런타임 경로 할당 → 재시도 → 감사 필드, 재순환 재시도, 연결 끊김 시 작업당 1회 즉시 재연결·실패 시 `EngineUnavailableError`) — GUI 워커와 CLI 공유 |
 | `windows_integration/hwp_dialog_responder.py` | 소유 PID 한정 「호환 문서(배치 변경)」 확인 창 자동 계속(Y 키) |
 | `services/update_manifest.py`, `services/update_installer.py` | Ed25519 매니페스트, 스트리밍 다운로드, 부모 종료 대기·교체 재시도·롤백 상태·스테이징 정리 |
 | `ui/main_window_controllers/update.py` | 업데이트 확인/다운로드/적용(변환 중 보류, 시작 확인 1회) |
@@ -145,6 +147,7 @@
    - 파일별 `task_runner.execute_task()`: 선택적 백업 → 런타임 출력 경로 재할당(원본 `.hwp/.hwpx` 보호) → `convert_file()`
    - `convert_file()`은 소유 PID가 있으면 「호환 문서」 확인 창 자동 계속 스레드를 함께 실행
    - 실패 시 설정된 횟수만큼 재시도, 200건마다 재순환(초기화 3회 재시도, 실패 시 남은 작업 즉시 실패 처리)
+   - 실패 후 한글 연결이 끊겼으면(`is_alive()` False) 즉시 재연결해 같은 파일을 다시 시도, 재연결 실패 시 남은 작업 실패 처리
    - 취소 시 남은 task를 `취소됨`으로 마킹
    - 산출 파일/크기/수정 시각/COM 형식을 기록한 `ConversionSummary` 생성
 8. `task_completed` 시그널 수신 후 `ResultDialog` 표시

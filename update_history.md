@@ -4,12 +4,24 @@
 
 ## 현재 상태
 
-- 앱 버전: `v9.2.4`
+- 앱 버전: `v9.2.5`
 - 주 엔트리포인트: `hwptopdf-hwpx_v4.py`
 - 빌드 설정: `hwp_converter.spec`
 - 정적 검사 기준: `pyrightconfig.json`
-- 배포 산출물: `dist/HWP변환기_v9.2.4.exe` (릴리즈: `HwpMate-v9.2.4.exe`)
+- 배포 산출물: `dist/HWP변환기_v9.2.5.exe` (릴리즈: `HwpMate-v9.2.5.exe`)
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
+
+## 2026-11-07 기능 감사(PROJECT_AUDIT.md) 조치 — 한글 프로세스 수명·산출물 판정 (v9.2.5)
+
+- **ISSUE-001 소유 PID 오인:** 초기화 전후 PID 차집합만으로 소유를 정해, 그 사이 사용자가 연 한글까지 창 숨김·강제 종료·MCP timeout 정리 대상이 되던 문제 수정. 후보마다 부모 프로세스를 확인해 DcomLaunch(`svchost.exe`)가 띄운 한글과 그 자식만 소유로 확정(`select_com_launched_pids`). 시작 실패 고아 정리·MCP `_live_hwp_pids`는 부모 불명도 제외.
+- **ISSUE-002 크래시 후 연쇄 실패:** `RPC_S_SERVER_UNAVAILABLE` 등 연결 끊김 HRESULT를 감지하고 `HWPConverter.is_alive()` 추가. 실패 후 엔진이 죽었으면 작업당 한 번 즉시 재연결해 같은 파일을 다시 시도(재시도 횟수 미소모), 재연결 실패 시 남은 작업을 실패 처리하고 중단. GUI는 새 소유 PID를 다시 알리고 CLI는 `--owned-pids-file`을 갱신.
+- **NEW-001 CLI 재순환 실패:** CLI처럼 컨버터가 COM apartment를 소유하면 `recycle_converter`가 CoUninitialize 후 apartment 없이 재초기화해 200건 재순환이 항상 실패하던 버그 수정(실측으로 발견).
+- **ISSUE-003 보조 산출물 오탐:** 이미지 형식은 폴더를 산출물로 보지 않고, HTML은 같은 stem 파일과 `{stem}_files`/`{stem}.files` 폴더만 인정. 폴더 안 스냅샷에서 `.hwp/.hwpx` 제외. `report_2024/`·`doc_final.html` 때문에 `(1)` 이름이 붙던 문제 해결.
+- **ISSUE-004 CLI 리포트:** 건너뜀만 있는 경로의 `--report` 저장 실패가 traceback·종료 코드 1로 끝나던 문제를 경고 출력으로 통일(`_save_cli_report`).
+- **Gap 조치:** 사전 점검 「문제 N개 제외하고 시작」(제외 항목은 「건너뜀」+사유), 「실패만 재변환」 저장 위치 라벨 정정(`output_policy_note`), 업데이트 적용 시 폴더 스캔 중 보류·창 닫기 거부 시 `quit()` 생략, `cleanup()` 후 종료되지 않은 이전 소유 한글 정리(최대 3초 대기), PrintToPDFEx/RunToPDF 성공 반환 후 파일 생성·크기 안정 대기(최대 3초).
+- **문서:** README(배지·Q7·CLI `--report` 규칙·종료 코드·재연결·사전 점검 제외), `PROJECT_STRUCTURE_ANALYSIS.md`, `PROJECT_AUDIT.md` §10.
+- **테스트:** `tests/test_audit_2026_11.py`(21건) 등 신규 31건, 정적 규칙(`owned_pids = a - b` 금지). `pytest` 390 passed, 1 skipped, `pyright` 0 errors.
+- **실측(한글 2022, 일반 권한, 합성 문서):** COM 실행 한글의 부모가 `svchost.exe`임을 확인, HTML/PNG 실제 산출물(`doc.html`, `doc001.png`…) 확인, 변환 중 소유 `Hwp.exe` 강제 종료 → 재연결 → 4건 모두 성공·잔여 Hwp.exe 없음.
 
 ## 2026-10-22 기능 감사(PROJECT_AUDIT.md) 조치 — MCP 안정성·보안 (v9.2.4)
 

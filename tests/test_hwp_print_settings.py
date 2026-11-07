@@ -245,3 +245,47 @@ def test_resolve_pdf_printer_candidates_fallback() -> None:
     names = resolve_pdf_printer_candidates()
     assert isinstance(names, list)
     assert len(names) >= 1
+
+
+def test_try_export_waits_for_asynchronously_written_pdf(tmp_path: Path, monkeypatch) -> None:
+    """프린터 드라이버가 Execute 반환 뒤에 PDF 를 쓰는 경우도 성공으로 판정한다."""
+    import threading
+
+    import hwpmate.services.hwp_print_settings.pdf_export as pdf_export
+
+    monkeypatch.setattr(pdf_export, "PRINT_OUTPUT_WAIT_SECONDS", 3.0)
+    monkeypatch.setattr(pdf_export, "PRINT_OUTPUT_POLL_SECONDS", 0.05)
+    hwp = FakePrintHwp()
+    out = tmp_path / "out.pdf"
+
+    def execute_later(action_id: str, hset: _FakeParamSet) -> bool:
+        del action_id
+        path = hset.items.get("FileName") or hset.items.get("filename")
+        assert isinstance(path, str)
+        threading.Timer(0.3, lambda: Path(path).write_bytes(b"%PDF-1.4 late content")).start()
+        return True
+
+    hwp.HAction.Execute = execute_later  # type: ignore[method-assign]
+
+    ok, method = try_export_pdf_via_print_to_pdf_ex(hwp, out)
+
+    assert ok is True
+    assert method == EXPORT_METHOD_PRINT_TO_PDF_EX
+    assert is_valid_pdf_file(out)
+
+
+def test_try_export_does_not_wait_when_execute_reports_failure(tmp_path: Path, monkeypatch) -> None:
+    import time
+
+    import hwpmate.services.hwp_print_settings.pdf_export as pdf_export
+
+    monkeypatch.setattr(pdf_export, "PRINT_OUTPUT_WAIT_SECONDS", 5.0)
+    hwp = FakePrintHwp()
+    hwp.HAction.Execute = lambda action_id, hset: False  # type: ignore[method-assign]
+    hwp._doc.XHwpPrint.RunToPDF = lambda: False  # type: ignore[method-assign]
+
+    started = time.monotonic()
+    ok, _ = try_export_pdf_via_print_to_pdf_ex(hwp, tmp_path / "out.pdf")
+
+    assert ok is False
+    assert time.monotonic() - started < 2.0

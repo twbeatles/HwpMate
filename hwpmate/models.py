@@ -159,6 +159,8 @@ class PlannedConversion:
     skipped_tasks: list[ConversionTask] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     conflict_renamed_count: int = 0
+    # 저장 위치가 same_location/output_path 와 다르게 정해지는 계획(실패만 재변환 등)의 표시용 설명
+    output_policy_note: str | None = None
 
     @property
     def runnable_count(self) -> int:
@@ -178,6 +180,8 @@ class PlannedConversion:
 
     @property
     def output_policy_label(self) -> str:
+        if self.output_policy_note:
+            return self.output_policy_note
         if self.same_location:
             return "입력 파일과 같은 위치"
         return self.output_path or "사용자 지정 출력 폴더"

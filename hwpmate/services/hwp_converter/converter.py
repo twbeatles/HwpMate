@@ -33,7 +33,11 @@ from .artifact_snapshot import (
     remove_new_attempt_artifacts,
 )
 from .com_types import HwpAutomation, is_com_failure_result, pythoncom, require_pywin32
-from .process_snapshot import _snapshot_hwp_pids, get_snapshot_health
+from .process_snapshot import (
+    _snapshot_hwp_pids,
+    get_snapshot_health,
+    select_com_launched_pids,
+)
 
 logger = get_logger(__name__)
 
@@ -47,6 +51,44 @@ SECURITY_MODULE_ALIASES = (
 
 # Windows: 콘솔 창 없이 자식 프로세스 실행
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+# 한글 프로세스가 죽거나 COM 연결이 끊겼을 때의 HRESULT (부호 있는 32비트)
+COM_DISCONNECT_HRESULTS = frozenset(
+    {
+        -2147023174,  # 0x800706BA RPC_S_SERVER_UNAVAILABLE
+        -2147023170,  # 0x800706BE RPC_S_CALL_FAILED
+        -2147023169,  # 0x800706BF RPC_S_CALL_FAILED_DNE
+        -2147417848,  # 0x80010108 RPC_E_DISCONNECTED
+        -2147221251,  # 0x800401FD CO_E_OBJNOTCONNECTED
+    }
+)
+
+# cleanup 의 Quit() 이후 이전 소유 프로세스가 스스로 끝나기를 기다리는 시간
+CLEANUP_EXIT_WAIT_SECONDS = 3.0
+CLEANUP_EXIT_POLL_SECONDS = 0.2
+
+
+def _to_signed_hresult(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    value &= 0xFFFFFFFF
+    return value - 0x100000000 if value & 0x80000000 else value
+
+
+def is_com_disconnect_error(exc: BaseException) -> bool:
+    """COM 서버(한글 프로세스)가 사라졌거나 연결이 끊긴 오류인지 판정."""
+    candidates: list[object] = [getattr(exc, "hresult", None)]
+    args = getattr(exc, "args", ())
+    if args:
+        candidates.append(args[0])
+        # pywintypes.com_error: (hresult, text, excepinfo, argerror). excepinfo[5] 에 scode
+        if len(args) >= 3 and isinstance(args[2], tuple) and len(args[2]) >= 6:
+            candidates.append(args[2][5])
+    for candidate in candidates:
+        hresult = _to_signed_hresult(candidate)
+        if hresult is not None and hresult in COM_DISCONNECT_HRESULTS:
+            return True
+    return False
 
 
 class HWPConverter:
@@ -71,6 +113,8 @@ class HWPConverter:
         # 「호환 문서(배치가 변경될 수 있습니다)」 확인 창 자동 계속 (소유 PID 한정)
         self.auto_continue_compat_dialogs: bool = True
         self.compat_dialog_responses: int = 0
+        # 마지막 변환 호출에서 COM 연결 끊김(한글 프로세스 종료 등)이 감지됐는지
+        self.connection_lost: bool = False
         # True only when this instance successfully called CoInitialize itself.
         self._com_apartment_owned = False
 
@@ -84,6 +128,7 @@ class HWPConverter:
             return True
 
         pythoncom_module, win32_client_module = require_pywin32()
+        self.connection_lost = False
 
         if manage_com_apartment:
             try:
@@ -159,7 +204,14 @@ class HWPConverter:
                 after_pids = _snapshot_hwp_pids()
                 fail_count, fail_msg = get_snapshot_health()
                 self.snapshot_unreliable = fail_count > 0 and not after_pids and not before_pids
-                self.owned_pids = after_pids - before_pids
+                # 차집합만으로는 같은 시간 창에 사용자가 직접 연 한글도 섞일 수 있다.
+                # COM(DcomLaunch)이 띄운 프로세스만 소유로 확정한다.
+                self.owned_pids, foreign_pids = select_com_launched_pids(after_pids - before_pids)
+                if foreign_pids:
+                    logger.warning(
+                        "변환 시작 중 새로 실행된 한글 중 앱이 띄우지 않은 프로세스는 "
+                        f"추적에서 제외합니다: {sorted(foreign_pids)}"
+                    )
                 self.is_initialized = True
                 logger.info(f"한글 연결 성공: {progid}")
                 if self.snapshot_unreliable:
@@ -188,7 +240,9 @@ class HWPConverter:
                 self.progid_used = None
                 # Dispatch 는 성공했지만 이후 호출이 실패하면(강제 종료 직후 재연결 등)
                 # 새로 뜬 한글 프로세스가 고아로 남으므로 이번 시도에서 생긴 PID 만 정리한다.
-                orphan_pids = _snapshot_hwp_pids() - before_pids
+                orphan_pids, _foreign = select_com_launched_pids(
+                    _snapshot_hwp_pids() - before_pids, allow_unknown=False
+                )
                 if orphan_pids:
                     logger.warning(f"한글 연결 실패로 생성된 프로세스 정리: {sorted(orphan_pids)}")
                     self._terminate_hwp_pids(orphan_pids)
@@ -311,6 +365,7 @@ class HWPConverter:
         hwp = self.hwp
         if not self.is_initialized or hwp is None:
             return False, "한글 객체가 초기화되지 않았습니다"
+        self.connection_lost = False
 
         def _cancelled() -> bool:
             if cancel_check is None:
@@ -610,9 +665,12 @@ class HWPConverter:
             return True, None
 
         except Exception as e:
+            if is_com_disconnect_error(e):
+                self.connection_lost = True
+                logger.error(f"한글 COM 연결이 끊겼습니다 ({input_path}): {e}")
             error_msg = _with_document_access_hint(str(e))
             logger.error(f"변환 실패 ({input_path}): {error_msg}")
-            if hwp is not None:
+            if hwp is not None and not self.connection_lost:
                 try:
                     hwp.Clear(option=1)
                 except Exception:
@@ -622,6 +680,23 @@ class HWPConverter:
 
     def has_owned_processes(self) -> bool:
         return bool(self.owned_pids)
+
+    def is_alive(self) -> bool:
+        """한글 COM 연결이 아직 쓸 수 있는지 (실행기가 즉시 재연결 여부를 판단할 때 사용).
+
+        - 초기화되지 않았거나 마지막 호출에서 연결 끊김 HRESULT 가 나왔으면 False
+        - 추적 중인 소유 PID 가 모두 사라졌으면 False (스냅샷 실패 시에는 판단하지 않음)
+        """
+        if not self.is_initialized or self.hwp is None:
+            return False
+        if self.connection_lost:
+            return False
+        if self.owned_pids and not self.snapshot_unreliable:
+            live = _snapshot_hwp_pids()
+            fail_count, _ = get_snapshot_health()
+            if fail_count == 0 and not (self.owned_pids & live):
+                return False
+        return True
 
     def kill_owned_processes(self) -> bool:
         """앱이 새로 띄운 한글 프로세스만 강제 종료."""
@@ -665,8 +740,9 @@ class HWPConverter:
         return killed_any, remaining
 
     def cleanup(self) -> None:
-        """정리."""
+        """정리. Quit() 후에도 끝나지 않은 소유 한글 프로세스는 강제 종료한다."""
         hwp = self.hwp
+        previous_pids = set(self.owned_pids)
         if hwp is not None and self.is_initialized:
             try:
                 # 1=hwpDiscard. 2(변경 시 저장)/3(무조건 저장)은 한글 2022 실측에서
@@ -684,6 +760,7 @@ class HWPConverter:
             self.is_initialized = False
             self.owned_pids.clear()
             self.process_tracking_warning = None
+            self._reap_previous_processes(previous_pids)
 
         if self._com_apartment_owned and pythoncom is not None:
             try:
@@ -691,6 +768,20 @@ class HWPConverter:
             except Exception:
                 pass
             self._com_apartment_owned = False
+
+
+    def _reap_previous_processes(self, pids: set[int]) -> None:
+        """Quit() 이후에도 남은 이전 소유 프로세스를 정리해 추적 밖 고아가 되지 않게 한다."""
+        if not pids:
+            return
+        deadline = time.monotonic() + CLEANUP_EXIT_WAIT_SECONDS
+        remaining = pids & _snapshot_hwp_pids()
+        while remaining and time.monotonic() < deadline:
+            time.sleep(CLEANUP_EXIT_POLL_SECONDS)
+            remaining = pids & _snapshot_hwp_pids()
+        if remaining:
+            logger.warning(f"Quit 후에도 종료되지 않은 앱 소유 한글 프로세스 정리: {sorted(remaining)}")
+            self._terminate_hwp_pids(remaining)
 
 
 def _with_document_access_hint(message: str) -> str:

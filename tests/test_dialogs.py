@@ -132,3 +132,53 @@ def test_write_results_json_contains_summary_and_tasks(tmp_path: Path) -> None:
     assert success["output_size"] == 123
     assert success["save_format"] == "PDF"
     assert not list(tmp_path.glob(".results.json.*.tmp"))
+
+
+def test_preflight_offers_excluding_blocked_items(qapp, tmp_path: Path) -> None:
+    """입력 1건이 없어도 나머지는 「문제 제외하고 시작」으로 진행할 수 있다."""
+    del qapp
+    from hwpmate.ui.dialogs.preflight import exclude_preflight_blocked_tasks
+
+    good = tmp_path / "good.hwp"
+    good.write_text("x", encoding="utf-8")
+    missing = tmp_path / "missing.hwp"
+    good_task = ConversionTask(good, tmp_path / "good.pdf")
+    missing_task = ConversionTask(missing, tmp_path / "missing.pdf")
+    plan = PlannedConversion(
+        format_type="PDF", same_location=True, output_path="", tasks=[good_task, missing_task]
+    )
+    dialog = PreflightDialog(plan)
+
+    assert dialog.start_button.isEnabled() is False
+    assert dialog.exclude_button is not None
+    dialog.exclude_button.click()
+
+    assert [task for task, _ in dialog.excluded_tasks] == [missing_task]
+    assert exclude_preflight_blocked_tasks(plan, dialog.excluded_tasks) == 1
+    assert plan.tasks == [good_task]
+    assert plan.skipped_tasks == [missing_task]
+    assert missing_task.status == "건너뜀"
+    assert "입력 파일 없음" in missing_task.detail
+    dialog.close()
+
+
+def test_preflight_has_no_exclude_option_when_every_item_is_blocked(qapp, tmp_path: Path) -> None:
+    del qapp
+    plan = PlannedConversion(
+        format_type="PDF",
+        same_location=True,
+        output_path="",
+        tasks=[ConversionTask(tmp_path / "missing.hwp", tmp_path / "missing.pdf")],
+    )
+    dialog = PreflightDialog(plan)
+
+    assert dialog.start_button.isEnabled() is False
+    assert dialog.exclude_button is None
+    dialog.close()
+
+
+def test_output_policy_label_prefers_explicit_note() -> None:
+    plan = PlannedConversion(format_type="PDF", same_location=False, output_path="C:/out2")
+    assert plan.output_policy_label == "C:/out2"
+    plan.output_policy_note = "이전 변환과 같은 출력 경로"
+    assert plan.output_policy_label == "이전 변환과 같은 출력 경로"

@@ -26,6 +26,7 @@ from .summary import (
     engine_status_payload,
 )
 from .task_runner import (
+    EngineUnavailableError,
     TaskRunOptions,
     compat_dialog_note,
     execute_task,
@@ -139,19 +140,30 @@ class ConversionWorker(QThread):
                     break
 
                 self.status_updated.emit(f"변환 중: {task.input_file.name}")
-                runtime_warnings.extend(
-                    execute_task(
-                        task,
-                        converter,
-                        options,
-                        planner=self._task_planner,
-                        used_output_path_keys=used_output_path_keys,
-                        cancel_check=lambda: self.cancel_requested,
-                        create_backup_fn=self._create_backup,
-                        on_stage=self._set_stage,
-                        on_status=self.status_updated.emit,
+                active_converter = converter
+                try:
+                    runtime_warnings.extend(
+                        execute_task(
+                            task,
+                            converter,
+                            options,
+                            planner=self._task_planner,
+                            used_output_path_keys=used_output_path_keys,
+                            cancel_check=lambda: self.cancel_requested,
+                            create_backup_fn=self._create_backup,
+                            on_stage=self._set_stage,
+                            on_status=self.status_updated.emit,
+                            on_reconnected=lambda: self._emit_engine_status(active_converter),
+                        )
                     )
-                )
+                except EngineUnavailableError as engine_error:
+                    runtime_warnings.extend(engine_error.warnings)
+                    message = f"{engine_error} — 남은 작업을 중단했습니다."
+                    failed = fail_pending_tasks(self.tasks, message)
+                    runtime_warnings.append(f"{message} (미처리 {failed}개 실패 처리)")
+                    logger.error(message)
+                    self.progress_updated.emit(total, total, "한글 재연결 실패")
+                    break
                 self.progress_updated.emit(idx + 1, total, task.input_file.name)
 
                 # 대량 변환 시 한글 프로세스 메모리/GDI 누수 방지를 위한 주기적 재순환

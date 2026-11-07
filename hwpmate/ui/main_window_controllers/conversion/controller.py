@@ -24,6 +24,7 @@ from ....logging_config import get_logger
 from ....models import ConversionSummary, ConversionTask, PlannedConversion
 from ....path_utils import check_write_permission, is_valid_path_name
 from ....services.task_planner import count_protected_source_renames
+from ...dialogs.preflight import exclude_preflight_blocked_tasks
 from ....services.hwp_print_settings import (
     PDF_EXPORT_SAVEAS_FIRST,
     normalize_pdf_export_mode,
@@ -359,6 +360,10 @@ class ConversionController:
             preflight = self.window._create_preflight_dialog(plan)
             if preflight.exec() != self.window.dialog_accepted_code():
                 self.window.status_label.setText("변환 시작이 취소되었습니다")
+                return False
+            exclude_preflight_blocked_tasks(plan, list(getattr(preflight, "excluded_tasks", None) or []))
+            if not plan.tasks:
+                self.window.status_label.setText("변환할 항목이 없습니다")
                 return False
 
             self._abort_if_close_requested()
@@ -740,6 +745,8 @@ class ConversionController:
             auto_continue_compat_dialog=self._auto_continue_compat_from_ui(),
             tasks=retry_tasks,
             warnings=warnings + ["실패 항목만 다시 변환합니다."],
+            # 재변환은 이전 실행의 출력 경로를 그대로 쓴다. 현재 UI 출력 설정은 적용되지 않는다.
+            output_policy_note="이전 변환과 같은 출력 경로 (현재 출력 폴더 설정은 적용하지 않음)",
         )
         plan.conflict_renamed_count = self.adjust_output_paths(
             plan,

@@ -27,6 +27,19 @@ RECYCLE_INITIALIZE_DELAY_SECONDS = 1.5
 
 StageCallback = Callable[[str], None]
 StatusCallback = Callable[[str], None]
+ReconnectCallback = Callable[[], None]
+
+
+class EngineUnavailableError(RuntimeError):
+    """한글 연결이 끊긴 뒤 재연결에도 실패해 남은 작업을 진행할 수 없음.
+
+    현재 작업은 이미 실패로 표시되어 있고, warnings 에는 이 작업의 런타임 경고가 들어 있다.
+    호출자는 fail_pending_tasks 로 나머지를 정리해야 한다.
+    """
+
+    def __init__(self, message: str, warnings: list[str]) -> None:
+        super().__init__(message)
+        self.warnings = warnings
 
 
 @dataclass(frozen=True)
@@ -52,6 +65,22 @@ class TaskRunOptions:
 
 def _noop(_: str) -> None:
     return None
+
+
+def _noop_reconnect() -> None:
+    return None
+
+
+def engine_connection_lost(converter: object) -> bool:
+    """엔진이 is_alive() 를 제공하고 False 를 돌려주면 연결이 끊긴 것으로 본다."""
+    probe = getattr(converter, "is_alive", None)
+    if not callable(probe):
+        return False
+    try:
+        return not bool(probe())
+    except Exception as exc:
+        logger.debug(f"엔진 상태 확인 실패(끊김으로 간주): {exc}")
+        return True
 
 
 def verify_claimed_artifacts(task: ConversionTask) -> str | None:
@@ -86,8 +115,14 @@ def execute_task(
     create_backup_fn: Optional[Callable[[Path], Path]] = None,
     on_stage: StageCallback = _noop,
     on_status: StatusCallback = _noop,
+    on_reconnected: ReconnectCallback = _noop_reconnect,
 ) -> list[str]:
-    """작업 1건을 실행하고 task 상태를 갱신한다. 런타임 경고 목록을 반환."""
+    """작업 1건을 실행하고 task 상태를 갱신한다. 런타임 경고 목록을 반환.
+
+    변환 실패 후 한글 연결이 끊긴 것으로 확인되면(프로세스 크래시 등) 작업당 한 번
+    즉시 재연결하고 같은 파일을 다시 시도한다(재시도 횟수를 소모하지 않음).
+    재연결에 실패하면 현재 작업을 실패로 표시하고 EngineUnavailableError 를 던진다.
+    """
     runtime_warnings: list[str] = []
     backup = create_backup_fn or (
         lambda path: create_backup(path, max_files=options.backup_max_files_per_stem)
@@ -132,7 +167,9 @@ def execute_task(
     task.status = "진행중"
     success = False
     error: str | None = None
-    for attempt in range(options.retry_count + 1):
+    reconnected = False
+    attempt = 0
+    while attempt <= options.retry_count:
         if cancel_check():
             break
 
@@ -147,7 +184,26 @@ def execute_task(
             apply_converter_artifacts(task, converter)
             break
 
-        if attempt < options.retry_count:
+        if not reconnected and not cancel_check() and engine_connection_lost(converter):
+            reconnected = True
+            on_stage("한글 재연결")
+            on_status(f"한글 연결이 끊겨 다시 연결하는 중: {task.input_file.name}")
+            logger.warning(f"한글 연결 끊김 감지, 재연결 시도: {task.input_file} ({error})")
+            recycle_error = recycle_converter(converter, options)
+            if recycle_error is not None:
+                message = f"한글 연결이 끊긴 뒤 재연결에 실패했습니다: {recycle_error}"
+                task.status = "실패"
+                task.error = f"{error} ({message})" if error else message
+                runtime_warnings.append(message)
+                raise EngineUnavailableError(message, runtime_warnings)
+            runtime_warnings.append(
+                f"한글 연결이 끊겨 다시 연결했습니다: {task.input_file.name} (원래 오류: {error})"
+            )
+            on_reconnected()
+            continue  # 같은 시도 번호로 다시 변환
+
+        attempt += 1
+        if attempt <= options.retry_count:
             on_stage("재시도 대기")
             task.retry_count += 1
             on_status(f"재시도 중: {task.input_file.name} ({task.retry_count}/{options.retry_count})")
@@ -174,7 +230,13 @@ def execute_task(
 
 
 def recycle_converter(converter: ConverterEngine, options: TaskRunOptions) -> Optional[str]:
-    """한글 프로세스를 정리 후 재초기화한다. 실패 시 오류 메시지를 반환."""
+    """한글 프로세스를 정리 후 재초기화한다. 실패 시 오류 메시지를 반환.
+
+    컨버터가 COM apartment 를 직접 소유한 경우(CLI: initialize(manage_com_apartment=True))
+    cleanup() 이 CoUninitialize 하므로 재초기화도 apartment 를 다시 열어야 한다.
+    워커 스레드가 apartment 를 소유한 경우(GUI)는 그대로 둔다.
+    """
+    manage_com_apartment = bool(getattr(converter, "_com_apartment_owned", False))
     try:
         converter.cleanup()
     except Exception as e:
@@ -183,7 +245,7 @@ def recycle_converter(converter: ConverterEngine, options: TaskRunOptions) -> Op
     last_error: Exception | None = None
     for attempt in range(RECYCLE_INITIALIZE_ATTEMPTS):
         try:
-            converter.initialize(manage_com_apartment=False)
+            converter.initialize(manage_com_apartment=manage_com_apartment)
             if hasattr(converter, "pdf_export_mode"):
                 converter.pdf_export_mode = options.pdf_export_mode
             return None
