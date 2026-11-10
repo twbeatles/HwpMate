@@ -3,9 +3,10 @@
 import base64
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 

@@ -6,9 +6,9 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
 
 from ...constants import MAX_RETRY_COUNT, RETRY_DELAY_SECONDS
 from ...logging_config import get_logger
@@ -39,7 +39,7 @@ class TaskRunOptions:
     pdf_export_mode: str = "saveas_first"
 
     @classmethod
-    def from_plan(cls, plan: PlannedConversion) -> "TaskRunOptions":
+    def from_plan(cls, plan: PlannedConversion) -> TaskRunOptions:
         return cls(
             format_type=plan.format_type,
             overwrite=bool(plan.overwrite),
@@ -83,7 +83,7 @@ def execute_task(
     planner: TaskPlanner,
     used_output_path_keys: set[str],
     cancel_check: Callable[[], bool],
-    create_backup_fn: Optional[Callable[[Path], Path]] = None,
+    create_backup_fn: Callable[[Path], Path] | None = None,
     on_stage: StageCallback = _noop,
     on_status: StatusCallback = _noop,
 ) -> list[str]:
@@ -173,7 +173,7 @@ def execute_task(
     return runtime_warnings
 
 
-def recycle_converter(converter: ConverterEngine, options: TaskRunOptions) -> Optional[str]:
+def recycle_converter(converter: ConverterEngine, options: TaskRunOptions) -> str | None:
     """한글 프로세스를 정리 후 재초기화한다. 실패 시 오류 메시지를 반환."""
     try:
         converter.cleanup()
@@ -208,7 +208,7 @@ def fail_pending_tasks(tasks: list[ConversionTask], message: str) -> int:
     return count
 
 
-def compat_dialog_note(converter: object) -> Optional[str]:
+def compat_dialog_note(converter: object) -> str | None:
     count = int(getattr(converter, "compat_dialog_responses", 0) or 0)
     if count <= 0:
         return None

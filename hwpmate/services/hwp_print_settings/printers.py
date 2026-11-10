@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from ...logging_config import get_logger
 from .constants import PDF_PRINTER_NAME_CANDIDATES

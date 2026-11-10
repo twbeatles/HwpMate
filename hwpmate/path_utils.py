@@ -3,8 +3,8 @@
 import os
 import re
 import tempfile
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Callable, Iterable, Optional
 
 from .constants import BACKUP_DIR_NAME, SUPPORTED_EXTENSIONS
 from .logging_config import get_logger
@@ -144,9 +144,9 @@ def com_path_candidates(path: str | Path) -> list[str]:
 def iter_supported_files(
     root_path: Path,
     include_sub: bool = True,
-    allowed_exts: Optional[Iterable[str]] = None,
-    cancel_checker: Optional[Callable[[], bool]] = None,
-    excluded_dir_names: Optional[Iterable[str]] = None,
+    allowed_exts: Iterable[str] | None = None,
+    cancel_checker: Callable[[], bool] | None = None,
+    excluded_dir_names: Iterable[str] | None = None,
 ) -> Iterable[Path]:
     """단일 패스로 지원 확장자 파일을 순회"""
     allowed = {ext.lower() for ext in (allowed_exts or SUPPORTED_EXTENSIONS)}

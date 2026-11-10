@@ -124,5 +124,5 @@ def test_validate_refuses_unfinished_job(tmp_path: Path) -> None:
 
 
 def test_validate_txt_passes_without_signature(tmp_path: Path) -> None:
-    result = _validate(tmp_path, "TXT", "한글 본문 그대로\n".encode("utf-8"))
+    result = _validate(tmp_path, "TXT", "한글 본문 그대로\n".encode())
     assert result["all_verified"] is True

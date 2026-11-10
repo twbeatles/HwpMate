@@ -107,7 +107,7 @@ class McpConfig:
     config_warnings: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_mapping(cls, data: dict) -> "McpConfig":
+    def from_mapping(cls, data: dict) -> McpConfig:
         defaults = cls()
         values: dict[str, object] = {}
         for spec in fields(cls):

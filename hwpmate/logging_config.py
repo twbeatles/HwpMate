@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+from collections.abc import Iterable
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Iterable
 
 LOG_FILE_NAME = "hwp_converter.log"
 

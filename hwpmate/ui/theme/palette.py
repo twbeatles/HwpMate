@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """라이트/다크 공통 디자인 토큰.
 
 두 테마는 같은 QSS 템플릿(`stylesheet.build_stylesheet`)을 쓰고 색 토큰만 다르다.

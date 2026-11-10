@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """라이트 테마.
 
 QSS 본문은 `stylesheet.build_stylesheet` 공용 템플릿에서 생성한다. 이 상수는 아이콘 파일 없이

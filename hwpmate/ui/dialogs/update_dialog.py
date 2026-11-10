@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import webbrowser
-from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -27,7 +26,7 @@ class UpdateDialog(QDialog):
 
     def __init__(
         self,
-        parent: Optional[QWidget],
+        parent: QWidget | None,
         manifest: ReleaseManifest,
         *,
         is_dark: bool = True,

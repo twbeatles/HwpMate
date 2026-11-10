@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import subprocess
 import time
-from contextlib import nullcontext
+from collections.abc import Iterable
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
-from typing import Any, ContextManager, Iterable, Optional, Tuple, cast
+from typing import Any, cast
 
 from ...constants import DOCUMENT_LOAD_DELAY, FORMAT_TYPES, HWP_PROGIDS
 from ...logging_config import get_logger
@@ -53,8 +54,8 @@ class HWPConverter:
     """한글 변환 엔진 - 기존 로직 완전 유지."""
 
     def __init__(self) -> None:
-        self.hwp: Optional[HwpAutomation] = None
-        self.progid_used: Optional[str] = None
+        self.hwp: HwpAutomation | None = None
+        self.progid_used: str | None = None
         self.is_initialized = False
         self.owned_pids: set[int] = set()
         self.security_module_registered: bool | None = None
@@ -267,7 +268,7 @@ class HWPConverter:
         format_type="PDF",
         *,
         cancel_check: Any = None,
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """단일 파일 변환.
 
         cancel_check: 호출 시 취소 여부(bool)를 반환하는 콜백(선택).
@@ -288,7 +289,7 @@ class HWPConverter:
                 if count:
                     self.compat_dialog_responses += count
 
-    def _compat_dialog_responder(self) -> ContextManager[Any]:
+    def _compat_dialog_responder(self) -> AbstractContextManager[Any]:
         if not self.auto_continue_compat_dialogs or not self.owned_pids:
             # 소유 PID 미추적 시 다른 한글 세션 창을 건드리지 않는다.
             return nullcontext()
@@ -307,7 +308,7 @@ class HWPConverter:
         format_type="PDF",
         *,
         cancel_check: Any = None,
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         hwp = self.hwp
         if not self.is_initialized or hwp is None:
             return False, "한글 객체가 초기화되지 않았습니다"
@@ -505,7 +506,7 @@ class HWPConverter:
                 _cleanup_failed_artifacts()
                 return False, save_error or "내보내기 실패"
 
-            def _artifact_ok() -> Tuple[bool, Optional[str], list[Path], Any]:
+            def _artifact_ok() -> tuple[bool, str | None, list[Path], Any]:
                 after = _snapshot_artifacts(output_file, format_type)
                 primary = after.get(output_file)
                 if not after:

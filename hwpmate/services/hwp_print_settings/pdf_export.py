@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from ...logging_config import get_logger
 from .constants import (

@@ -4,7 +4,6 @@ import platform
 import sys
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Optional
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QCloseEvent, QShowEvent
@@ -244,7 +243,7 @@ class MainWindow(QMainWindow):
     def _selected_format(self, value: str) -> None:
         self.state.selected_format = value
 
-    def showEvent(self, a0: Optional[QShowEvent]) -> None:
+    def showEvent(self, a0: QShowEvent | None) -> None:
         if a0 is None:
             return
         super().showEvent(a0)
@@ -271,7 +270,7 @@ class MainWindow(QMainWindow):
             return
         self.file_selection_controller.start_folder_preview_scan(folder)
 
-    def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
+    def closeEvent(self, a0: QCloseEvent | None) -> None:
         if a0 is None:
             return
         self.lifecycle_controller.close_event(a0)

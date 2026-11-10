@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6.QtCore import (
     QEasingCurve,
     QEvent,
@@ -62,7 +60,7 @@ class ToastWidget(QWidget):
 
     closed = Signal(object)
 
-    def __init__(self, parent: Optional[QWidget] = None, palette: Optional[ThemePalette] = None):
+    def __init__(self, parent: QWidget | None = None, palette: ThemePalette | None = None):
         super().__init__(parent)
         self._palette = palette or palette_for("dark")
         self._accent = _accent_for_icon("ℹ️")
@@ -74,7 +72,7 @@ class ToastWidget(QWidget):
         self.setToolTip("클릭하면 닫힙니다")
 
         self._setup_ui()
-        self._animation: Optional[QPropertyAnimation] = None
+        self._animation: QPropertyAnimation | None = None
         self._closing = False
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -119,7 +117,7 @@ class ToastWidget(QWidget):
 
     # --- 그리기 -------------------------------------------------------------
 
-    def paintEvent(self, a0: Optional[QPaintEvent]) -> None:
+    def paintEvent(self, a0: QPaintEvent | None) -> None:
         del a0
         painter = QPainter(self)
         try:
@@ -170,7 +168,7 @@ class ToastWidget(QWidget):
         message: str,
         icon: str = "ℹ️",
         duration: int = TOAST_DURATION_DEFAULT,
-        position_y: Optional[int] = None,
+        position_y: int | None = None,
     ) -> None:
         """토스트 메시지 표시. position_y 는 부모 좌표계의 y 위치."""
         self._accent = _accent_for_icon(icon)
@@ -198,7 +196,7 @@ class ToastWidget(QWidget):
         self.update()
         self._timer.start(max(500, int(duration)))
 
-    def mousePressEvent(self, a0: Optional[QMouseEvent]) -> None:
+    def mousePressEvent(self, a0: QMouseEvent | None) -> None:
         del a0
         self._fade_out()
 
@@ -245,7 +243,7 @@ class ToastManager(QObject):
     TOAST_SPACING = 10
 
     def __init__(self, parent=None):
-        self.host: Optional[QWidget] = parent if isinstance(parent, QWidget) else None
+        self.host: QWidget | None = parent if isinstance(parent, QWidget) else None
         self.toasts: list[ToastWidget] = []
         super().__init__(parent)
         if self.host is not None:
@@ -321,7 +319,7 @@ class ToastManager(QObject):
             except RuntimeError:
                 pass
 
-    def eventFilter(self, a0: Optional[QObject], a1: Optional[QEvent]) -> bool:
+    def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
         host = getattr(self, "host", None)
         if host is not None and a0 is host and a1 is not None and a1.type() == QEvent.Type.Resize:
             self._update_positions()

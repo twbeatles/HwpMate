@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """QSS 서브컨트롤용 작은 아이콘(체크 표시·화살표)을 런타임에 PNG 로 생성한다.
 
 QSS 의 `image: url(...)` 은 파일 경로가 필요하다. 리소스 번들/SVG 플러그인에 의존하지 않도록
@@ -10,8 +9,8 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath, QPen

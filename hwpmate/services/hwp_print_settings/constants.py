@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 # SaveAs 시 인쇄/렌더 경로를 탈 수 있는 형식
 PRINT_AFFECTED_FORMATS = frozenset({"PDF", "PNG", "JPG", "BMP", "GIF"})

@@ -65,7 +65,7 @@ class AppConfig:
         return asdict(self)
 
     @classmethod
-    def from_mapping(cls, data: dict[str, Any]) -> "AppConfig":
+    def from_mapping(cls, data: dict[str, Any]) -> AppConfig:
         known_keys = set(cls.__dataclass_fields__.keys())
         filtered = {key: value for key, value in data.items() if key in known_keys}
         return cls(**filtered)
@@ -124,7 +124,7 @@ class ConversionTask:
         record["created_files"] = [str(path) for path in self.created_files]
         return record
 
-    def snapshot(self) -> "ConversionTask":
+    def snapshot(self) -> ConversionTask:
         """워커→UI 전달용 독립 복사본 (공유 뮤테이션 방지)."""
         return ConversionTask(
             input_file=self.input_file,

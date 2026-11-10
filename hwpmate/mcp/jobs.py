@@ -81,7 +81,7 @@ def plan_hash(record: PlanRecord) -> str:
     digest.update(b"\x00" + record.output_dir.encode("utf-8"))
     for entry in record.entries:
         digest.update(
-            f"\x00{entry.input_file}\x00{entry.size}\x00{entry.mtime_ns}".encode("utf-8")
+            f"\x00{entry.input_file}\x00{entry.size}\x00{entry.mtime_ns}".encode()
         )
     return digest.hexdigest()
 

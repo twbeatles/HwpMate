@@ -1,9 +1,6 @@
-# -*- coding: utf-8 -*-
 """테마 관리자."""
 
 from __future__ import annotations
-
-from typing import Optional
 
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QWidget
@@ -69,7 +66,7 @@ class ThemeManager:
         return build_stylesheet(ThemeManager.palette(theme_name))
 
     @staticmethod
-    def apply_theme(theme_name: str, window: Optional[QWidget] = None) -> None:
+    def apply_theme(theme_name: str, window: QWidget | None = None) -> None:
         """앱 전체(대화상자·메뉴·툴팁·트레이 메뉴 포함)에 테마를 적용한다.
 
         QApplication 이 없으면 창에만 적용한다.

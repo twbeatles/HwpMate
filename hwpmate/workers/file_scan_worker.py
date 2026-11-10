@@ -1,8 +1,8 @@
 ﻿from __future__ import annotations
 
 import time
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List, Optional, Set
 
 from PySide6.QtCore import QThread, Signal
 
@@ -22,9 +22,9 @@ class FileScanWorker(QThread):
 
     def __init__(
         self,
-        input_paths: List[str],
+        input_paths: list[str],
         include_sub: bool = True,
-        allowed_exts: Optional[Iterable[str]] = None,
+        allowed_exts: Iterable[str] | None = None,
         batch_size: int = SCAN_BATCH_SIZE,
     ):
         super().__init__()
@@ -39,8 +39,8 @@ class FileScanWorker(QThread):
 
     def run(self) -> None:
         start_ts = time.perf_counter()
-        batch: List[str] = []
-        seen_keys: Set[str] = set()
+        batch: list[str] = []
+        seen_keys: set[str] = set()
         found_count = 0
         total_roots = len(self.input_paths)
 

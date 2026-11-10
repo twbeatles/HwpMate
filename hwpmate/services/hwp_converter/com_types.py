@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Protocol, Tuple
+from typing import Any, Protocol
 
-pythoncom: Optional[Any] = None
-win32_client: Optional[Any] = None
+pythoncom: Any | None = None
+win32_client: Any | None = None
 
 try:
     import pythoncom as _pythoncom
@@ -41,7 +41,7 @@ class HwpAutomation(Protocol):
     def Quit(self) -> Any: ...
 
 
-def require_pywin32() -> Tuple[Any, Any]:
+def require_pywin32() -> tuple[Any, Any]:
     """pywin32 모듈을 보장하고 반환."""
     if pythoncom is None or win32_client is None:
         raise RuntimeError("pywin32가 필요합니다. `pip install pywin32` 후 다시 실행하세요.")

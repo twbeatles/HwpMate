@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ctypes
 from ctypes import wintypes
-from typing import Optional, Set
 
 from ..logging_config import get_logger
 
@@ -89,7 +88,7 @@ def is_likely_hwp_security_dialog(hwnd: int) -> bool:
 
 
 def _list_top_level_hwnds_for_pids(
-    target_pids: Set[int],
+    target_pids: set[int],
     *,
     security_dialogs_only: bool = False,
 ) -> list[int]:
@@ -159,7 +158,7 @@ def _raise_hwnd_to_foreground(hwnd: int) -> bool:
         return False
 
 
-def _resolve_hwp_target_pids(pids: Optional[Set[int]] = None) -> Set[int]:
+def _resolve_hwp_target_pids(pids: set[int] | None = None) -> set[int]:
     if pids is not None:
         return {int(p) for p in pids if int(p) > 0}
     # 순환 import 방지: 프로세스 스냅샷은 hwp_converter 쪽 (Toolhelp, 콘솔 없음)

@@ -6,7 +6,6 @@ import ctypes
 import os
 import sys
 from functools import lru_cache
-from typing import Optional
 
 from ..logging_config import get_logger
 
@@ -56,7 +55,7 @@ def is_admin() -> bool:
         return False
 
 
-def enable_drag_drop_for_admin(hwnd: Optional[int] = None) -> None:
+def enable_drag_drop_for_admin(hwnd: int | None = None) -> None:
     """
     관리자 권한으로 실행 시 드래그 앤 드롭 활성화
 

@@ -5,9 +5,10 @@ from __future__ import annotations
 import csv
 import json
 import tempfile
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, TextIO, cast
+from typing import TextIO, cast
 
 from ...models import ConversionSummary, ConversionTask
 

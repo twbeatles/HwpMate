@@ -30,7 +30,7 @@ from .policy import (
 
 _PREVIEW_ITEM_LIMIT = 100
 
-_plans: dict[str, "PlanRecord"] = {}
+_plans: dict[str, PlanRecord] = {}
 _plans_lock = threading.Lock()
 
 

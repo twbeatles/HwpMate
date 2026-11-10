@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import (
@@ -95,7 +94,7 @@ class DropArea(QFrame):
                 return True
         return False
     
-    def dragEnterEvent(self, a0: Optional[QDragEnterEvent]) -> None:
+    def dragEnterEvent(self, a0: QDragEnterEvent | None) -> None:
         """드래그 진입 이벤트"""
         if a0 is None:
             return
@@ -125,7 +124,7 @@ class DropArea(QFrame):
             a0.ignore()
             logger.debug("URL 없음 - 무시됨")
     
-    def dragMoveEvent(self, a0: Optional[QDragMoveEvent]) -> None:
+    def dragMoveEvent(self, a0: QDragMoveEvent | None) -> None:
         """드래그 이동 이벤트 - 드래그 중 계속 호출됨"""
         if a0 is None:
             return
@@ -135,12 +134,12 @@ class DropArea(QFrame):
         else:
             a0.ignore()
     
-    def dragLeaveEvent(self, a0: Optional[QDragLeaveEvent]) -> None:
+    def dragLeaveEvent(self, a0: QDragLeaveEvent | None) -> None:
         """드래그 이탈 이벤트"""
         del a0
         self._reset_appearance()
     
-    def dropEvent(self, a0: Optional[QDropEvent]) -> None:
+    def dropEvent(self, a0: QDropEvent | None) -> None:
         """드롭 이벤트"""
         if a0 is None:
             return
@@ -194,7 +193,7 @@ class DropArea(QFrame):
         self.text_label.setText(self._original_text)
         self._set_drop_active(False)
     
-    def mousePressEvent(self, a0: Optional[QMouseEvent]) -> None:
+    def mousePressEvent(self, a0: QMouseEvent | None) -> None:
         """왼쪽 클릭 시 파일 선택 요청"""
         if a0 is not None and a0.button() != Qt.MouseButton.LeftButton:
             return
@@ -246,7 +245,7 @@ class FormatCard(QFrame):
         
         self.setToolTip(f"{title} ({description}) 형식으로 변환합니다")
     
-    def mousePressEvent(self, a0: Optional[QMouseEvent]) -> None:
+    def mousePressEvent(self, a0: QMouseEvent | None) -> None:
         """클릭 이벤트 (왼쪽 버튼만)"""
         if a0 is not None and a0.button() != Qt.MouseButton.LeftButton:
             return

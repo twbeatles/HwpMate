@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import ctypes
 import logging
+from collections.abc import Callable
 from ctypes import wintypes
 from pathlib import Path
-from typing import Any, Callable, ClassVar, List, Optional, Set, Tuple
+from typing import Any, ClassVar
 
 from PySide6.QtCore import QAbstractNativeEventFilter
 
@@ -49,8 +50,8 @@ class NativeDropFilter(QAbstractNativeEventFilter):
     """
 
     # 시그널을 위한 싱글톤 객체
-    _instance: ClassVar[Optional["NativeDropFilter"]] = None
-    files_dropped_callback: Optional[Callable[[List[str]], None]] = None
+    _instance: ClassVar[NativeDropFilter | None] = None
+    files_dropped_callback: Callable[[list[str]], None] | None = None
 
     WM_DROPFILES = 0x0233
 
@@ -58,7 +59,7 @@ class NativeDropFilter(QAbstractNativeEventFilter):
         super().__init__()
         self._shell32 = ctypes.windll.shell32
         self.files_dropped_callback = None
-        self._registered_hwnds: Set[int] = set()
+        self._registered_hwnds: set[int] = set()
         self._argtypes_configured = False
 
         # ctypes argtypes를 한 번만 설정
@@ -78,7 +79,7 @@ class NativeDropFilter(QAbstractNativeEventFilter):
             logger.debug(f"ctypes argtypes 설정 실패: {e}")
 
     @classmethod
-    def get_instance(cls) -> "NativeDropFilter":
+    def get_instance(cls) -> NativeDropFilter:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
@@ -126,7 +127,7 @@ class NativeDropFilter(QAbstractNativeEventFilter):
             logger.error(f"네이티브 드래그 앤 드롭 등록 실패: {e}")
             return False
 
-    def nativeEventFilter(self, eventType: Any, message: Any) -> Tuple[bool, Any]:
+    def nativeEventFilter(self, eventType: Any, message: Any) -> tuple[bool, Any]:
         """네이티브 Windows 이벤트 필터.
 
         런타임 sip 은 두 번째 반환값으로 int 를 기대한다(None 이면 onefile AV 가능).
@@ -171,9 +172,9 @@ class NativeDropFilter(QAbstractNativeEventFilter):
 
         return False, 0
 
-    def _get_dropped_files(self, hDrop: int) -> List[str]:
+    def _get_dropped_files(self, hDrop: int) -> list[str]:
         """WM_DROPFILES에서 파일 목록 추출"""
-        files: List[str] = []
+        files: list[str] = []
         hDrop_ptr = ctypes.c_void_p(hDrop)
         try:
             # 드롭된 파일 수 확인 (0xFFFFFFFF = -1 = 파일 수 반환)

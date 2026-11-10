@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
@@ -118,13 +118,13 @@ class UpdateController(QObject):
         super().__init__(window)
         self.window = window
         self.staging_root = resolve_update_staging_root()
-        self._check_worker: Optional[UpdateCheckWorker] = None
-        self._download_worker: Optional[UpdateDownloadWorker] = None
-        self._staged_file: Optional[Path] = None
+        self._check_worker: UpdateCheckWorker | None = None
+        self._download_worker: UpdateDownloadWorker | None = None
+        self._staged_file: Path | None = None
         # 스테이징 파일을 받을 때 사용한 매니페스트 (이후 새 버전 매니페스트와 혼동 방지)
-        self._staged_manifest: Optional[ReleaseManifest] = None
-        self._current_manifest: Optional[ReleaseManifest] = None
-        self._active_dialog: Optional[UpdateDialog] = None
+        self._staged_manifest: ReleaseManifest | None = None
+        self._current_manifest: ReleaseManifest | None = None
+        self._active_dialog: UpdateDialog | None = None
         self._is_manual_check = False
         # showEvent 는 트레이/최소화 복원 때도 다시 호출되므로 시작 작업은 1회만 수행한다.
         self._previous_result_checked = False
@@ -255,7 +255,7 @@ class UpdateController(QObject):
         except OSError:
             return False
 
-    def _busy_reason(self) -> Optional[str]:
+    def _busy_reason(self) -> str | None:
         state = getattr(self.window, "state", None)
         conversion = getattr(self.window, "conversion_controller", None)
         if conversion is not None and conversion.is_conversion_active():
@@ -287,7 +287,7 @@ class UpdateController(QObject):
         self,
         staged: Path,
         dialog: UpdateDialog,
-        manifest: Optional[ReleaseManifest] = None,
+        manifest: ReleaseManifest | None = None,
     ) -> None:
         self._staged_file = staged
         self._staged_manifest = manifest or self._current_manifest

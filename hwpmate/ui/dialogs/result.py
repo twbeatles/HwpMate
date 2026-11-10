@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
 
 from PySide6.QtWidgets import (
     QDialog,
@@ -34,7 +34,7 @@ class ResultDialog(QDialog):
     def __init__(
         self,
         summary: ConversionSummary,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
         *,
         on_retry_failed: Callable[[list[ConversionTask]], None] | None = None,
     ) -> None:

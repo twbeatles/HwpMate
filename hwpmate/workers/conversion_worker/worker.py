@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 from PySide6.QtCore import QThread, Signal
 
@@ -50,7 +50,7 @@ class ConversionWorker(QThread):
     def __init__(
         self,
         planned_conversion: PlannedConversion,
-        converter_factory: Optional[Callable[[], ConverterEngine]] = None,
+        converter_factory: Callable[[], ConverterEngine] | None = None,
     ) -> None:
         super().__init__()
         self.planned_conversion = planned_conversion
@@ -62,7 +62,7 @@ class ConversionWorker(QThread):
             getattr(planned_conversion, "backup_max_files_per_stem", 20) or 20
         )
         self.cancel_requested = False
-        self.converter: Optional[ConverterEngine] = None
+        self.converter: ConverterEngine | None = None
         self._converter_factory: Callable[[], ConverterEngine] = converter_factory or HWPConverter
         self._task_planner = TaskPlanner()
         self.current_stage = "대기"

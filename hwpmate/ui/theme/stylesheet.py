@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """팔레트 토큰으로 앱 전체 QSS 를 만든다 (라이트/다크 공용 템플릿)."""
 
 from __future__ import annotations

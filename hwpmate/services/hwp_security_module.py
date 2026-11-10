@@ -5,7 +5,6 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Optional
 
 from ..constants import SECURITY_MODULE_DLL_SHA256
 from ..logging_config import get_logger
@@ -83,7 +82,7 @@ def verify_dll_integrity(path: Path, *, expected_sha256: str = EXPECTED_DLL_SHA2
         )
 
 
-def find_bundled_security_dll() -> Optional[Path]:
+def find_bundled_security_dll() -> Path | None:
     for path in _bundled_dll_candidates():
         try:
             if path.is_file() and path.stat().st_size > 0:
@@ -186,7 +185,7 @@ def write_security_module_registry(dll_path: Path, alias: str = SECURITY_MODULE_
     return alias
 
 
-def read_security_module_registry(alias: str = SECURITY_MODULE_ALIAS) -> Optional[str]:
+def read_security_module_registry(alias: str = SECURITY_MODULE_ALIAS) -> str | None:
     try:
         import winreg
     except ImportError:
@@ -204,7 +203,7 @@ def read_security_module_registry(alias: str = SECURITY_MODULE_ALIAS) -> Optiona
     return None
 
 
-def ensure_hwp_security_module(alias: str = SECURITY_MODULE_ALIAS) -> tuple[bool, str, Optional[str]]:
+def ensure_hwp_security_module(alias: str = SECURITY_MODULE_ALIAS) -> tuple[bool, str, str | None]:
     """
     보안 모듈 DLL 설치 + 레지스트리 등록을 보장한다.
 

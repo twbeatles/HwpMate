@@ -10,7 +10,7 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Any, Optional, Protocol, cast
+from typing import Any, Protocol, cast
 
 # pywin32 import (COM 사용)
 try:
@@ -54,7 +54,7 @@ def load_config():
     """설정 로드"""
     try:
         if CONFIG_FILE.exists():
-            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            with open(CONFIG_FILE, encoding='utf-8') as f:
                 return json.load(f)
     except:  # noqa: E722 -- legacy COM-cleanup guard; keep BaseException visible
         pass
@@ -74,8 +74,8 @@ class HWPConverter:
     """한글 변환 엔진"""
     
     def __init__(self):
-        self.hwp: Optional[HwpAutomation] = None
-        self.progid_used: Optional[str] = None
+        self.hwp: HwpAutomation | None = None
+        self.progid_used: str | None = None
         self.is_initialized = False
         
     def initialize(self):
@@ -180,7 +180,7 @@ class ConversionTask:
         self.input_file: Path = Path(input_file)
         self.output_file: Path = Path(output_file)
         self.status: str = "대기"  # 대기, 진행중, 성공, 실패
-        self.error: Optional[str] = None
+        self.error: str | None = None
 
 
 class HWPConverterGUI:

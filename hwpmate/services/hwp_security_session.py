@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 from ..constants import (
     HWP_FOREGROUND_POLL_MS,
@@ -57,7 +56,7 @@ class HwpSecuritySession:
         """소유 PID가 확정된 뒤에만 다른 한글 세션을 건드리지 않고 창 조작을 허용한다."""
         return self.engine_status_received and bool(self.owned_pids)
 
-    def target_pids(self) -> Optional[set[int]]:
+    def target_pids(self) -> set[int] | None:
         """
         전면화/자동 클릭 대상 PID.
 

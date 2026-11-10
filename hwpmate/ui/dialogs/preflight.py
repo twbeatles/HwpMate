@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from PySide6.QtWidgets import (
     QDialog,
@@ -36,7 +35,7 @@ from ...services.hwp_converter import get_registered_hwp_progids
 class PreflightDialog(QDialog):
     """변환 시작 전 최종 확인 다이얼로그."""
 
-    def __init__(self, plan: PlannedConversion, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, plan: PlannedConversion, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("변환 시작 전 확인")
         self.setModal(True)

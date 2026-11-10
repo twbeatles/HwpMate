@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import datetime
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Iterable, Sequence, Set
 
 from ..constants import FORMAT_TYPES, MAX_FILENAME_COUNTER, SUPPORTED_EXTENSIONS
 from ..logging_config import get_logger
@@ -68,7 +68,7 @@ class TaskPlanner:
                 ]
                 logger.debug(f"폴더 작업 수집(캐시): {len(input_files)}개")
             else:
-                allowed_exts: Set[str] = set(SUPPORTED_EXTENSIONS)
+                allowed_exts: set[str] = set(SUPPORTED_EXTENSIONS)
                 input_files = [
                     Path(canonicalize_path(str(p)))
                     for p in iter_supported_files(

@@ -76,7 +76,7 @@ def test_cli_conversion_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 class ScriptedCliConverter(MockCliConverter):
     """호출마다 준비된 결과를 반환하고, 성공 시 산출물을 만든다."""
 
-    instances: list["ScriptedCliConverter"] = []
+    instances: list[ScriptedCliConverter] = []
     script: list[bool] = []
 
     def __init__(self) -> None:
@@ -95,7 +95,7 @@ class ScriptedCliConverter(MockCliConverter):
         return False, "temporary COM failure"
 
 
-def _patch_cli(monkeypatch: pytest.MonkeyPatch, *, script: list[bool], lock: "FakeLock | None" = None) -> None:
+def _patch_cli(monkeypatch: pytest.MonkeyPatch, *, script: list[bool], lock: FakeLock | None = None) -> None:
     import hwpmate.app as app_module
     import hwpmate.workers.conversion_worker.task_runner as runner_module
 

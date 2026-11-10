@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from ..path_utils import canonicalize_path, make_path_key
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ctypes
 from ctypes import wintypes
-from typing import Optional, Set
 
 from ..logging_config import get_logger
 
@@ -23,7 +22,7 @@ _SECURITY_ACCEPT_BUTTON_TEXTS = (
 _BM_CLICK = 0x00F5
 
 
-def bring_hwp_windows_to_foreground(pids: Optional[Set[int]] = None) -> int:
+def bring_hwp_windows_to_foreground(pids: set[int] | None = None) -> int:
     """
     한글 관련 창(허용/보안 팝업 포함)을 전면으로 올린다.
 
@@ -61,7 +60,7 @@ def bring_hwp_windows_to_foreground(pids: Optional[Set[int]] = None) -> int:
         return 0
 
 
-def hide_hwp_main_windows(pids: Optional[Set[int]] = None) -> int:
+def hide_hwp_main_windows(pids: set[int] | None = None) -> int:
     """
     앱 소유 한글 프로세스의 메인 편집 창을 SW_HIDE 로 숨긴다.
 
@@ -99,7 +98,7 @@ def hide_hwp_main_windows(pids: Optional[Set[int]] = None) -> int:
         return 0
 
 
-def suppress_hwp_ui_flash(pids: Optional[Set[int]] = None) -> tuple[int, int]:
+def suppress_hwp_ui_flash(pids: set[int] | None = None) -> tuple[int, int]:
     """
     메인 창 숨김 + 보안 대화상자 전면화를 한 번에 수행.
 
@@ -113,7 +112,7 @@ def suppress_hwp_ui_flash(pids: Optional[Set[int]] = None) -> tuple[int, int]:
     return hidden, raised
 
 
-def try_accept_hwp_security_dialog(pids: Optional[Set[int]] = None) -> bool:
+def try_accept_hwp_security_dialog(pids: set[int] | None = None) -> bool:
     """
     한글 보안 승인 대화상자의 「모두 허용」 버튼을 best-effort 로 클릭한다.
 

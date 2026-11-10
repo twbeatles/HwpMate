@@ -17,7 +17,7 @@ from __future__ import annotations
 import ctypes
 import threading
 import time
-from typing import Callable, Optional, Set
+from collections.abc import Callable
 
 from ..logging_config import get_logger
 
@@ -50,7 +50,7 @@ def _is_window_visible(hwnd: int) -> bool:
     return bool(ctypes.windll.user32.IsWindowVisible(hwnd))
 
 
-def find_hwp_compat_dialogs(pids: Optional[Set[int]]) -> list[int]:
+def find_hwp_compat_dialogs(pids: set[int] | None) -> list[int]:
     """소유 PID 의 보이는 top-level 창 중 호환 문서 확인 창 HWND 목록."""
     if not pids:
         return []
@@ -71,7 +71,7 @@ def find_hwp_compat_dialogs(pids: Optional[Set[int]]) -> list[int]:
 
 
 def respond_hwp_compat_dialogs(
-    pids: Optional[Set[int]],
+    pids: set[int] | None,
     skip_hwnds: frozenset[int] = frozenset(),
 ) -> list[int]:
     """호환 문서 확인 창에 「계속(Y)」 을 보낸다. 응답한 HWND 목록을 반환."""
@@ -97,11 +97,11 @@ class HwpDialogAutoResponder:
 
     def __init__(
         self,
-        pids_provider: Callable[[], Set[int]],
+        pids_provider: Callable[[], set[int]],
         *,
         poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
         cooldown: float = DEFAULT_PER_WINDOW_COOLDOWN_SECONDS,
-        responder: Callable[[Optional[Set[int]], frozenset[int]], list[int]] | None = None,
+        responder: Callable[[set[int] | None, frozenset[int]], list[int]] | None = None,
     ) -> None:
         self._pids_provider = pids_provider
         self._poll_interval = max(0.02, float(poll_interval))
@@ -143,7 +143,7 @@ class HwpDialogAutoResponder:
                 logger.debug(f"확인 창 자동 응답 루프 오류(무시): {e}")
             self._stop_event.wait(self._poll_interval)
 
-    def start(self) -> "HwpDialogAutoResponder":
+    def start(self) -> HwpDialogAutoResponder:
         if self._thread is not None:
             return self
         self._stop_event.clear()
@@ -162,7 +162,7 @@ class HwpDialogAutoResponder:
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=2.0)
 
-    def __enter__(self) -> "HwpDialogAutoResponder":
+    def __enter__(self) -> HwpDialogAutoResponder:
         return self.start()
 
     def __exit__(self, *_exc: object) -> None:
