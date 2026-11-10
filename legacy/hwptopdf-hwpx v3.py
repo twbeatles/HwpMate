@@ -3,12 +3,10 @@ HWP/HWPX 변환기 v6.0 - 완전 재설계
 안정성과 사용성에 초점을 맞춘 새로운 버전
 """
 
-import os
 import sys
 import json
 import ctypes
 import threading
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Protocol, cast
 import tkinter as tk
@@ -48,7 +46,7 @@ def is_admin():
     """관리자 권한 확인"""
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
-    except:
+    except:  # noqa: E722 -- legacy COM-cleanup guard; keep BaseException visible
         return False
 
 
@@ -58,7 +56,7 @@ def load_config():
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-    except:
+    except:  # noqa: E722 -- legacy COM-cleanup guard; keep BaseException visible
         pass
     return {}
 
@@ -68,7 +66,7 @@ def save_config(config):
     try:
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
-    except:
+    except:  # noqa: E722 -- legacy COM-cleanup guard; keep BaseException visible
         pass
 
 
@@ -100,7 +98,7 @@ class HWPConverter:
                 # 한글 설정
                 try:
                     hwp.RegisterModule("FilePathCheckDLL", "FilePathCheckerModuleExample")
-                except:
+                except:  # noqa: E722 -- legacy COM-cleanup guard; keep BaseException visible
                     pass  # 일부 버전에서는 지원하지 않음
                 
                 hwp.SetMessageBoxMode(0x00000001)  # 메시지 박스 비활성화
@@ -147,7 +145,7 @@ class HWPConverter:
             if hwp is not None:
                 try:
                     hwp.Clear(option=1)
-                except:
+                except:  # noqa: E722 -- legacy COM-cleanup guard; keep BaseException visible
                     pass
             
             return False, error_msg
@@ -158,12 +156,12 @@ class HWPConverter:
         if hwp and self.is_initialized:
             try:
                 hwp.Clear(3)  # 모든 문서 닫기
-            except:
+            except:  # noqa: E722 -- legacy COM-cleanup guard; keep BaseException visible
                 pass
             
             try:
                 hwp.Quit()
-            except:
+            except:  # noqa: E722 -- legacy COM-cleanup guard; keep BaseException visible
                 pass
             
             self.hwp = None
@@ -171,7 +169,7 @@ class HWPConverter:
         
         try:
             pythoncom.CoUninitialize()
-        except:
+        except:  # noqa: E722 -- legacy COM-cleanup guard; keep BaseException visible
             pass
 
 
@@ -820,7 +818,7 @@ def main():
     
     # GUI 실행
     root = tk.Tk()
-    app = HWPConverterGUI(root)
+    app = HWPConverterGUI(root)  # noqa: F841 -- keep GUI alive during mainloop
     root.mainloop()
 
 

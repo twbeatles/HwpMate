@@ -196,7 +196,6 @@ def test_convert_file_pdf_saveas_first_skips_print_when_saveas_ok(
 
 def test_suppress_hwp_ui_flash_skips_hwnd_when_no_owned_pids(monkeypatch) -> None:
     """소유 PID 없으면 HWND 전역 조작(suppress)을 호출하지 않는다."""
-    import hwpmate.services.hwp_converter.converter as converter_impl
 
     calls: list[object] = []
 

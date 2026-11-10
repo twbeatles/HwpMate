@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Callable, Optional, Protocol
+from typing import Callable, Optional
 
 from PySide6.QtCore import QThread, Signal
 
@@ -13,10 +13,6 @@ from ...models import ConversionSummary, ConversionTask, PlannedConversion
 from ...services.hwp_converter import HWPConverter, pythoncom
 from ...services.hwp_print_settings import normalize_pdf_export_mode
 from ...services.task_planner import TaskPlanner
-
-logger = get_logger(__name__)
-
-
 from .backup import create_backup
 from .protocol import ConverterEngine
 from .summary import (
@@ -32,6 +28,8 @@ from .task_runner import (
     fail_pending_tasks,
     recycle_converter,
 )
+
+logger = get_logger(__name__)
 
 
 class ConversionWorker(QThread):

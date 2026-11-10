@@ -218,7 +218,7 @@ class UpdateController(QObject):
         logger.warning(f"업데이트 확인 실패: {error}")
         if self._is_manual_check:
             self.window.toast.show_message(
-                f"업데이트 확인에 실패했습니다.\n네트워크 상태를 확인해 주세요.",
+                "업데이트 확인에 실패했습니다.\n네트워크 상태를 확인해 주세요.",
                 icon="⚠️",
                 duration=4000,
             )

@@ -14,7 +14,6 @@ from ....constants import (
     BACKUP_MAX_FILES_PER_STEM,
     FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS,
     FOLDER_SCAN_WAIT_MS,
-    HWP_FOREGROUND_POLL_MS,
     HWP_PERMISSION_HINT,
     WORKER_FORCE_TERMINATE_SLICE_MS,
     WORKER_FORCE_TERMINATE_WAIT_MS,
@@ -27,11 +26,6 @@ from ....services.task_planner import count_protected_source_renames
 from ....services.hwp_print_settings import (
     PDF_EXPORT_SAVEAS_FIRST,
     normalize_pdf_export_mode,
-)
-from ....windows_integration import (
-    hide_hwp_main_windows,
-    bring_hwp_windows_to_foreground,
-    try_accept_hwp_security_dialog,
 )
 from ..state import MainWindowState
 

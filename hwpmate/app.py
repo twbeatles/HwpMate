@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 import sys
 import time
-from typing import Optional
 
 from PySide6.QtWidgets import QApplication, QMessageBox, QStyleFactory
 
@@ -14,7 +13,7 @@ from .app_instance import SingleInstanceLock
 from .constants import FORMAT_TYPES, SUPPORTED_EXTENSIONS, VERSION
 from .logging_config import get_logger
 from .models import ConversionSummary
-from .services.hwp_converter import HWPConverter, PYWIN32_AVAILABLE, pythoncom
+from .services.hwp_converter import HWPConverter, PYWIN32_AVAILABLE
 from .services.hwp_print_settings import normalize_pdf_export_mode
 from .services.task_planner import TaskPlanner, count_protected_source_renames
 from .services.update_installer import (

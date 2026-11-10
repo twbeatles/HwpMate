@@ -11,9 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from hwpmate.constants import FORMAT_TYPES
-from hwpmate.models import ConversionSummary, ConversionTask
-from hwpmate.services.hwp_converter import HWPConverter, get_registered_hwp_progids
+from hwpmate.constants import FORMAT_TYPES  # noqa: E402 -- sys.path bootstrap above
+from hwpmate.models import ConversionSummary, ConversionTask  # noqa: E402 -- sys.path bootstrap above
+from hwpmate.services.hwp_converter import HWPConverter, get_registered_hwp_progids  # noqa: E402 -- sys.path bootstrap above
 
 
 def is_admin() -> bool:

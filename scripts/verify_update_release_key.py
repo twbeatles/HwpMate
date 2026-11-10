@@ -14,8 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hwpmate.constants import UPDATE_PUBLIC_KEY_B64_DEFAULT
-from hwpmate.services.update_manifest import (
+from hwpmate.constants import UPDATE_PUBLIC_KEY_B64_DEFAULT  # noqa: E402 -- sys.path bootstrap above
+from hwpmate.services.update_manifest import (  # noqa: E402 -- sys.path bootstrap above
     canonical_manifest_payload,
     verify_release_manifest,
 )
