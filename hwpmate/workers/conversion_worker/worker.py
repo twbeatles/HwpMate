@@ -98,7 +98,7 @@ class ConversionWorker(QThread):
             self.converter = converter
             # 호환 문서 확인 창 자동 계속 설정은 변환 호출 전에 반영한다 (initialize 결과와 무관).
             if hasattr(converter, "auto_continue_compat_dialogs"):
-                setattr(
+                setattr(  # noqa: B010 -- Protocol duck-typing; direct assign regresses pyright (verified)
                     converter,
                     "auto_continue_compat_dialogs",
                     bool(getattr(self.planned_conversion, "auto_continue_compat_dialog", True)),

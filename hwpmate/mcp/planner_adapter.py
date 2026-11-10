@@ -285,7 +285,7 @@ def get_plan(plan_id: str) -> PlanRecord:
         ]
     except OSError as exc:
         raise McpError("PLAN_STALE", f"입력 파일이 변경·삭제되어 계획을 사용할 수 없습니다: {exc}") from exc
-    for entry, (path, size, mtime_ns) in zip(record.entries, current):
+    for entry, (path, size, mtime_ns) in zip(record.entries, current, strict=False):
         if entry.input_file != path or entry.size != size or entry.mtime_ns != mtime_ns:
             raise McpError("PLAN_STALE", "입력 파일이 변경되어 계획을 사용할 수 없습니다. 다시 preview를 요청하세요.")
     return record
