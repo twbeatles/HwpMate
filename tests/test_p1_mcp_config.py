@@ -10,7 +10,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from hwpmate.mcp.config import McpConfig, default_config_path, default_job_dir, load_config
+from hwpmate.mcp.config import (
+    McpConfig,
+    default_config_path,
+    default_job_dir,
+    load_config,
+)
 
 
 def _write_toml(path: Path, body: str) -> Path:

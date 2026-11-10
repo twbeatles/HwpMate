@@ -3,9 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QMessageBox, QStyleFactory
 
@@ -13,7 +13,7 @@ from .app_instance import SingleInstanceLock
 from .constants import FORMAT_TYPES, SUPPORTED_EXTENSIONS, VERSION
 from .logging_config import get_logger
 from .models import ConversionSummary
-from .services.hwp_converter import HWPConverter, PYWIN32_AVAILABLE
+from .services.hwp_converter import PYWIN32_AVAILABLE, HWPConverter
 from .services.hwp_print_settings import normalize_pdf_export_mode
 from .services.task_planner import TaskPlanner, count_protected_source_renames
 from .services.update_installer import (
@@ -210,8 +210,9 @@ def _run_smoke(args: argparse.Namespace) -> int:
     }
     try:
         import cryptography  # noqa: F401
-        from .services.update_manifest import verify_release_manifest  # noqa: F401
+
         from .services.update_installer import apply_staged_update  # noqa: F401
+        from .services.update_manifest import verify_release_manifest  # noqa: F401
         result["cryptography_available"] = True
     except Exception as exc:
         result["status"] = "error"
@@ -310,6 +311,7 @@ def _write_owned_pids(path_text: str, pids: set[int]) -> None:
 
 def _run_cli_conversion(args: argparse.Namespace) -> int:
     """헤드리스 CLI 일괄 변환 실행 (GUI 워커와 같은 작업 실행기 사용)."""
+    from .constants import CONVERTER_RECYCLE_BATCH_COUNT, MAX_RETRY_COUNT
     from .workers.conversion_worker.summary import collect_converter_warnings
     from .workers.conversion_worker.task_runner import (
         TaskRunOptions,
@@ -318,7 +320,6 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
         fail_pending_tasks,
         recycle_converter,
     )
-    from .constants import CONVERTER_RECYCLE_BATCH_COUNT, MAX_RETRY_COUNT
 
     _ensure_cli_console_output()
     _ensure_cli_printable_output()

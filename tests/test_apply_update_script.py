@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+
 import pytest
 
 import scripts.apply_update as apply_update_module

@@ -5,7 +5,12 @@ from pathlib import Path
 
 from hwpmate.constants import HWP_PERMISSION_HINT, PRINT_SETTINGS_NOTICE
 from hwpmate.models import ConversionSummary, ConversionTask, PlannedConversion
-from hwpmate.ui.dialogs import PreflightDialog, write_failed_list, write_results_csv, write_results_json
+from hwpmate.ui.dialogs import (
+    PreflightDialog,
+    write_failed_list,
+    write_results_csv,
+    write_results_json,
+)
 
 
 def build_summary(tmp_path: Path) -> ConversionSummary:

@@ -3,6 +3,7 @@
 import hashlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
 import pytest
 
 from hwpmate.services.update_installer import prepare_staged_update

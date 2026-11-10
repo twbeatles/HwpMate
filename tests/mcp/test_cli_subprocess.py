@@ -6,7 +6,12 @@ import pytest
 
 from hwpmate.mcp.config import McpConfig
 from hwpmate.mcp.errors import McpError
-from hwpmate.mcp.runner import build_cli_argv, is_busy_failure, resolve_cli_executable, run_cli
+from hwpmate.mcp.runner import (
+    build_cli_argv,
+    is_busy_failure,
+    resolve_cli_executable,
+    run_cli,
+)
 
 
 def test_resolve_cli_requires_explicit_file(tmp_path: Path) -> None:

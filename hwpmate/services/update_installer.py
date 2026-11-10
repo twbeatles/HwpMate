@@ -21,7 +21,6 @@ from ..constants import (
 )
 from .update_manifest import ReleaseManifest
 
-
 UPDATE_STATUS_APPLIED = "applied"
 UPDATE_STATUS_ROLLED_BACK = "rolled_back"
 UPDATE_STATUS_FAILED = "failed"

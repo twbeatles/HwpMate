@@ -7,5 +7,4 @@ from __future__ import annotations
 
 from .controller import FileSelectionController
 
-
 __all__ = ["FileSelectionController"]

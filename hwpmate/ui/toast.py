@@ -2,9 +2,24 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QRectF, QTimer, Qt, Signal
+from PySide6.QtCore import (
+    QEasingCurve,
+    QEvent,
+    QObject,
+    QPropertyAnimation,
+    QRectF,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPainterPath, QPaintEvent
-from PySide6.QtWidgets import QGraphicsOpacityEffect, QHBoxLayout, QLabel, QMainWindow, QWidget
+from PySide6.QtWidgets import (
+    QGraphicsOpacityEffect,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QWidget,
+)
 
 from ..constants import TOAST_DURATION_DEFAULT, TOAST_FADE_DURATION
 from ..logging_config import get_logger

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+
 import pytest
 
 from hwpmate.app import _parse_args, _run_cli_conversion

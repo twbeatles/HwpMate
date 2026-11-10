@@ -12,13 +12,12 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QSpinBox,
-    QTabWidget,
     QTableWidget,
+    QTabWidget,
     QWidget,
 )
 
 from ..widgets import DropArea, FormatCard
-
 
 
 @dataclass

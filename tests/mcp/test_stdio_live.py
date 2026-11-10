@@ -11,7 +11,6 @@ import os
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -28,7 +27,6 @@ def _params() -> object:
 
 def test_live_stdio_tools_and_capabilities() -> None:
     import anyio
-
     from mcp.client.session import ClientSession
     from mcp.client.stdio import stdio_client
     from mcp.types import CallToolResult, TextContent

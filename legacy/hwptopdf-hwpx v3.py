@@ -3,14 +3,14 @@ HWP/HWPX 변환기 v6.0 - 완전 재설계
 안정성과 사용성에 초점을 맞춘 새로운 버전
 """
 
-import sys
-import json
 import ctypes
+import json
+import sys
 import threading
-from pathlib import Path
-from typing import Any, Optional, Protocol, cast
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from typing import Any, Optional, Protocol, cast
 
 # pywin32 import (COM 사용)
 try:

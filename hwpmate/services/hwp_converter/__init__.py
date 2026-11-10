@@ -6,9 +6,15 @@
 
 from __future__ import annotations
 
+# convert_file 테스트 호환: 패키지 속성으로도 노출 (converter 모듈이 실제 사용)
+from ...constants import DOCUMENT_LOAD_DELAY as DOCUMENT_LOAD_DELAY  # noqa: F401
+from ..hwp_print_settings import (  # noqa: F401
+    apply_default_print_settings,
+    try_export_pdf_via_print_to_pdf_ex,
+)
 from .artifact_snapshot import (
-    _FileSnapshot,
     _changed_artifacts,
+    _FileSnapshot,
     _iter_candidate_artifact_files,
     _snapshot_artifacts,
     _snapshot_file,
@@ -22,28 +28,21 @@ from .com_types import (
     win32_client,
 )
 from .converter import (
-    SECURITY_MODULE_ALIASES,
     _CREATE_NO_WINDOW,
+    SECURITY_MODULE_ALIASES,
     HWPConverter,
     subprocess,
 )
 from .process_snapshot import (
+    _PROCESSENTRY32W,
     HWP_PROCESS_NAMES,
     TH32CS_SNAPPROCESS,
-    _PROCESSENTRY32W,
     _snapshot_failure_count,
     _snapshot_hwp_pids,
     _snapshot_last_error,
     get_snapshot_health,
 )
 from .progid import get_registered_hwp_progids
-
-# convert_file 테스트 호환: 패키지 속성으로도 노출 (converter 모듈이 실제 사용)
-from ...constants import DOCUMENT_LOAD_DELAY as DOCUMENT_LOAD_DELAY  # noqa: F401
-from ..hwp_print_settings import (  # noqa: F401
-    apply_default_print_settings,
-    try_export_pdf_via_print_to_pdf_ex,
-)
 
 __all__ = [
     "DOCUMENT_LOAD_DELAY",

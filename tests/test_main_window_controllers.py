@@ -5,7 +5,12 @@ from typing import Any
 
 import pytest
 
-from hwpmate.models import AppConfig, ConversionSummary, ConversionTask, PlannedConversion
+from hwpmate.models import (
+    AppConfig,
+    ConversionSummary,
+    ConversionTask,
+    PlannedConversion,
+)
 
 
 class DummyTray:
@@ -566,7 +571,9 @@ def test_native_drop_ignores_paths_while_planning(
 
 
 def test_folder_cache_sample_includes_head_and_tail() -> None:
-    from hwpmate.ui.main_window_controllers.file_selection import FileSelectionController
+    from hwpmate.ui.main_window_controllers.file_selection import (
+        FileSelectionController,
+    )
 
     paths = [f"p{i}.hwp" for i in range(100)]
     sample = FileSelectionController._sample_cache_paths(paths, 24)
@@ -591,9 +598,10 @@ def test_folder_conversion_starts_even_when_scan_is_slower_than_cancel_wait(
     """ISSUE-001: 스캔이 짧은 취소 대기값보다 오래 걸려도 변환 사전 점검까지 진행돼야 한다."""
     import time
 
+    from PySide6.QtWidgets import QMessageBox
+
     import hwpmate.ui.main_window_controllers.file_selection.controller as selection_module
     import hwpmate.workers.file_scan_worker as scan_module
-    from PySide6.QtWidgets import QMessageBox
 
     window, _ = create_window(monkeypatch, qapp)
     (tmp_path / "a.hwp").write_text("x", encoding="utf-8")
@@ -628,9 +636,10 @@ def test_folder_conversion_starts_even_when_scan_is_slower_than_cancel_wait(
 
 
 def test_update_apply_is_refused_while_converting(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
+    from datetime import datetime, timezone
+
     import hwpmate.ui.main_window_controllers.update as update_module
     from hwpmate.services.update_manifest import ReleaseManifest
-    from datetime import datetime, timezone
 
     window, _ = create_window(monkeypatch, qapp)
     controller = window.update_controller

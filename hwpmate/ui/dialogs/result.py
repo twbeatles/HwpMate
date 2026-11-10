@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtWidgets import (
-    QFileDialog,
     QDialog,
+    QFileDialog,
     QFrame,
     QGroupBox,
     QHBoxLayout,

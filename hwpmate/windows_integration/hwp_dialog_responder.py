@@ -55,6 +55,7 @@ def find_hwp_compat_dialogs(pids: Optional[Set[int]]) -> list[int]:
     if not pids:
         return []
     from hwpmate import windows_integration as api
+
     from . import hwp_dialog_responder as module
 
     found: list[int] = []

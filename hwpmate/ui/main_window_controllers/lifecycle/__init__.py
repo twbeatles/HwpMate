@@ -7,5 +7,4 @@ from __future__ import annotations
 
 from .controller import LifecycleController
 
-
 __all__ = ["LifecycleController"]

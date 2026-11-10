@@ -3,8 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QTimer, Qt, Signal
-from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QMouseEvent
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QDragEnterEvent,
+    QDragLeaveEvent,
+    QDragMoveEvent,
+    QDropEvent,
+    QMouseEvent,
+)
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 from ..constants import FEEDBACK_RESET_DELAY, SUPPORTED_EXTENSIONS

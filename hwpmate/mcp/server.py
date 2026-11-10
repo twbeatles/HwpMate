@@ -12,17 +12,15 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from . import MCP_SERVER_NAME
+from . import MCP_SCHEMA_VERSION, MCP_SERVER_NAME
 from .capabilities import gather_capabilities, list_supported_formats
 from .config import McpConfig
 from .errors import McpError, error_envelope
 from .jobs import JobManager
 from .logging_utils import setup_stderr_logging
 from .planner_adapter import get_plan, preview_conversion
-from .validator import validate_job_outputs
-
-from . import MCP_SCHEMA_VERSION
 from .schemas import CONFIRMATION_TOKEN, ok_envelope
+from .validator import validate_job_outputs
 
 logger = setup_stderr_logging()
 

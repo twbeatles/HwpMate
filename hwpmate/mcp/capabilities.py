@@ -14,7 +14,11 @@ from pathlib import Path
 from ..constants import FORMAT_TYPES, VERSION
 from . import MCP_SCHEMA_VERSION
 from .config import McpConfig
-from .runner import current_process_is_elevated, elevation_message, executable_requires_admin
+from .runner import (
+    current_process_is_elevated,
+    elevation_message,
+    executable_requires_admin,
+)
 
 
 def _cli_status(cfg: McpConfig) -> tuple[bool, str]:

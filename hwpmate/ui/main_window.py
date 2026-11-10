@@ -43,7 +43,6 @@ from .main_window_controllers import (
     NativeDropController,
     UpdateController,
 )
-
 from .main_window_ui import MainWindowCallbacks, MainWindowWidgets, build_main_window_ui
 from .toast import ToastManager
 from .widgets import DropArea, FormatCard
