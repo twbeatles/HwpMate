@@ -30,7 +30,9 @@ def _log_dir_candidates() -> list[Path]:
     return unique_candidates
 
 
-def _resolve_log_file(candidates: Iterable[Path] | None = None) -> tuple[Path | None, str | None]:
+def _resolve_log_file(
+    candidates: Iterable[Path] | None = None,
+) -> tuple[Path | None, str | None]:
     errors: list[str] = []
 
     for log_dir in candidates or _log_dir_candidates():

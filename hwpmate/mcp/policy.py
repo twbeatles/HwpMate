@@ -75,16 +75,23 @@ def resolve_strict(raw: str | Path, *, what: str = "경로") -> Path:
 
 def check_reparse_on_absolute(absolute: Path) -> None:
     if _has_reparse_point(absolute):
-        raise McpError("INPUT_DENIED", f"reparse point(symlink/junction)를 포함해 거부합니다: {absolute}")
+        raise McpError(
+            "INPUT_DENIED",
+            f"reparse point(symlink/junction)를 포함해 거부합니다: {absolute}",
+        )
 
 
 def check_containment(resolved: Path, roots: list[str], *, kind: str) -> Path:
     code = "INPUT_DENIED" if kind == "입력" else "OUTPUT_DENIED"
     if isinstance(roots, str):
         # 문자 단위 반복으로 드라이브 전체가 허용되는 것을 막는다 (설정 검증 우회 대비).
-        raise McpError(code, f"{kind} 허용 루트 설정 형식이 올바르지 않습니다 (목록 필요).")
+        raise McpError(
+            code, f"{kind} 허용 루트 설정 형식이 올바르지 않습니다 (목록 필요)."
+        )
     if not roots:
-        raise McpError(code, f"{kind} 허용 루트가 설정되지 않아 {kind} 경로를 거부합니다.")
+        raise McpError(
+            code, f"{kind} 허용 루트가 설정되지 않아 {kind} 경로를 거부합니다."
+        )
     for root in roots:
         if not isinstance(root, str) or not root.strip() or is_drive_root(root):
             continue

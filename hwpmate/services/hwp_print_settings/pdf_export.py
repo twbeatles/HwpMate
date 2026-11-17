@@ -121,11 +121,13 @@ def try_export_pdf_via_print_to_pdf_ex(
                 return False
         return is_valid_pdf_file(output)
 
-    candidates = list(printer_names) if printer_names else resolve_pdf_printer_candidates()
+    candidates = (
+        list(printer_names) if printer_names else resolve_pdf_printer_candidates()
+    )
     if max_printer_attempts > 0:
         candidates = candidates[:max_printer_attempts]
     if not candidates:
-        candidates = list(PDF_PRINTER_NAME_CANDIDATES[:max_printer_attempts or 2])
+        candidates = list(PDF_PRINTER_NAME_CANDIDATES[: max_printer_attempts or 2])
 
     # --- HAction PrintToPDFEx only (no CreateAction Print Execute) ---
     try:
@@ -209,7 +211,9 @@ def try_export_pdf_via_print_to_pdf_ex(
                 try:
                     prn.RunToPDF()
                     if _output_is_success():
-                        logger.debug(f"XHwpPrint.RunToPDF 성공: printer={printer_name!r}")
+                        logger.debug(
+                            f"XHwpPrint.RunToPDF 성공: printer={printer_name!r}"
+                        )
                         return True, EXPORT_METHOD_RUN_TO_PDF
                     remove_incomplete_output(
                         output,

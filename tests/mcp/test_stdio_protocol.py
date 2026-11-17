@@ -110,12 +110,21 @@ def test_submit_status_result_via_tools(tmp_path, monkeypatch) -> None:
 
         return _json.loads(_tool_text(result))
 
-    preview = _run(call("hwpmate_preview_conversion", {"input_paths": [str(src)], "output_dir": str(tmp_path / "out")}))
+    preview = _run(
+        call(
+            "hwpmate_preview_conversion",
+            {"input_paths": [str(src)], "output_dir": str(tmp_path / "out")},
+        )
+    )
     assert preview["ok"] is True
     submitted = _run(
         call(
             "hwpmate_submit_conversion",
-            {"plan_id": preview["plan_id"], "confirmation": CONFIRMATION_TOKEN, "idempotency_key": "srv1"},
+            {
+                "plan_id": preview["plan_id"],
+                "confirmation": CONFIRMATION_TOKEN,
+                "idempotency_key": "srv1",
+            },
         )
     )
     assert submitted["ok"] is True
@@ -128,7 +137,9 @@ def test_submit_status_result_via_tools(tmp_path, monkeypatch) -> None:
             break
         time.sleep(0.2)
     assert status["state"] == "succeeded"
-    result = _run(call("hwpmate_get_job_result", {"job_id": job_id, "limit": 1, "cursor": 0}))
+    result = _run(
+        call("hwpmate_get_job_result", {"job_id": job_id, "limit": 1, "cursor": 0})
+    )
     assert result["total"] == 1
     assert len(result["items"]) == 1
     assert result["next_cursor"] is None

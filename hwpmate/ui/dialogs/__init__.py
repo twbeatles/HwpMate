@@ -24,4 +24,3 @@ __all__ = [
     "write_results_csv",
     "write_results_json",
 ]
-

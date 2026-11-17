@@ -118,7 +118,9 @@ class LifecycleController:
 
         style = self.window.style()
         assert style is not None
-        self.window.tray_icon.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView))
+        self.window.tray_icon.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView)
+        )
         self.window.tray_icon.setToolTip(f"HWP 변환기 v{VERSION}")
 
         tray_menu = QMenu()
@@ -245,11 +247,15 @@ class LifecycleController:
             self.start_shortcut.setEnabled(enabled)
 
     def save_settings(self) -> bool:
-        self.window.config["mode"] = "folder" if self.window.folder_radio.isChecked() else "files"
+        self.window.config["mode"] = (
+            "folder" if self.window.folder_radio.isChecked() else "files"
+        )
         self.window.config["format"] = self.state.selected_format
 
         self.window.config["include_sub"] = self.window.include_sub_check.isChecked()
-        self.window.config["same_location"] = self.window.same_location_check.isChecked()
+        self.window.config["same_location"] = (
+            self.window.same_location_check.isChecked()
+        )
         self.window.config["overwrite"] = self.window.overwrite_check.isChecked()
         self.window.config["backup_enabled"] = self.window.backup_check.isChecked()
         self.window.config["retry_count"] = self.window.retry_spin.value()
@@ -261,7 +267,9 @@ class LifecycleController:
             self.window.config["auto_accept_security_dialog"] = auto_accept.isChecked()
         auto_continue = getattr(self.window, "auto_continue_compat_check", None)
         if auto_continue is not None:
-            self.window.config["auto_continue_compat_dialog"] = auto_continue.isChecked()
+            self.window.config["auto_continue_compat_dialog"] = (
+                auto_continue.isChecked()
+            )
         pdf_combo = getattr(self.window, "pdf_export_mode_combo", None)
         if pdf_combo is not None:
             data = pdf_combo.currentData()
@@ -363,7 +371,10 @@ class LifecycleController:
             self.window.tray_icon.hide()
 
         if not self.save_settings():
-            QMessageBox.warning(self.window, "설정 저장 실패", "현재 설정을 저장하지 못했습니다. 다음 실행에서 일부 설정이 복원되지 않을 수 있습니다.")
+            QMessageBox.warning(
+                self.window,
+                "설정 저장 실패",
+                "현재 설정을 저장하지 못했습니다. 다음 실행에서 일부 설정이 복원되지 않을 수 있습니다.",
+            )
         logger.info("메인 윈도우 종료 허용")
         event.accept()
-

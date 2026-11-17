@@ -62,16 +62,22 @@ def _normalize_roots(key: str, value: object) -> list[str]:
     elif isinstance(value, (list, tuple)):
         items = list(value)
     else:
-        raise McpConfigError(f"{key} 는 경로 문자열 목록이어야 합니다 (현재: {type(value).__name__}).")
+        raise McpConfigError(
+            f"{key} 는 경로 문자열 목록이어야 합니다 (현재: {type(value).__name__})."
+        )
     roots: list[str] = []
     for item in items:
         if not isinstance(item, str):
-            raise McpConfigError(f"{key} 항목은 문자열이어야 합니다 (현재: {type(item).__name__}).")
+            raise McpConfigError(
+                f"{key} 항목은 문자열이어야 합니다 (현재: {type(item).__name__})."
+            )
         text = item.strip()
         if not text:
             continue
         if is_drive_root(text):
-            raise McpConfigError(f"{key} 에 드라이브 전체({text})는 지정할 수 없습니다. 작업 폴더를 지정하세요.")
+            raise McpConfigError(
+                f"{key} 에 드라이브 전체({text})는 지정할 수 없습니다. 작업 폴더를 지정하세요."
+            )
         roots.append(text)
     return roots
 
@@ -165,7 +171,9 @@ def load_config(path: str | Path | None = None) -> McpConfig:
                 "Windows 경로는 'C:/Work' 처럼 / 를 쓰거나 작은따옴표로 감싸세요."
             ) from exc
         except OSError as exc:
-            raise McpConfigError(f"설정 파일을 읽을 수 없습니다: {config_path} ({exc})") from exc
+            raise McpConfigError(
+                f"설정 파일을 읽을 수 없습니다: {config_path} ({exc})"
+            ) from exc
         section = loaded.get("mcp", loaded)
         paths = loaded.get("paths", {})
         if isinstance(section, dict):
@@ -176,10 +184,14 @@ def load_config(path: str | Path | None = None) -> McpConfig:
                     data[key] = paths[key]
     env_roots = os.environ.get("HWPMATE_MCP_INPUT_ROOTS", "").strip()
     if env_roots:
-        data["input_roots"] = [part for part in env_roots.split(os.pathsep) if part.strip()]
+        data["input_roots"] = [
+            part for part in env_roots.split(os.pathsep) if part.strip()
+        ]
     env_outputs = os.environ.get("HWPMATE_MCP_OUTPUT_ROOTS", "").strip()
     if env_outputs:
-        data["output_roots"] = [part for part in env_outputs.split(os.pathsep) if part.strip()]
+        data["output_roots"] = [
+            part for part in env_outputs.split(os.pathsep) if part.strip()
+        ]
     env_cli = os.environ.get("HWPMATE_MCP_CLI", "").strip()
     if env_cli:
         data["cli_executable"] = env_cli

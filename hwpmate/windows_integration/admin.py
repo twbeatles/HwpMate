@@ -22,7 +22,9 @@ def _env_flag(name: str) -> bool:
 
 def is_running_under_idle() -> bool:
     """IDLE 실행 여부 추정."""
-    stdin_module = getattr(getattr(sys, "stdin", None), "__class__", type("", (), {})).__module__
+    stdin_module = getattr(
+        getattr(sys, "stdin", None), "__class__", type("", (), {})
+    ).__module__
     return "idlelib" in sys.modules or stdin_module.startswith("idlelib")
 
 
@@ -82,10 +84,16 @@ def enable_drag_drop_for_admin(hwnd: int | None = None) -> None:
             # 더 정확하고 안정적인 방법
             try:
                 for msg in messages:
-                    result = user32.ChangeWindowMessageFilterEx(hwnd, msg, MSGFLT_ALLOW, None)
+                    result = user32.ChangeWindowMessageFilterEx(
+                        hwnd, msg, MSGFLT_ALLOW, None
+                    )
                     if not result:
-                        logger.debug(f"ChangeWindowMessageFilterEx 실패: msg={hex(msg)}")
-                logger.info(f"윈도우 핸들 {hwnd}에 드래그 앤 드롭 메시지 필터 적용 완료")
+                        logger.debug(
+                            f"ChangeWindowMessageFilterEx 실패: msg={hex(msg)}"
+                        )
+                logger.info(
+                    f"윈도우 핸들 {hwnd}에 드래그 앤 드롭 메시지 필터 적용 완료"
+                )
             except Exception as e:
                 logger.debug(f"ChangeWindowMessageFilterEx 실패, 전역 필터로 대체: {e}")
                 # 실패 시 전역 필터로 대체

@@ -76,7 +76,9 @@ class ConversionController:
                 pass
         try:
             return int(
-                self.window.config.get("backup_max_files_per_stem", BACKUP_MAX_FILES_PER_STEM)
+                self.window.config.get(
+                    "backup_max_files_per_stem", BACKUP_MAX_FILES_PER_STEM
+                )
                 or BACKUP_MAX_FILES_PER_STEM
             )
         except (TypeError, ValueError):
@@ -137,6 +139,7 @@ class ConversionController:
 
     def _poll_hwp_foreground(self) -> None:
         from hwpmate.ui.main_window_controllers import conversion as api
+
         if not self.is_conversion_active():
             self._stop_hwp_foreground_polling()
             return
@@ -156,7 +159,9 @@ class ConversionController:
             api.hide_hwp_main_windows(target)
             api.bring_hwp_windows_to_foreground(target)
             # 모듈 성공·설정 꺼짐·쿨다운이면 자동 클릭 생략
-            if session.should_auto_accept() and api.try_accept_hwp_security_dialog(target):
+            if session.should_auto_accept() and api.try_accept_hwp_security_dialog(
+                target
+            ):
                 session.note_auto_accept()
                 self._security_dialog_auto_accepted = True
         except Exception as e:
@@ -167,18 +172,22 @@ class ConversionController:
         folder_file_paths = None
         if is_folder_mode:
             # 변환 시점에는 미리보기보다 짧은 캐시 연령을 요구해 신규 파일 누락을 줄인다.
-            folder_file_paths = self.window.file_selection_controller.get_folder_scan_cache(
-                folder_path=self.window.folder_entry.text(),
-                include_sub=self.window.include_sub_check.isChecked(),
-                max_age_seconds=FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS,
+            folder_file_paths = (
+                self.window.file_selection_controller.get_folder_scan_cache(
+                    folder_path=self.window.folder_entry.text(),
+                    include_sub=self.window.include_sub_check.isChecked(),
+                    max_age_seconds=FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS,
+                )
             )
             if folder_file_paths is None and require_folder_cache:
                 # wait 직후 시그널 드레인 재시도
                 QApplication.processEvents()
-                folder_file_paths = self.window.file_selection_controller.get_folder_scan_cache(
-                    folder_path=self.window.folder_entry.text(),
-                    include_sub=self.window.include_sub_check.isChecked(),
-                    max_age_seconds=FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS,
+                folder_file_paths = (
+                    self.window.file_selection_controller.get_folder_scan_cache(
+                        folder_path=self.window.folder_entry.text(),
+                        include_sub=self.window.include_sub_check.isChecked(),
+                        max_age_seconds=FOLDER_SCAN_CACHE_CONVERT_MAX_AGE_SECONDS,
+                    )
                 )
             # 폴더 모드: UI 스레드 동기 재스캔 금지 (캐시 필수)
             if folder_file_paths is None:
@@ -188,9 +197,11 @@ class ConversionController:
                     "폴더를 다시 선택하거나 미리보기 스캔 후 변환하세요."
                 )
             # 캐시 신선도: 디스크에서 사라진 파일이 많으면 재스캔 유도
-            ok, reason = self.window.file_selection_controller.validate_folder_scan_cache_freshness(
-                folder_file_paths,
-                folder_path=self.window.folder_entry.text(),
+            ok, reason = (
+                self.window.file_selection_controller.validate_folder_scan_cache_freshness(
+                    folder_file_paths,
+                    folder_path=self.window.folder_entry.text(),
+                )
             )
             if not ok:
                 self.window.file_selection_controller.invalidate_folder_scan_cache()
@@ -251,11 +262,15 @@ class ConversionController:
                 folder, wait_ms=FOLDER_SCAN_WAIT_MS
             ):
                 self._abort_if_close_requested()
-                raise ValueError("폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요.")
+                raise ValueError(
+                    "폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요."
+                )
             QApplication.processEvents()
 
         self.window.status_label.setText("폴더 스캔 완료 대기 중...")
-        if not self.window.file_selection_controller.wait_for_active_scan(FOLDER_SCAN_WAIT_MS):
+        if not self.window.file_selection_controller.wait_for_active_scan(
+            FOLDER_SCAN_WAIT_MS
+        ):
             self._abort_if_close_requested()
             raise ValueError(
                 "폴더 스캔이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요."
@@ -270,7 +285,9 @@ class ConversionController:
         )
 
     @staticmethod
-    def _append_protected_source_warning(plan: PlannedConversion, *, overwrite: bool) -> None:
+    def _append_protected_source_warning(
+        plan: PlannedConversion, *, overwrite: bool
+    ) -> None:
         if not overwrite:
             return
         protected = count_protected_source_renames(plan.tasks)
@@ -288,7 +305,9 @@ class ConversionController:
         if not output_path:
             raise ValueError("출력 폴더를 선택하세요.")
         if not is_valid_path_name(output_path):
-            raise ValueError(f"출력 경로에 사용할 수 없는 문자가 있습니다:\n{output_path}")
+            raise ValueError(
+                f"출력 경로에 사용할 수 없는 문자가 있습니다:\n{output_path}"
+            )
 
         output_folder = Path(output_path)
         if not output_folder.exists():
@@ -301,7 +320,9 @@ class ConversionController:
         if self.state.close_requested:
             raise ValueError("종료 요청으로 변환 시작이 취소되었습니다.")
 
-    def _begin_worker_ui(self, worker: Any, *, toast_message: str, toast_icon: str) -> None:
+    def _begin_worker_ui(
+        self, worker: Any, *, toast_message: str, toast_icon: str
+    ) -> None:
         """워커 시그널 연결, 상태 표시, 전면화 폴링, 토스트."""
         self.state.worker = worker
         worker.progress_updated.connect(self.window._on_progress_updated)
@@ -323,7 +344,9 @@ class ConversionController:
             self.window.toast.show_message(combined, toast_icon)
 
     def on_stage_updated(self, stage: str, elapsed_seconds: float) -> None:
-        self.window.status_label.setText(f"변환 단계: {stage} ({elapsed_seconds:.1f}초)")
+        self.window.status_label.setText(
+            f"변환 단계: {stage} ({elapsed_seconds:.1f}초)"
+        )
 
     def _confirm_preflight_and_start_worker(
         self,
@@ -366,11 +389,15 @@ class ConversionController:
             self.window.progress_bar.setValue(0)
             self.state.conversion_start_time = time.time()
             worker = self.window._create_conversion_worker(plan)
-            self._begin_worker_ui(worker, toast_message=toast_message, toast_icon=toast_icon)
+            self._begin_worker_ui(
+                worker, toast_message=toast_message, toast_icon=toast_icon
+            )
             return True
         except ValueError as e:
             if self.state.close_requested or self.state.close_after_plan:
-                self.window.status_label.setText("종료 요청으로 변환 시작이 취소되었습니다")
+                self.window.status_label.setText(
+                    "종료 요청으로 변환 시작이 취소되었습니다"
+                )
             else:
                 QMessageBox.warning(self.window, "경고", str(e))
             return False
@@ -406,7 +433,9 @@ class ConversionController:
                         FOLDER_SCAN_WAIT_MS
                     ):
                         self._abort_if_close_requested()
-                        raise ValueError("파일 스캔이 아직 진행 중입니다. 스캔 완료 후 다시 시도하세요.")
+                        raise ValueError(
+                            "파일 스캔이 아직 진행 중입니다. 스캔 완료 후 다시 시도하세요."
+                        )
                 else:
                     # 폴더 미리보기는 취소하지 않고 완료를 기다려 캐시를 확보한다.
                     self.window.status_label.setText("폴더 스캔 완료 대기 중...")
@@ -440,7 +469,9 @@ class ConversionController:
 
             self._abort_if_close_requested()
             overwrite = self.window.overwrite_check.isChecked()
-            plan.conflict_renamed_count = self.adjust_output_paths(plan, overwrite=overwrite)
+            plan.conflict_renamed_count = self.adjust_output_paths(
+                plan, overwrite=overwrite
+            )
             self._append_protected_source_warning(plan, overwrite=overwrite)
             if plan.conflict_renamed_count:
                 if overwrite:
@@ -463,7 +494,9 @@ class ConversionController:
             if not plan.tasks:
                 message = "실행할 변환 대상이 없습니다."
                 if plan.skipped_count:
-                    message += f"\n동일 형식 {plan.skipped_count}개는 자동으로 건너뜁니다."
+                    message += (
+                        f"\n동일 형식 {plan.skipped_count}개는 자동으로 건너뜁니다."
+                    )
                 raise ValueError(message)
 
             start_message = f"{plan.runnable_count}개 파일 변환 시작"
@@ -480,7 +513,9 @@ class ConversionController:
         except ValueError as e:
             # 종료 요청으로 인한 취소는 경고 박스 없이 조용히 처리
             if self.state.close_requested or self.state.close_after_plan:
-                self.window.status_label.setText("종료 요청으로 변환 시작이 취소되었습니다")
+                self.window.status_label.setText(
+                    "종료 요청으로 변환 시작이 취소되었습니다"
+                )
             else:
                 QMessageBox.warning(self.window, "경고", str(e))
         except Exception as e:
@@ -507,7 +542,9 @@ class ConversionController:
             elapsed_seconds=0.0,
         )
         self.state.last_summary = summary
-        self.window.status_label.setText("동일 형식 파일만 있어 변환 없이 건너뜀 처리했습니다")
+        self.window.status_label.setText(
+            "동일 형식 파일만 있어 변환 없이 건너뜀 처리했습니다"
+        )
         self.window.toast.show_message(f"건너뜀 {summary.skipped_count}개", "⏭️")
         dialog = self.window._create_result_dialog(summary)
         dialog.exec()
@@ -627,7 +664,9 @@ class ConversionController:
             avg_time = elapsed / current
             remaining = avg_time * (total - current)
             remaining_str = (
-                f" · 남은 시간 약 {self._format_duration(remaining)}" if remaining >= 1 else ""
+                f" · 남은 시간 약 {self._format_duration(remaining)}"
+                if remaining >= 1
+                else ""
             )
         else:
             remaining_str = ""
@@ -664,7 +703,11 @@ class ConversionController:
         self._stop_hwp_foreground_polling()
         summary = summary_obj
         self.state.last_summary = summary
-        elapsed_str = f"{summary.elapsed_seconds:.1f}초" if summary.elapsed_seconds is not None else "알 수 없음"
+        elapsed_str = (
+            f"{summary.elapsed_seconds:.1f}초"
+            if summary.elapsed_seconds is not None
+            else "알 수 없음"
+        )
 
         if summary.failed_count == 0 and summary.canceled_count == 0:
             self.window.toast.show_message(
@@ -717,9 +760,13 @@ class ConversionController:
         missing = len(failed_tasks) - len(retry_tasks)
         warnings: list[str] = []
         if missing:
-            warnings.append(f"다시 변환할 수 없는 실패 항목 {missing}개는 제외했습니다 (파일 없음).")
+            warnings.append(
+                f"다시 변환할 수 없는 실패 항목 {missing}개는 제외했습니다 (파일 없음)."
+            )
         if not retry_tasks:
-            QMessageBox.warning(self.window, "경고", "다시 변환할 실패 파일이 없습니다.")
+            QMessageBox.warning(
+                self.window, "경고", "다시 변환할 실패 파일이 없습니다."
+            )
             return
 
         plan = PlannedConversion(
@@ -769,14 +816,18 @@ class ConversionController:
             if summary.canceled_count:
                 parts.append(f"취소 {summary.canceled_count}개")
             icon = "✅" if not (summary.failed_count or summary.canceled_count) else "⚠️"
-            self.window.status_label.setText(f"{icon} 마지막 변환 완료 — {', '.join(parts)}")
+            self.window.status_label.setText(
+                f"{icon} 마지막 변환 완료 — {', '.join(parts)}"
+            )
         else:
             self.window.status_label.setText("대기 중")
         if summary and any(
             "강제 종료는 비활성화" in warning or "스냅샷" in warning
             for warning in summary.warnings
         ):
-            self.window.hwp_status_label.setText("🟡 프로세스 추적 불가 (강제 종료 제한)")
+            self.window.hwp_status_label.setText(
+                "🟡 프로세스 추적 불가 (강제 종료 제한)"
+            )
         elif summary and summary.failed_count:
             self.window.hwp_status_label.setText("🔴 마지막 작업 실패")
         elif summary and summary.canceled_count:
@@ -790,7 +841,9 @@ class ConversionController:
                 self.state.worker.status_updated.disconnect()
                 self.state.worker.task_completed.disconnect()
                 self.state.worker.finished.disconnect()
-                engine_status = getattr(self.state.worker, "engine_status_updated", None)
+                engine_status = getattr(
+                    self.state.worker, "engine_status_updated", None
+                )
                 if engine_status is not None:
                     engine_status.disconnect()
                 stage_updated = getattr(self.state.worker, "stage_updated", None)

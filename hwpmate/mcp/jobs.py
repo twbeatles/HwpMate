@@ -51,7 +51,10 @@ TERMINAL_STATES = frozenset(
 
 def check_platform_supported() -> None:
     if os.name != "nt":
-        raise McpError("PLATFORM_UNSUPPORTED", "HwpMate 변환은 Windows + 한컴오피스 한글 환경에서만 지원됩니다.")
+        raise McpError(
+            "PLATFORM_UNSUPPORTED",
+            "HwpMate 변환은 Windows + 한컴오피스 한글 환경에서만 지원됩니다.",
+        )
 
 
 def recheck_output(cfg: McpConfig, record: JobRecord) -> Path:
@@ -152,7 +155,10 @@ class JobManager:
     def _persist(self, record: JobRecord) -> None:
         with self._lock:
             tmp = self._record_path(record.job_id).with_suffix(".tmp")
-            tmp.write_text(json.dumps(asdict(record), ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp.write_text(
+                json.dumps(asdict(record), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
             tmp.replace(self._record_path(record.job_id))
             if record.idempotency_key:
                 key = f"{record.idempotency_key}\x00{record.plan_hash}"
@@ -165,10 +171,14 @@ class JobManager:
         path = self._job_dir / "idempotency.json"
         tmp = path.with_name(f"idempotency.{secrets.token_hex(4)}.tmp")
         try:
-            tmp.write_text(json.dumps(self._idem, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp.write_text(
+                json.dumps(self._idem, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
             tmp.replace(path)
         except OSError as exc:
-            logger.warning("idempotency 색인 저장 실패(job 기록으로 재구성 가능): %s", exc)
+            logger.warning(
+                "idempotency 색인 저장 실패(job 기록으로 재구성 가능): %s", exc
+            )
             try:
                 tmp.unlink(missing_ok=True)
             except OSError:
@@ -179,7 +189,11 @@ class JobManager:
         if idem_path.is_file():
             try:
                 loaded = json.loads(idem_path.read_text(encoding="utf-8"))
-                self._idem = {str(k): str(v) for k, v in loaded.items()} if isinstance(loaded, dict) else {}
+                self._idem = (
+                    {str(k): str(v) for k, v in loaded.items()}
+                    if isinstance(loaded, dict)
+                    else {}
+                )
             except (ValueError, OSError, AttributeError):
                 logger.warning("idempotency 색인이 손상되어 job 기록으로 재구성합니다.")
                 self._idem = {}
@@ -188,7 +202,12 @@ class JobManager:
                 continue
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
-                record = JobRecord(**{k: data.get(k, v) for k, v in asdict(JobRecord(job_id="")).items()})
+                record = JobRecord(
+                    **{
+                        k: data.get(k, v)
+                        for k, v in asdict(JobRecord(job_id="")).items()
+                    }
+                )
                 record.job_id = path.stem
                 self._records[record.job_id] = record
             except (ValueError, OSError, TypeError):
@@ -239,7 +258,9 @@ class JobManager:
         if removed:
             with self._lock:
                 self._idem = {
-                    key: job_id for key, job_id in self._idem.items() if job_id in self._records
+                    key: job_id
+                    for key, job_id in self._idem.items()
+                    if job_id in self._records
                 }
                 self._write_idempotency()
             logger.info("보존 기간 만료 job 기록 %d건을 정리했습니다.", removed)
@@ -257,7 +278,9 @@ class JobManager:
                 self._persist(record)
                 changed = True
         if changed:
-            logger.warning("중단된 job을 interrupted로 복원했습니다 (자동 재실행 없음).")
+            logger.warning(
+                "중단된 job을 interrupted로 복원했습니다 (자동 재실행 없음)."
+            )
 
     # -- public API ------------------------------------------------------
     def submit(
@@ -280,8 +303,12 @@ class JobManager:
                         "IDEMPOTENCY_CONFLICT",
                         f"같은 idempotency_key로 다른 계획이 이미 제출되었습니다: {job_id}",
                     )
-            if self._active is not None and len(self._queue) >= max(0, self._cfg.max_queued_jobs):
-                raise McpError("JOB_QUEUE_FULL", "대기 큐가 가득 찼습니다. 나중에 다시 요청하세요.")
+            if self._active is not None and len(self._queue) >= max(
+                0, self._cfg.max_queued_jobs
+            ):
+                raise McpError(
+                    "JOB_QUEUE_FULL", "대기 큐가 가득 찼습니다. 나중에 다시 요청하세요."
+                )
             record = JobRecord(
                 job_id=secrets.token_hex(16),
                 format=plan.format,
@@ -309,7 +336,9 @@ class JobManager:
 
     def cancel(self, job_id: str, *, confirmation: str) -> JobRecord:
         if confirmation != CONFIRMATION_TOKEN:
-            raise McpError("CONFIRMATION_REQUIRED", "취소에도 명시적 승인 토큰이 필요합니다.")
+            raise McpError(
+                "CONFIRMATION_REQUIRED", "취소에도 명시적 승인 토큰이 필요합니다."
+            )
         with self._lock:
             record = self.get(job_id)
             if record.state in TERMINAL_STATES:
@@ -328,7 +357,9 @@ class JobManager:
     # -- worker ----------------------------------------------------------
     def _start_locked(self, record: JobRecord) -> None:
         self._active = record.job_id
-        thread = threading.Thread(target=self._run_job, args=(record.job_id,), daemon=True)
+        thread = threading.Thread(
+            target=self._run_job, args=(record.job_id,), daemon=True
+        )
         thread.start()
 
     def _queue_expired(self, record: JobRecord) -> bool:
@@ -386,7 +417,9 @@ class JobManager:
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            raise McpError("OUTPUT_DENIED", f"출력 폴더를 만들 수 없습니다: {exc}") from exc
+            raise McpError(
+                "OUTPUT_DENIED", f"출력 폴더를 만들 수 없습니다: {exc}"
+            ) from exc
         base, _ = resolve_cli_executable(cfg)
         busy_seen = False
         com_unavailable_seen = False
@@ -424,21 +457,37 @@ class JobManager:
                 )
             if run.timed_out:
                 record.timed_out = True
-                self._append_failure(record, input_file, f"제한 시간 초과({cfg.job_timeout_seconds}s)")
+                self._append_failure(
+                    record, input_file, f"제한 시간 초과({cfg.job_timeout_seconds}s)"
+                )
                 # 한글이 응답하지 않는 상태일 가능성이 높아 남은 파일은 실행하지 않는다.
-                self._mark_not_run(record, record.inputs[index + 1 :], "이전 파일이 제한 시간을 초과해 중단")
+                self._mark_not_run(
+                    record,
+                    record.inputs[index + 1 :],
+                    "이전 파일이 제한 시간을 초과해 중단",
+                )
                 break
             if is_com_unavailable_failure(run) and run.returncode != 0:
                 com_unavailable_seen = True
             if is_busy_failure(run) and run.returncode != 0:
                 busy_seen = True
-                self._append_failure(record, input_file, "외부 HwpMate 실행 중 (BUSY_EXTERNAL_INSTANCE)")
-                self._mark_not_run(record, record.inputs[index + 1 :], "외부 HwpMate 실행 중 (BUSY_EXTERNAL_INSTANCE)")
+                self._append_failure(
+                    record, input_file, "외부 HwpMate 실행 중 (BUSY_EXTERNAL_INSTANCE)"
+                )
+                self._mark_not_run(
+                    record,
+                    record.inputs[index + 1 :],
+                    "외부 HwpMate 실행 중 (BUSY_EXTERNAL_INSTANCE)",
+                )
                 break
             try:
                 report = read_cli_report(report_path)
             except McpError:
-                self._append_failure(record, input_file, f"REPORT_MISSING (CLI 종료 코드 {run.returncode})")
+                self._append_failure(
+                    record,
+                    input_file,
+                    f"REPORT_MISSING (CLI 종료 코드 {run.returncode})",
+                )
                 continue
             for item in report["items"]:
                 record.items.append(item)
@@ -460,7 +509,9 @@ class JobManager:
                 "message": "HwpMate(GUI 또는 다른 CLI)가 실행 중이어서 일부 또는 전체 파일을 실행하지 못했습니다.",
             }
         elif record.timed_out:
-            record.state = "timeout" if record.success_count == 0 else "partially_failed"
+            record.state = (
+                "timeout" if record.success_count == 0 else "partially_failed"
+            )
             record.error = {
                 "code": "TIMEOUT",
                 "message": "제한 시간 안에 변환이 끝나지 않아 남은 파일 실행을 중단했습니다.",
@@ -483,12 +534,21 @@ class JobManager:
                         "message": "한글 COM 초기화에 실패했습니다. 한컴오피스 한글 설치·실행 상태를 확인하세요.",
                     }
                 else:
-                    record.error = {"code": "OUTPUT_VALIDATION_FAILED", "message": "일부 파일 변환에 실패했습니다."}
+                    record.error = {
+                        "code": "OUTPUT_VALIDATION_FAILED",
+                        "message": "일부 파일 변환에 실패했습니다.",
+                    }
         self._persist(record)
 
     def _append_failure(self, record: JobRecord, input_file: str, detail: str) -> None:
         record.items.append(
-            {"input": input_file, "outputs": [], "status": "실패", "detail": detail, "retry_count": 0}
+            {
+                "input": input_file,
+                "outputs": [],
+                "status": "실패",
+                "detail": detail,
+                "retry_count": 0,
+            }
         )
         record.failed_count += 1
         self._persist(record)

@@ -99,7 +99,10 @@ def test_preview_quota_enforced(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path, max_files_per_job=1)
     with pytest.raises(McpError) as excinfo:
         preview_conversion(
-            cfg, input_paths=[str(src)], format_type="PDF", output_dir=str(tmp_path / "out")
+            cfg,
+            input_paths=[str(src)],
+            format_type="PDF",
+            output_dir=str(tmp_path / "out"),
         )
     assert excinfo.value.code == "INPUT_TOO_LARGE"
 

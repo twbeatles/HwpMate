@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 import re
@@ -10,6 +10,7 @@ from .constants import BACKUP_DIR_NAME, SUPPORTED_EXTENSIONS
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
+
 
 def is_valid_path_name(path: str) -> bool:
     """Windows 파일 경로에 유효하지 않은 문자가 있는지 검증"""
@@ -23,9 +24,9 @@ def is_valid_path_name(path: str) -> bool:
     extended_unc_prefix = "\\\\?\\UNC\\"
     extended_prefix = "\\\\?\\"
     if normalized.startswith(extended_unc_prefix):
-        normalized = "\\\\" + normalized[len(extended_unc_prefix):]
+        normalized = "\\\\" + normalized[len(extended_unc_prefix) :]
     elif normalized.startswith(extended_prefix):
-        normalized = normalized[len(extended_prefix):]
+        normalized = normalized[len(extended_prefix) :]
 
     invalid_chars = '<>"|?*'
     if any(char in normalized for char in invalid_chars):
@@ -40,9 +41,28 @@ def is_valid_path_name(path: str) -> bool:
         return False
 
     reserved_names = {
-        "CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        "COM1",
+        "COM2",
+        "COM3",
+        "COM4",
+        "COM5",
+        "COM6",
+        "COM7",
+        "COM8",
+        "COM9",
+        "LPT1",
+        "LPT2",
+        "LPT3",
+        "LPT4",
+        "LPT5",
+        "LPT6",
+        "LPT7",
+        "LPT8",
+        "LPT9",
     }
     for part in re.split(r"[\\]+", path_without_drive):
         if not part or part in {".", ".."}:
@@ -95,7 +115,9 @@ def is_path_length_risky(
     """
     from .constants import WINDOWS_PATH_WARN_LENGTH
 
-    limit = WINDOWS_PATH_WARN_LENGTH if warn_length is None else max(1, int(warn_length))
+    limit = (
+        WINDOWS_PATH_WARN_LENGTH if warn_length is None else max(1, int(warn_length))
+    )
     return path_char_length(path) >= limit
 
 
@@ -107,7 +129,9 @@ def is_path_length_blocking(
     """COM 호환이 어려울 정도로 긴 경로인지 (차단 후보)."""
     from .constants import WINDOWS_PATH_BLOCK_LENGTH
 
-    limit = WINDOWS_PATH_BLOCK_LENGTH if block_length is None else max(1, int(block_length))
+    limit = (
+        WINDOWS_PATH_BLOCK_LENGTH if block_length is None else max(1, int(block_length))
+    )
     return path_char_length(path) >= limit
 
 
@@ -150,7 +174,9 @@ def iter_supported_files(
 ) -> Iterable[Path]:
     """단일 패스로 지원 확장자 파일을 순회"""
     allowed = {ext.lower() for ext in (allowed_exts or SUPPORTED_EXTENSIONS)}
-    excluded_dirs = {name.lower() for name in (excluded_dir_names or (BACKUP_DIR_NAME,))}
+    excluded_dirs = {
+        name.lower() for name in (excluded_dir_names or (BACKUP_DIR_NAME,))
+    }
 
     try:
         if root_path.is_file():

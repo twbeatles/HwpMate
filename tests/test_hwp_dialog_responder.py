@@ -11,7 +11,9 @@ from hwpmate.windows_integration.hwp_dialog_responder import (
 )
 
 
-def _patch_windows(monkeypatch, windows: dict[int, str], *, visible: set[int] | None = None) -> list[set[int]]:
+def _patch_windows(
+    monkeypatch, windows: dict[int, str], *, visible: set[int] | None = None
+) -> list[set[int]]:
     requested_pids: list[set[int]] = []
 
     def fake_list(pids, *, security_dialogs_only=False):
@@ -22,7 +24,9 @@ def _patch_windows(monkeypatch, windows: dict[int, str], *, visible: set[int] | 
     monkeypatch.setattr(wi, "_list_top_level_hwnds_for_pids", fake_list)
     monkeypatch.setattr(wi, "_window_title", lambda hwnd: windows[hwnd])
     visible_set = set(windows) if visible is None else visible
-    monkeypatch.setattr(responder_module, "_is_window_visible", lambda hwnd: hwnd in visible_set)
+    monkeypatch.setattr(
+        responder_module, "_is_window_visible", lambda hwnd: hwnd in visible_set
+    )
     return requested_pids
 
 
@@ -57,7 +61,9 @@ def test_find_compat_dialogs_skips_hidden_window(monkeypatch) -> None:
 def test_respond_posts_continue_key_and_honors_skip(monkeypatch) -> None:
     _patch_windows(monkeypatch, {1: "호환 문서", 2: "호환 문서"})
     posted: list[int] = []
-    monkeypatch.setattr(responder_module, "_post_continue_key", lambda hwnd: posted.append(hwnd) or True)
+    monkeypatch.setattr(
+        responder_module, "_post_continue_key", lambda hwnd: posted.append(hwnd) or True
+    )
 
     responded = respond_hwp_compat_dialogs({100}, frozenset({2}))
 

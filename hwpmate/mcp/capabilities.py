@@ -39,8 +39,12 @@ def gather_capabilities(cfg: McpConfig) -> dict:
     warnings: list[str] = list(cfg.config_warnings)
     requires_elevation = False
     if not cli_valid:
-        warnings.append("CLI 실행 파일이 설정되지 않았거나 존재하지 않아 변환 실행이 불가합니다.")
-    elif executable_requires_admin(Path(cli_path)) and not current_process_is_elevated():
+        warnings.append(
+            "CLI 실행 파일이 설정되지 않았거나 존재하지 않아 변환 실행이 불가합니다."
+        )
+    elif (
+        executable_requires_admin(Path(cli_path)) and not current_process_is_elevated()
+    ):
         # 파일은 있지만 이 MCP 프로세스 권한으로는 실행할 수 없다 (WinError 740).
         requires_elevation = True
         cli_valid = False

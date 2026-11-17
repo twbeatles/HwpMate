@@ -43,7 +43,9 @@ def test_mcp_does_not_import_gui_or_lock_modules() -> None:
         "bad = [m for m in ('hwpmate.app', 'hwpmate.app_instance', 'hwpmate.ui.main_window') if m in sys.modules]; "
         "sys.exit('GUI modules imported: ' + ','.join(bad) if bad else 0)"
     )
-    proc = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=120)
+    proc = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, timeout=120
+    )
     assert proc.returncode == 0, proc.stderr or "GUI modules imported"
 
 
@@ -86,8 +88,14 @@ def test_job_resource_after_submit(tmp_path, monkeypatch) -> None:
         job_dir=str(tmp_path / "jobs"),
     )
     manager = JobManager(cfg)
-    preview = preview_conversion(cfg, input_paths=[str(src)], format_type="PDF", output_dir=str(tmp_path / "out"))
-    record = manager.submit(get_plan(preview["plan_id"]), confirmation=CONFIRMATION_TOKEN, idempotency_key="res1")
+    preview = preview_conversion(
+        cfg, input_paths=[str(src)], format_type="PDF", output_dir=str(tmp_path / "out")
+    )
+    record = manager.submit(
+        get_plan(preview["plan_id"]),
+        confirmation=CONFIRMATION_TOKEN,
+        idempotency_key="res1",
+    )
     wait_for_state(manager, record.job_id, timeout_seconds=60)
 
     server = create_server(cfg)

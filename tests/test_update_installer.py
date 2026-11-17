@@ -30,7 +30,9 @@ def sample_manifest() -> ReleaseManifest:
     )
 
 
-def test_prepare_staged_update_success(sample_manifest: ReleaseManifest, tmp_path: Path) -> None:
+def test_prepare_staged_update_success(
+    sample_manifest: ReleaseManifest, tmp_path: Path
+) -> None:
     chunks = [b"fake executable ", b"binary content ", b"for testing"]
     staged = prepare_staged_update(
         sample_manifest,
@@ -43,7 +45,9 @@ def test_prepare_staged_update_success(sample_manifest: ReleaseManifest, tmp_pat
     assert staged.read_bytes() == b"fake executable binary content for testing"
 
 
-def test_prepare_staged_update_hash_mismatch(sample_manifest: ReleaseManifest, tmp_path: Path) -> None:
+def test_prepare_staged_update_hash_mismatch(
+    sample_manifest: ReleaseManifest, tmp_path: Path
+) -> None:
     chunks = [b"corrupted binary payload"]
     with pytest.raises(ValueError, match="일치하지 않습니다"):
         prepare_staged_update(
@@ -55,7 +59,9 @@ def test_prepare_staged_update_hash_mismatch(sample_manifest: ReleaseManifest, t
     assert len(list(tmp_path.glob("update-*.exe"))) == 0
 
 
-def test_prepare_staged_update_user_declined(sample_manifest: ReleaseManifest, tmp_path: Path) -> None:
+def test_prepare_staged_update_user_declined(
+    sample_manifest: ReleaseManifest, tmp_path: Path
+) -> None:
     chunks = [b"fake executable binary content for testing"]
     staged = prepare_staged_update(
         sample_manifest,
@@ -187,7 +193,9 @@ def test_apply_staged_update_rollback_status_is_explicit(tmp_path: Path) -> None
     staged.write_bytes(b"bad")
 
     with pytest.raises(UpdateApplyError) as exc_info:
-        apply_staged_update(target=target, staged=staged, backup=backup, smoke_runner=lambda p: False)
+        apply_staged_update(
+            target=target, staged=staged, backup=backup, smoke_runner=lambda p: False
+        )
 
     assert exc_info.value.status == "rolled_back"
     assert target.read_bytes() == b"old"
@@ -237,10 +245,15 @@ def test_unique_update_backup_path_skips_existing_backups(tmp_path: Path) -> Non
     (tmp_path / "app.exe.v9.1.0.bak").write_bytes(b"old")
     (tmp_path / "app.exe.v9.1.0.1.bak").write_bytes(b"old")
 
-    assert unique_update_backup_path(target, "9.1.0") == (tmp_path / "app.exe.v9.1.0.2.bak").resolve()
+    assert (
+        unique_update_backup_path(target, "9.1.0")
+        == (tmp_path / "app.exe.v9.1.0.2.bak").resolve()
+    )
 
 
-def test_cleanup_update_staging_removes_helpers_and_stale_downloads(tmp_path: Path) -> None:
+def test_cleanup_update_staging_removes_helpers_and_stale_downloads(
+    tmp_path: Path,
+) -> None:
     from hwpmate.services.update_installer import cleanup_update_staging
 
     helper = tmp_path / "update-helper-abc.exe"

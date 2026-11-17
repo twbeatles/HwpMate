@@ -42,7 +42,9 @@ class FakeHwp:
             Path(path).write_bytes(self.output_content)
         if result is True and self.aux_suffix:
             output = Path(path)
-            aux_path = output.with_name(f"{output.stem}{self.aux_suffix}{output.suffix}")
+            aux_path = output.with_name(
+                f"{output.stem}{self.aux_suffix}{output.suffix}"
+            )
             aux_path.write_bytes(self.output_content)
         return result
 
@@ -175,7 +177,9 @@ def test_convert_file_pdf_saveas_first_skips_print_when_saveas_ok(
         print_calls.append(1)
         return False, None
 
-    monkeypatch.setattr(converter_impl, "try_export_pdf_via_print_to_pdf_ex", fake_export)
+    monkeypatch.setattr(
+        converter_impl, "try_export_pdf_via_print_to_pdf_ex", fake_export
+    )
     monkeypatch.setattr(converter_impl, "apply_default_print_settings", lambda h: True)
 
     source = tmp_path / "a.hwp"
@@ -265,7 +269,9 @@ def test_convert_file_pdf_print_first_skips_saveas_when_print_ok(
         Path(path).write_bytes(b"%PDF-1.4 x")
         return True, "print_to_pdf_ex"
 
-    monkeypatch.setattr(converter_impl, "try_export_pdf_via_print_to_pdf_ex", fake_export)
+    monkeypatch.setattr(
+        converter_impl, "try_export_pdf_via_print_to_pdf_ex", fake_export
+    )
     monkeypatch.setattr(converter_impl, "apply_default_print_settings", lambda h: True)
 
     converter = build_converter(fake)
@@ -292,7 +298,9 @@ def test_convert_file_pdf_saveas_first_falls_back_to_print(
         Path(path).write_bytes(b"%PDF-1.4 fallback")
         return True, "print_to_pdf_ex"
 
-    monkeypatch.setattr(converter_impl, "try_export_pdf_via_print_to_pdf_ex", fake_export)
+    monkeypatch.setattr(
+        converter_impl, "try_export_pdf_via_print_to_pdf_ex", fake_export
+    )
 
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")
@@ -474,11 +482,15 @@ def test_convert_file_fails_when_output_file_is_empty(tmp_path: Path) -> None:
     assert error is not None and "비어 있습니다" in error
 
 
-def test_convert_file_removes_new_docx_artifact_when_saveas_fails(tmp_path: Path) -> None:
+def test_convert_file_removes_new_docx_artifact_when_saveas_fails(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")
     output = tmp_path / "a.docx"
-    fake = FakeHwp(save_results=[False, False, False, False], write_output_on_failure=True)
+    fake = FakeHwp(
+        save_results=[False, False, False, False], write_output_on_failure=True
+    )
 
     success, error = build_converter(fake).convert_file(source, output, "DOCX")
 
@@ -487,7 +499,9 @@ def test_convert_file_removes_new_docx_artifact_when_saveas_fails(tmp_path: Path
     assert not output.exists()
 
 
-def test_convert_file_preserves_existing_docx_when_failed_export_does_not_change_it(tmp_path: Path) -> None:
+def test_convert_file_preserves_existing_docx_when_failed_export_does_not_change_it(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")
     output = tmp_path / "a.docx"
@@ -536,7 +550,9 @@ def test_convert_file_odt_uses_odf_then_falls_back_to_odt(tmp_path: Path) -> Non
     source.write_text("x", encoding="utf-8")
     output = tmp_path / "a.odt"
     # ODF: 일반 경로 2/3-param, 확장 경로 2/3-param 모두 실패 → ODT 일반 경로 2-param 성공
-    fake = FakeHwp(save_results=[False, False, False, False, True], output_content=b"PK\x03\x04")
+    fake = FakeHwp(
+        save_results=[False, False, False, False, True], output_content=b"PK\x03\x04"
+    )
     converter = build_converter(fake)
 
     success, error = converter.convert_file(source, output, "ODT")
@@ -588,7 +604,9 @@ def test_cleanup_discards_document_instead_of_saving() -> None:
     assert fake.clear_calls == [1]
 
 
-def test_convert_file_runs_compat_dialog_responder_for_owned_pids(tmp_path: Path, monkeypatch) -> None:
+def test_convert_file_runs_compat_dialog_responder_for_owned_pids(
+    tmp_path: Path, monkeypatch
+) -> None:
     from typing import Any
 
     import hwpmate.windows_integration as wi
@@ -630,7 +648,9 @@ def test_convert_file_skips_compat_responder_without_owned_pids_or_when_disabled
     import hwpmate.windows_integration as wi
 
     created: list[object] = []
-    monkeypatch.setattr(wi, "HwpDialogAutoResponder", lambda provider: created.append(provider))
+    monkeypatch.setattr(
+        wi, "HwpDialogAutoResponder", lambda provider: created.append(provider)
+    )
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")
 

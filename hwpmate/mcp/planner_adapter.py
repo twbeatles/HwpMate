@@ -60,7 +60,9 @@ def _stat_entry(path: Path) -> PlanEntry:
     try:
         stat = path.stat()
     except OSError as exc:
-        raise McpError("INPUT_NOT_FOUND", f"입력 파일을 읽을 수 없습니다: {path} ({exc})") from exc
+        raise McpError(
+            "INPUT_NOT_FOUND", f"입력 파일을 읽을 수 없습니다: {path} ({exc})"
+        ) from exc
     return PlanEntry(input_file=str(path), size=stat.st_size, mtime_ns=stat.st_mtime_ns)
 
 
@@ -99,7 +101,9 @@ def _iter_scan_files(
             ]
             for filename in filenames:
                 candidate = current / filename
-                if output_dir is not None and is_within_directory(candidate, output_dir):
+                if output_dir is not None and is_within_directory(
+                    candidate, output_dir
+                ):
                     continue
                 if candidate.suffix.lower() in allowed:
                     found.append(candidate)
@@ -113,16 +117,22 @@ def _iter_scan_files(
                     except OSError:
                         continue
                     candidate = Path(entry.path)
-                    if output_dir is not None and is_within_directory(candidate, output_dir):
+                    if output_dir is not None and is_within_directory(
+                        candidate, output_dir
+                    ):
                         continue
                     if candidate.suffix.lower() in allowed:
                         found.append(candidate)
         except OSError as exc:
-            raise McpError("INPUT_NOT_FOUND", f"폴더를 읽을 수 없습니다: {root} ({exc})") from exc
+            raise McpError(
+                "INPUT_NOT_FOUND", f"폴더를 읽을 수 없습니다: {root} ({exc})"
+            ) from exc
     # backup 폴더 자체를 입력으로 준 경우 os.walk가 수집하므로 제외 집계
     kept: list[Path] = []
     for candidate in found:
-        if excluded in {part.lower() for part in candidate.relative_to(root).parts[:-1]}:
+        if excluded in {
+            part.lower() for part in candidate.relative_to(root).parts[:-1]
+        }:
             skipped_backup += 1
             continue
         kept.append(candidate)
@@ -143,7 +153,9 @@ def _collect_inputs(
     for raw in raw_inputs:
         resolved = check_input_path(cfg, raw)
         if resolved.is_file():
-            if resolved.suffix.lower() not in {ext.lower() for ext in SUPPORTED_EXTENSIONS}:
+            if resolved.suffix.lower() not in {
+                ext.lower() for ext in SUPPORTED_EXTENSIONS
+            }:
                 raise McpError(
                     "BAD_INPUT",
                     f"한글 문서(.hwp/.hwpx)만 변환할 수 있습니다: {resolved.name}",
@@ -162,7 +174,9 @@ def _collect_inputs(
             for candidate in files:
                 ordered[str(candidate).lower()] = candidate
         else:
-            raise McpError("INPUT_NOT_FOUND", f"입력 경로가 존재하지 않습니다: {resolved}")
+            raise McpError(
+                "INPUT_NOT_FOUND", f"입력 경로가 존재하지 않습니다: {resolved}"
+            )
     return sorted(ordered.values(), key=lambda p: str(p).lower()), skipped_backup
 
 
@@ -177,7 +191,9 @@ def _check_quotas(cfg: McpConfig, files: list[Path]) -> int:
         try:
             total += candidate.stat().st_size
         except OSError as exc:
-            raise McpError("INPUT_NOT_FOUND", f"입력 파일을 읽을 수 없습니다: {candidate}") from exc
+            raise McpError(
+                "INPUT_NOT_FOUND", f"입력 파일을 읽을 수 없습니다: {candidate}"
+            ) from exc
     limit = max(1, cfg.max_input_total_mb) * 1024 * 1024
     if total > limit:
         raise McpError(
@@ -198,10 +214,16 @@ def preview_conversion(
     clear_expired_plans()
     fmt = normalize_format(format_type)
     if not str(output_dir or "").strip():
-        raise McpError("OUTPUT_DENIED", "MCP 변환은 출력 폴더를 명시해야 합니다 (원본 근처 자동 저장 금지).")
+        raise McpError(
+            "OUTPUT_DENIED",
+            "MCP 변환은 출력 폴더를 명시해야 합니다 (원본 근처 자동 저장 금지).",
+        )
     approved_output = check_output_dir(cfg, output_dir)
     files, skipped_backup = _collect_inputs(
-        cfg, [str(path) for path in input_paths], recursive=bool(recursive), output_dir=approved_output
+        cfg,
+        [str(path) for path in input_paths],
+        recursive=bool(recursive),
+        output_dir=approved_output,
     )
     if not files:
         raise McpError("INPUT_NOT_FOUND", "변환할 한글 문서(.hwp/.hwpx)가 없습니다.")
@@ -221,19 +243,31 @@ def preview_conversion(
             )
         )
     planner = TaskPlanner()
-    conflicts_renamed = planner.resolve_output_conflicts(tasks, overwrite=False, format_type=fmt)
+    conflicts_renamed = planner.resolve_output_conflicts(
+        tasks, overwrite=False, format_type=fmt
+    )
 
     warnings: list[str] = []
     if skipped_backup:
-        warnings.append(f"백업(backup) 폴더의 {skipped_backup}개 파일은 수집에서 제외했습니다.")
+        warnings.append(
+            f"백업(backup) 폴더의 {skipped_backup}개 파일은 수집에서 제외했습니다."
+        )
     for task in tasks:
-        if is_path_length_blocking(task.output_file) or is_path_length_blocking(task.input_file):
-            warnings.append(f"경로가 너무 길어 COM 변환이 실패할 수 있습니다: {task.input_file.name}")
+        if is_path_length_blocking(task.output_file) or is_path_length_blocking(
+            task.input_file
+        ):
+            warnings.append(
+                f"경로가 너무 길어 COM 변환이 실패할 수 있습니다: {task.input_file.name}"
+            )
             break
     else:
         for task in tasks:
-            if is_path_length_risky(task.output_file) or is_path_length_risky(task.input_file):
-                warnings.append("경로 길이가 240자를 넘는 파일이 있어 주의가 필요합니다.")
+            if is_path_length_risky(task.output_file) or is_path_length_risky(
+                task.input_file
+            ):
+                warnings.append(
+                    "경로 길이가 240자를 넘는 파일이 있어 주의가 필요합니다."
+                )
                 break
     if not approved_output.exists():
         warnings.append("출력 폴더가 아직 없어 제출 시 생성됩니다.")
@@ -247,7 +281,8 @@ def preview_conversion(
         output_dir=str(approved_output),
         recursive=bool(recursive),
         entries=entries,
-        expires_at=datetime.now(timezone.utc) + timedelta(seconds=max(60, cfg.plan_ttl_seconds)),
+        expires_at=datetime.now(timezone.utc)
+        + timedelta(seconds=max(60, cfg.plan_ttl_seconds)),
     )
     with _plans_lock:
         _plans[plan_id] = record
@@ -277,17 +312,29 @@ def get_plan(plan_id: str) -> PlanRecord:
         record = _plans.get(str(plan_id))
         if record is None or record.is_expired(now):
             _plans.pop(str(plan_id), None)
-            raise McpError("PLAN_EXPIRED", "계획이 만료되었거나 존재하지 않습니다. 다시 preview를 요청하세요.")
+            raise McpError(
+                "PLAN_EXPIRED",
+                "계획이 만료되었거나 존재하지 않습니다. 다시 preview를 요청하세요.",
+            )
     try:
         current = [
-            (entry.input_file, Path(entry.input_file).stat().st_size, Path(entry.input_file).stat().st_mtime_ns)
+            (
+                entry.input_file,
+                Path(entry.input_file).stat().st_size,
+                Path(entry.input_file).stat().st_mtime_ns,
+            )
             for entry in record.entries
         ]
     except OSError as exc:
-        raise McpError("PLAN_STALE", f"입력 파일이 변경·삭제되어 계획을 사용할 수 없습니다: {exc}") from exc
+        raise McpError(
+            "PLAN_STALE", f"입력 파일이 변경·삭제되어 계획을 사용할 수 없습니다: {exc}"
+        ) from exc
     for entry, (path, size, mtime_ns) in zip(record.entries, current, strict=False):
         if entry.input_file != path or entry.size != size or entry.mtime_ns != mtime_ns:
-            raise McpError("PLAN_STALE", "입력 파일이 변경되어 계획을 사용할 수 없습니다. 다시 preview를 요청하세요.")
+            raise McpError(
+                "PLAN_STALE",
+                "입력 파일이 변경되어 계획을 사용할 수 없습니다. 다시 preview를 요청하세요.",
+            )
     return record
 
 

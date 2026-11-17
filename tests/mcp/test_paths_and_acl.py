@@ -99,6 +99,8 @@ def test_output_requires_explicit_dir(tmp_path: Path) -> None:
     src.parent.mkdir(parents=True)
     src.write_bytes(b"x")
     with pytest.raises(McpError) as excinfo:
-        preview_conversion(cfg, input_paths=[str(src)], format_type="PDF", output_dir="")
+        preview_conversion(
+            cfg, input_paths=[str(src)], format_type="PDF", output_dir=""
+        )
     assert excinfo.value.code == "OUTPUT_DENIED"
     _ = os  # unused guard

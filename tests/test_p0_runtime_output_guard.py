@@ -44,7 +44,9 @@ class WritingConverter:
     def kill_owned_processes(self) -> bool:
         return False
 
-    def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+    def convert_file(
+        self, input_path, output_path, format_type="PDF", *, cancel_check=None
+    ):
         del input_path, format_type, cancel_check
         target = Path(output_path)
         self.seen_outputs.append(target)
@@ -83,7 +85,9 @@ def _options(format_type: str = "PDF", overwrite: bool = False) -> TaskRunOption
     )
 
 
-def test_runtime_toctou_planted_output_is_never_silently_replaced(tmp_path: Path) -> None:
+def test_runtime_toctou_planted_output_is_never_silently_replaced(
+    tmp_path: Path,
+) -> None:
     """계획 후 누군가 출력 파일을 만들었어도 무음으로 교체하지 않는다."""
     src = tmp_path / "a.hwp"
     src.write_bytes(b"dummy-hwp")
@@ -188,7 +192,9 @@ def test_claimed_but_missing_artifact_is_failure_not_success(tmp_path: Path) -> 
     task = ConversionTask(input_file=src, output_file=tmp_path / "a.pdf")
 
     class LyingConverter(WritingConverter):
-        def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):  # noqa: ANN001, ANN202
+        def convert_file(
+            self, input_path, output_path, format_type="PDF", *, cancel_check=None
+        ):  # noqa: ANN001, ANN202
             del input_path, output_path, format_type, cancel_check
             self.seen_outputs.append(Path(tmp_path / "a.pdf"))
             return True, None
@@ -242,7 +248,9 @@ def test_summary_counts_match_files_on_disk(tmp_path: Path) -> None:
     results = {"good.hwp": (True, None), "bad.hwp": (False, "save failed")}
 
     class SplitConverter(WritingConverter):
-        def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):  # noqa: ANN001, ANN202
+        def convert_file(
+            self, input_path, output_path, format_type="PDF", *, cancel_check=None
+        ):  # noqa: ANN001, ANN202
             del format_type, cancel_check
             ok, error = results[Path(input_path).name]
             if ok:
@@ -266,7 +274,9 @@ def test_summary_counts_match_files_on_disk(tmp_path: Path) -> None:
         same_location=False,
         output_path=str(out_dir),
         tasks=tasks,
-        skipped_tasks=[ConversionTask(skipped, skipped, status="건너뜀", error="same format")],
+        skipped_tasks=[
+            ConversionTask(skipped, skipped, status="건너뜀", error="same format")
+        ],
     )
     summary = build_summary(
         format_type="PDF",
@@ -276,7 +286,11 @@ def test_summary_counts_match_files_on_disk(tmp_path: Path) -> None:
         elapsed_seconds=0.1,
         progid_used="Fake.Hwp",
     )
-    assert (summary.success_count, summary.failed_count, summary.skipped_count) == (1, 1, 1)
+    assert (summary.success_count, summary.failed_count, summary.skipped_count) == (
+        1,
+        1,
+        1,
+    )
     for output in summary.output_paths:
         assert Path(output).is_file(), output
     assert len(summary.output_paths) == summary.success_count

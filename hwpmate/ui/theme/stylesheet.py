@@ -22,7 +22,9 @@ def build_stylesheet(p: ThemePalette, *, with_icons: bool = True) -> str:
     up = icon_url("chevron-up", p.text_muted, 12) if with_icons else ""
     up_disabled = icon_url("chevron-up", p.text_disabled, 12) if with_icons else ""
     spin_down = icon_url("chevron-down", p.text_muted, 12) if with_icons else ""
-    spin_down_disabled = icon_url("chevron-down", p.text_disabled, 12) if with_icons else ""
+    spin_down_disabled = (
+        icon_url("chevron-down", p.text_disabled, 12) if with_icons else ""
+    )
 
     return f"""
 /* ===== 기본 ===== */

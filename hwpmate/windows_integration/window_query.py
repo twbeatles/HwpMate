@@ -117,7 +117,9 @@ def _list_top_level_hwnds_for_pids(
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
             if int(pid.value) not in target_pids:
                 return True
-            if security_dialogs_only and not api.is_likely_hwp_security_dialog(int(hwnd)):
+            if security_dialogs_only and not api.is_likely_hwp_security_dialog(
+                int(hwnd)
+            ):
                 return True
             hwnds.append(int(hwnd))
         except Exception:

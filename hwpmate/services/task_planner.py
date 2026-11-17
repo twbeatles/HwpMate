@@ -104,12 +104,16 @@ class TaskPlanner:
                         raise ValueError("출력 폴더를 선택하세요.")
                     output_folder = Path(output_folder_text)
                     if not output_folder.exists():
-                        raise ValueError(f"출력 폴더가 존재하지 않습니다: {output_folder}")
+                        raise ValueError(
+                            f"출력 폴더가 존재하지 않습니다: {output_folder}"
+                        )
 
                     try:
                         rel_path = input_file.relative_to(folder)
                         output_file = (
-                            output_folder / rel_path.parent / (input_file.stem + output_ext)
+                            output_folder
+                            / rel_path.parent
+                            / (input_file.stem + output_ext)
                         )
                     except ValueError:
                         # 캐시 경로가 선택 폴더 트리 밖으로 해석되면 flat 저장 + 경고
@@ -118,7 +122,9 @@ class TaskPlanner:
                             f"폴더 밖 경로로 보여 출력 하위 구조를 유지하지 않습니다: {input_file.name}"
                         )
 
-                tasks.append(ConversionTask(input_file=input_file, output_file=output_file))
+                tasks.append(
+                    ConversionTask(input_file=input_file, output_file=output_file)
+                )
 
             if skipped_tasks:
                 warnings.append(
@@ -171,9 +177,7 @@ class TaskPlanner:
             tasks.append(ConversionTask(input_file=input_file, output_file=output_file))
 
         if skipped_tasks:
-            warnings.append(
-                f"동일 형식 {len(skipped_tasks)}개는 자동으로 건너뜁니다."
-            )
+            warnings.append(f"동일 형식 {len(skipped_tasks)}개는 자동으로 건너뜁니다.")
         self._append_output_warnings(tasks, warnings, same_location=same_location)
 
         return PlannedConversion(
@@ -222,7 +226,9 @@ class TaskPlanner:
         """Allocate a collision-free output path and return whether it changed."""
         original_path = task.output_file
         batch_duplicate = artifact_key(original_path) in used_path_keys
-        existing_conflict = self._blocks_output_path(original_path, overwrite, format_type)
+        existing_conflict = self._blocks_output_path(
+            original_path, overwrite, format_type
+        )
         if not (batch_duplicate or existing_conflict):
             used_path_keys.add(artifact_key(task.output_file))
             return False
@@ -247,7 +253,9 @@ class TaskPlanner:
                 suffix = "" if fallback_counter == 1 else f"_{fallback_counter}"
                 new_name = f"{stem}_{timestamp}{suffix}{ext}"
                 new_path = parent / new_name
-                exists_conflict = self._blocks_output_path(new_path, overwrite, format_type)
+                exists_conflict = self._blocks_output_path(
+                    new_path, overwrite, format_type
+                )
                 batch_conflict = artifact_key(new_path) in used_path_keys
                 if not exists_conflict and not batch_conflict:
                     task.output_file = new_path
@@ -270,7 +278,9 @@ class TaskPlanner:
         # (예: 덮어쓰기 + HWP 변환에서 a.hwpx -> a.hwp 가 건너뛴 원본 a.hwp 를 교체하는 문제)
         if self._is_existing_protected_source(output_file):
             return True
-        return (not overwrite) and self._has_existing_output_conflict(output_file, format_type)
+        return (not overwrite) and self._has_existing_output_conflict(
+            output_file, format_type
+        )
 
     @staticmethod
     def _is_existing_protected_source(output_file: Path) -> bool:
@@ -281,7 +291,9 @@ class TaskPlanner:
         except OSError:
             return True
 
-    def _has_existing_output_conflict(self, output_file: Path, format_type: str | None) -> bool:
+    def _has_existing_output_conflict(
+        self, output_file: Path, format_type: str | None
+    ) -> bool:
         if format_type is None:
             return output_file.exists()
         return bool(existing_artifact_conflicts(output_file, format_type))
@@ -309,8 +321,12 @@ class TaskPlanner:
 
         if unwritable_dirs:
             preview = ", ".join(str(path) for path in unwritable_dirs[:3])
-            suffix = "" if len(unwritable_dirs) <= 3 else f" 외 {len(unwritable_dirs) - 3}개"
-            warnings.append(f"같은 위치 저장 대상 중 쓰기 권한을 확인하지 못한 폴더가 있습니다: {preview}{suffix}")
+            suffix = (
+                "" if len(unwritable_dirs) <= 3 else f" 외 {len(unwritable_dirs) - 3}개"
+            )
+            warnings.append(
+                f"같은 위치 저장 대상 중 쓰기 권한을 확인하지 못한 폴더가 있습니다: {preview}{suffix}"
+            )
 
 
 def count_protected_source_renames(tasks: Iterable[ConversionTask]) -> int:

@@ -25,8 +25,12 @@ from .validator import validate_job_outputs
 logger = setup_stderr_logging()
 
 _READ_ONLY = ToolAnnotations(read_only_hint=True)
-_WRITABLE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False)
-_DESTRUCTIVE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False)
+_WRITABLE = ToolAnnotations(
+    read_only_hint=False, destructive_hint=False, idempotent_hint=False
+)
+_DESTRUCTIVE = ToolAnnotations(
+    read_only_hint=False, destructive_hint=True, idempotent_hint=False
+)
 
 
 def create_server(cfg: McpConfig) -> MCPServer:
@@ -39,7 +43,9 @@ def create_server(cfg: McpConfig) -> MCPServer:
         try:
             return gather_capabilities(cfg)
         except McpError as exc:
-            return error_envelope(exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION)
+            return error_envelope(
+                exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION
+            )
 
     @server.tool(annotations=_READ_ONLY)
     def hwpmate_list_supported_formats() -> dict[str, Any]:
@@ -47,7 +53,9 @@ def create_server(cfg: McpConfig) -> MCPServer:
         try:
             return list_supported_formats()
         except McpError as exc:
-            return error_envelope(exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION)
+            return error_envelope(
+                exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION
+            )
 
     @server.tool(annotations=_READ_ONLY)
     def hwpmate_preview_conversion(
@@ -66,7 +74,9 @@ def create_server(cfg: McpConfig) -> MCPServer:
                 recursive=bool(recursive),
             )
         except McpError as exc:
-            return error_envelope(exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION)
+            return error_envelope(
+                exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION
+            )
 
     @server.tool(annotations=_WRITABLE)
     def hwpmate_submit_conversion(
@@ -77,12 +87,20 @@ def create_server(cfg: McpConfig) -> MCPServer:
         """승인된 계획을 job으로 제출한다. 새 파일·백업·로그가 생성된다."""
         try:
             if confirmation != CONFIRMATION_TOKEN:
-                raise McpError("CONFIRMATION_REQUIRED", "명시적 승인 토큰이 필요합니다.")
+                raise McpError(
+                    "CONFIRMATION_REQUIRED", "명시적 승인 토큰이 필요합니다."
+                )
             plan = get_plan(plan_id)
-            record = jobs.submit(plan, confirmation=confirmation, idempotency_key=idempotency_key)
-            return ok_envelope(job_id=record.job_id, state=record.state, format=record.format)
+            record = jobs.submit(
+                plan, confirmation=confirmation, idempotency_key=idempotency_key
+            )
+            return ok_envelope(
+                job_id=record.job_id, state=record.state, format=record.format
+            )
         except McpError as exc:
-            return error_envelope(exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION)
+            return error_envelope(
+                exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION
+            )
 
     @server.tool(annotations=_READ_ONLY)
     def hwpmate_get_job_status(job_id: str) -> dict[str, Any]:
@@ -90,7 +108,9 @@ def create_server(cfg: McpConfig) -> MCPServer:
         try:
             return jobs.get(job_id).to_status_dict()
         except McpError as exc:
-            return error_envelope(exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION)
+            return error_envelope(
+                exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION
+            )
 
     @server.tool(annotations=_READ_ONLY)
     def hwpmate_get_job_result(
@@ -114,7 +134,9 @@ def create_server(cfg: McpConfig) -> MCPServer:
                 error=dict(record.error),
             )
         except McpError as exc:
-            return error_envelope(exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION)
+            return error_envelope(
+                exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION
+            )
 
     @server.tool(annotations=_DESTRUCTIVE)
     def hwpmate_cancel_job(job_id: str, confirmation: str = "") -> dict[str, Any]:
@@ -123,7 +145,9 @@ def create_server(cfg: McpConfig) -> MCPServer:
             record = jobs.cancel(job_id, confirmation=confirmation)
             return ok_envelope(job_id=record.job_id, state=record.state)
         except McpError as exc:
-            return error_envelope(exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION)
+            return error_envelope(
+                exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION
+            )
 
     @server.tool(annotations=_READ_ONLY)
     def hwpmate_validate_artifacts(job_id: str) -> dict[str, Any]:
@@ -131,7 +155,9 @@ def create_server(cfg: McpConfig) -> MCPServer:
         try:
             return validate_job_outputs(jobs, job_id)
         except McpError as exc:
-            return error_envelope(exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION)
+            return error_envelope(
+                exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION
+            )
 
     @server.resource("hwpmate://capabilities", description="현재 서버의 변환 가능 환경")
     def resource_capabilities() -> str:
@@ -144,10 +170,14 @@ def create_server(cfg: McpConfig) -> MCPServer:
     @server.resource("hwpmate://jobs/{job_id}", description="제출한 job 요약")
     def resource_job(job_id: str) -> str:
         try:
-            return json.dumps(jobs.get(job_id).to_status_dict(), ensure_ascii=False, indent=2)
+            return json.dumps(
+                jobs.get(job_id).to_status_dict(), ensure_ascii=False, indent=2
+            )
         except McpError as exc:
             return json.dumps(
-                error_envelope(exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION),
+                error_envelope(
+                    exc.code, exc.message, schema_version=MCP_SCHEMA_VERSION
+                ),
                 ensure_ascii=False,
                 indent=2,
             )

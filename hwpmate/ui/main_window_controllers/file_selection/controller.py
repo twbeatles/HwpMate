@@ -108,7 +108,10 @@ class FileSelectionController:
         allow_while_planning: bool = False,
     ) -> None:
         # 계획 중 허용된 내부 재스캔은 _input_locked() 의 경고 토스트를 띄우지 않도록 먼저 판정한다.
-        if not (allow_while_planning and self.state.is_planning) and self._input_locked():
+        if (
+            not (allow_while_planning and self.state.is_planning)
+            and self._input_locked()
+        ):
             return
 
         cleaned_inputs = [str(p).strip() for p in input_paths if str(p).strip()]
@@ -116,7 +119,9 @@ class FileSelectionController:
             return
 
         if not self.cancel_active_scan():
-            logger.warning("이전 파일 스캔이 아직 종료되지 않아 새 스캔을 시작하지 않습니다.")
+            logger.warning(
+                "이전 파일 스캔이 아직 종료되지 않아 새 스캔을 시작하지 않습니다."
+            )
             return
 
         self.state.scan_mode = mode
@@ -142,7 +147,9 @@ class FileSelectionController:
         self.state.scan_worker.finished.connect(self.window._on_scan_worker_finished)
         self.state.scan_worker.start()
 
-    def start_folder_preview_scan(self, folder_path: str, *, allow_while_planning: bool = False) -> None:
+    def start_folder_preview_scan(
+        self, folder_path: str, *, allow_while_planning: bool = False
+    ) -> None:
         self.window.status_label.setText("📂 폴더 스캔 중...")
         # 전체 지원 확장자를 캐시하고, 표시 카운트만 현재 형식 기준으로 계산한다.
         self.start_scan(
@@ -187,8 +194,12 @@ class FileSelectionController:
             self.window.file_table.setRowCount(end_row)
             for row_idx, file_path in enumerate(unique_files, start=start_row):
                 file_obj = Path(file_path)
-                self.window.file_table.setItem(row_idx, 0, QTableWidgetItem(file_obj.name))
-                self.window.file_table.setItem(row_idx, 1, QTableWidgetItem(str(file_obj.parent)))
+                self.window.file_table.setItem(
+                    row_idx, 0, QTableWidgetItem(file_obj.name)
+                )
+                self.window.file_table.setItem(
+                    row_idx, 1, QTableWidgetItem(str(file_obj.parent))
+                )
         finally:
             del blocker
             self.window.file_table.setUpdatesEnabled(True)
@@ -197,7 +208,9 @@ class FileSelectionController:
 
         if logger.isEnabledFor(logging.DEBUG):
             elapsed = time.perf_counter() - render_start
-            logger.debug(f"파일 목록 렌더링: batch={len(unique_files)}, 소요={elapsed:.4f}s")
+            logger.debug(
+                f"파일 목록 렌더링: batch={len(unique_files)}, 소요={elapsed:.4f}s"
+            )
         return len(unique_files)
 
     def on_scan_batch_found(self, batch: list[str]) -> None:
@@ -211,7 +224,9 @@ class FileSelectionController:
 
         if self.state.scan_mode == "folder_preview":
             self.state.folder_scan_accum.extend(batch)
-            self.state.scan_preview_count = self._count_preview_convertible(self.state.folder_scan_accum)
+            self.state.scan_preview_count = self._count_preview_convertible(
+                self.state.folder_scan_accum
+            )
 
     def on_scan_progress(self, current: int, total: int) -> None:
         if self.window.sender() is not self.state.scan_worker:
@@ -262,10 +277,16 @@ class FileSelectionController:
                 self.state.folder_scan_ready = True
                 self.state.folder_scan_ready_at = time.perf_counter()
                 self.state.folder_scan_file_count = len(self.state.folder_scan_files)
-                self.state.folder_scan_dir_mtime = self._dir_mtime(self.state.folder_scan_folder)
-                self.state.scan_preview_count = self._count_preview_convertible(self.state.folder_scan_files)
+                self.state.folder_scan_dir_mtime = self._dir_mtime(
+                    self.state.folder_scan_folder
+                )
+                self.state.scan_preview_count = self._count_preview_convertible(
+                    self.state.folder_scan_files
+                )
                 if self.state.scan_preview_count == 0:
-                    self.window.status_label.setText("⚠️ 현재 포맷으로 변환 가능한 파일이 없습니다")
+                    self.window.status_label.setText(
+                        "⚠️ 현재 포맷으로 변환 가능한 파일이 없습니다"
+                    )
                 else:
                     self.window.status_label.setText(
                         f"📁 변환 가능 {self.state.scan_preview_count}개 "
@@ -327,7 +348,11 @@ class FileSelectionController:
         if not self.state.folder_scan_ready:
             return None
         folder_key = make_path_key(canonicalize_path(folder_path.strip()))
-        cached_key = make_path_key(self.state.folder_scan_folder) if self.state.folder_scan_folder else ""
+        cached_key = (
+            make_path_key(self.state.folder_scan_folder)
+            if self.state.folder_scan_folder
+            else ""
+        )
         if folder_key != cached_key:
             return None
         if bool(include_sub) != bool(self.state.folder_scan_include_sub):
@@ -387,7 +412,11 @@ class FileSelectionController:
                     f"folder={check_folder!r}"
                 )
 
-        limit = FOLDER_SCAN_CACHE_SAMPLE_SIZE if sample_size is None else max(1, sample_size)
+        limit = (
+            FOLDER_SCAN_CACHE_SAMPLE_SIZE
+            if sample_size is None
+            else max(1, sample_size)
+        )
         sample = self._sample_cache_paths(paths, limit)
         missing = 0
         for raw in sample:
@@ -464,7 +493,9 @@ class FileSelectionController:
     def _count_preview_convertible(self, paths: list[str]) -> int:
         allowed = {
             ext.lower()
-            for ext in self.window.task_planner.preview_allowed_extensions(self.state.selected_format)
+            for ext in self.window.task_planner.preview_allowed_extensions(
+                self.state.selected_format
+            )
         }
         count = 0
         for path in paths:
@@ -476,9 +507,13 @@ class FileSelectionController:
         """포맷 변경 시 캐시된 전체 스캔에서 변환 가능 수만 다시 계산."""
         if not self.state.folder_scan_ready:
             return
-        self.state.scan_preview_count = self._count_preview_convertible(self.state.folder_scan_files)
+        self.state.scan_preview_count = self._count_preview_convertible(
+            self.state.folder_scan_files
+        )
         if self.state.scan_preview_count == 0:
-            self.window.status_label.setText("⚠️ 현재 포맷으로 변환 가능한 파일이 없습니다")
+            self.window.status_label.setText(
+                "⚠️ 현재 포맷으로 변환 가능한 파일이 없습니다"
+            )
         else:
             self.window.status_label.setText(
                 f"📁 변환 가능 {self.state.scan_preview_count}개 "
@@ -506,7 +541,9 @@ class FileSelectionController:
         if self._input_locked("변환 중에는 출력 폴더를 변경할 수 없습니다"):
             return
         initial = self.window.config.get("last_output", "")
-        folder = QFileDialog.getExistingDirectory(self.window, "출력 폴더 선택", initial)
+        folder = QFileDialog.getExistingDirectory(
+            self.window, "출력 폴더 선택", initial
+        )
         if folder:
             self.window.output_entry.setText(folder)
             self.window.config["last_output"] = folder
@@ -547,7 +584,9 @@ class FileSelectionController:
         )
         if logger.isEnabledFor(logging.DEBUG):
             elapsed = time.perf_counter() - scan_enqueue_start
-            logger.debug(f"파일 스캔 요청 등록: 입력={len(requested)}, 소요={elapsed:.4f}s")
+            logger.debug(
+                f"파일 스캔 요청 등록: 입력={len(requested)}, 소요={elapsed:.4f}s"
+            )
 
     def remove_selected(self) -> None:
         if self._input_locked("변환 중에는 파일 목록을 변경할 수 없습니다"):
@@ -561,7 +600,9 @@ class FileSelectionController:
         for row in sorted(rows, reverse=True):
             self.window.file_table.removeRow(row)
 
-        self.window.status_label.setText(f"선택 파일 제거됨 (총 {self.window.file_store.count}개)")
+        self.window.status_label.setText(
+            f"선택 파일 제거됨 (총 {self.window.file_store.count}개)"
+        )
         self.update_file_count()
 
     def clear_all(self) -> None:
@@ -596,9 +637,13 @@ class FileSelectionController:
         if count:
             self.window.status_label.setText(f"📄 변환 대기 파일 {count}개")
         else:
-            self.window.status_label.setText("변환할 파일을 추가하세요 (드래그 앤 드롭 또는 파일 추가)")
+            self.window.status_label.setText(
+                "변환할 파일을 추가하세요 (드래그 앤 드롭 또는 파일 추가)"
+            )
 
-    def _input_locked(self, message: str = "변환 중에는 입력을 변경할 수 없습니다") -> bool:
+    def _input_locked(
+        self, message: str = "변환 중에는 입력을 변경할 수 없습니다"
+    ) -> bool:
         worker = self.state.worker
         worker_running = bool(worker and getattr(worker, "isRunning", lambda: False)())
         if self.state.is_planning:

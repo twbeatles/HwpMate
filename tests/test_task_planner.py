@@ -152,7 +152,9 @@ def test_build_tasks_can_return_only_skipped_entries(tmp_path: Path) -> None:
     assert "동일 형식" in plan.warnings[0]
 
 
-def test_resolve_output_conflicts_numbers_and_falls_back_to_timestamp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_output_conflicts_numbers_and_falls_back_to_timestamp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     planner = TaskPlanner()
     existing = tmp_path / "doc.pdf"
     existing.write_text("x", encoding="utf-8")
@@ -175,7 +177,9 @@ def test_resolve_output_conflicts_numbers_and_falls_back_to_timestamp(tmp_path: 
     assert tasks[0].output_file.name.startswith("doc_")
 
 
-def test_resolve_output_conflicts_allows_existing_overwrite_but_renames_batch_duplicates(tmp_path: Path) -> None:
+def test_resolve_output_conflicts_allows_existing_overwrite_but_renames_batch_duplicates(
+    tmp_path: Path,
+) -> None:
     planner = TaskPlanner()
     existing = tmp_path / "doc.pdf"
     existing.write_text("old", encoding="utf-8")
@@ -194,7 +198,9 @@ def test_resolve_output_conflicts_allows_existing_overwrite_but_renames_batch_du
 
 def test_allocate_output_path_renames_late_auxiliary_conflict(tmp_path: Path) -> None:
     planner = TaskPlanner()
-    task = ConversionTask(input_file=tmp_path / "source.hwp", output_file=tmp_path / "doc.png")
+    task = ConversionTask(
+        input_file=tmp_path / "source.hwp", output_file=tmp_path / "doc.png"
+    )
     (tmp_path / "doc_001.png").write_bytes(b"old")
 
     changed = planner.allocate_output_path(
@@ -209,31 +215,45 @@ def test_allocate_output_path_renames_late_auxiliary_conflict(tmp_path: Path) ->
     assert task.conflict_original_output_file == tmp_path / "doc.png"
 
 
-def test_resolve_output_conflicts_renames_existing_auxiliary_artifact(tmp_path: Path) -> None:
+def test_resolve_output_conflicts_renames_existing_auxiliary_artifact(
+    tmp_path: Path,
+) -> None:
     planner = TaskPlanner()
     existing_aux = tmp_path / "doc_001.png"
     existing_aux.write_bytes(b"old")
-    task = ConversionTask(input_file=tmp_path / "a.hwp", output_file=tmp_path / "doc.png")
+    task = ConversionTask(
+        input_file=tmp_path / "a.hwp", output_file=tmp_path / "doc.png"
+    )
 
-    renamed_count = planner.resolve_output_conflicts([task], overwrite=False, format_type="PNG")
+    renamed_count = planner.resolve_output_conflicts(
+        [task], overwrite=False, format_type="PNG"
+    )
 
     assert renamed_count == 1
     assert task.output_file == tmp_path / "doc (1).png"
     assert task.conflict_original_output_file == tmp_path / "doc.png"
 
 
-def test_resolve_output_conflicts_ignores_unrelated_same_prefix_artifact(tmp_path: Path) -> None:
+def test_resolve_output_conflicts_ignores_unrelated_same_prefix_artifact(
+    tmp_path: Path,
+) -> None:
     planner = TaskPlanner()
     (tmp_path / "document_001.png").write_bytes(b"old")
-    task = ConversionTask(input_file=tmp_path / "a.hwp", output_file=tmp_path / "doc.png")
+    task = ConversionTask(
+        input_file=tmp_path / "a.hwp", output_file=tmp_path / "doc.png"
+    )
 
-    renamed_count = planner.resolve_output_conflicts([task], overwrite=False, format_type="PNG")
+    renamed_count = planner.resolve_output_conflicts(
+        [task], overwrite=False, format_type="PNG"
+    )
 
     assert renamed_count == 0
     assert task.output_file == tmp_path / "doc.png"
 
 
-def test_resolve_output_conflicts_timestamp_fallback_avoids_duplicates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_output_conflicts_timestamp_fallback_avoids_duplicates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     planner = TaskPlanner()
     existing = tmp_path / "doc.pdf"
     existing.write_text("x", encoding="utf-8")
@@ -279,7 +299,9 @@ def test_overwrite_never_targets_existing_source_hwp_document(tmp_path: Path) ->
         overwrite=True,
         file_paths=[],
     )
-    renamed = planner.resolve_output_conflicts(plan.tasks, overwrite=True, format_type="HWP")
+    renamed = planner.resolve_output_conflicts(
+        plan.tasks, overwrite=True, format_type="HWP"
+    )
 
     assert [task.input_file.name for task in plan.skipped_tasks] == ["a.hwp"]
     assert [task.output_file.name for task in plan.tasks] == ["a (1).hwp"]
@@ -306,7 +328,9 @@ def test_overwrite_still_replaces_existing_non_source_output(tmp_path: Path) -> 
     (tmp_path / "a.pdf").write_bytes(b"old pdf")
     task = ConversionTask(input_file=source, output_file=tmp_path / "a.pdf")
 
-    renamed = planner.resolve_output_conflicts([task], overwrite=True, format_type="PDF")
+    renamed = planner.resolve_output_conflicts(
+        [task], overwrite=True, format_type="PDF"
+    )
 
     assert renamed == 0
     assert task.output_file == tmp_path / "a.pdf"
@@ -327,7 +351,9 @@ def test_image_and_html_same_location_keep_plain_output_name(tmp_path: Path) -> 
             output_path="",
             file_paths=[],
         )
-        renamed = planner.resolve_output_conflicts(plan.tasks, overwrite=False, format_type=fmt)
+        renamed = planner.resolve_output_conflicts(
+            plan.tasks, overwrite=False, format_type=fmt
+        )
         assert renamed == 0, fmt
         assert sorted(task.output_file.name for task in plan.tasks) == [
             f"report{ext}",
@@ -342,7 +368,9 @@ def test_existing_hwp_page_images_trigger_rename(tmp_path: Path) -> None:
     (tmp_path / "report001.png").write_bytes(b"old page")
     task = ConversionTask(input_file=source, output_file=tmp_path / "report.png")
 
-    renamed = planner.resolve_output_conflicts([task], overwrite=False, format_type="PNG")
+    renamed = planner.resolve_output_conflicts(
+        [task], overwrite=False, format_type="PNG"
+    )
 
     assert renamed == 1
     assert task.output_file == tmp_path / "report (1).png"

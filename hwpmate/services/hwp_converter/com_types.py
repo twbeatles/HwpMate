@@ -44,5 +44,7 @@ class HwpAutomation(Protocol):
 def require_pywin32() -> tuple[Any, Any]:
     """pywin32 모듈을 보장하고 반환."""
     if pythoncom is None or win32_client is None:
-        raise RuntimeError("pywin32가 필요합니다. `pip install pywin32` 후 다시 실행하세요.")
+        raise RuntimeError(
+            "pywin32가 필요합니다. `pip install pywin32` 후 다시 실행하세요."
+        )
     return pythoncom, win32_client

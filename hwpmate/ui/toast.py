@@ -60,7 +60,9 @@ class ToastWidget(QWidget):
 
     closed = Signal(object)
 
-    def __init__(self, parent: QWidget | None = None, palette: ThemePalette | None = None):
+    def __init__(
+        self, parent: QWidget | None = None, palette: ThemePalette | None = None
+    ):
         super().__init__(parent)
         self._palette = palette or palette_for("dark")
         self._accent = _accent_for_icon("ℹ️")
@@ -92,12 +94,16 @@ class ToastWidget(QWidget):
 
         self.icon_label = QLabel("ℹ️")
         self.icon_label.setFixedWidth(26)
-        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        self.icon_label.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
         layout.addWidget(self.icon_label)
 
         self.message_label = QLabel()
         self.message_label.setWordWrap(True)
-        self.message_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.message_label.setAlignment(
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+        )
         self.message_label.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.message_label, stretch=1)
 
@@ -111,7 +117,9 @@ class ToastWidget(QWidget):
     def _apply_label_colors(self) -> None:
         # 앱 전역 QSS 가 라벨 배경을 칠하지 않도록 명시적으로 투명 처리
         # (전역 QSS 의 font-size 가 setFont 를 덮어쓰므로 크기·굵기도 여기서 지정)
-        base = f"color: {self._palette.toast_text}; background: transparent; border: none;"
+        base = (
+            f"color: {self._palette.toast_text}; background: transparent; border: none;"
+        )
         self.icon_label.setStyleSheet(base + " font-size: 14pt;")
         self.message_label.setStyleSheet(base + " font-size: 10pt; font-weight: bold;")
 
@@ -122,7 +130,9 @@ class ToastWidget(QWidget):
         painter = QPainter(self)
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            panel = QRectF(self.rect()).adjusted(_SHADOW, _SHADOW - 2, -_SHADOW, -_SHADOW - 2)
+            panel = QRectF(self.rect()).adjusted(
+                _SHADOW, _SHADOW - 2, -_SHADOW, -_SHADOW - 2
+            )
 
             # 부드러운 그림자: 바깥으로 갈수록 옅어지는 둥근 사각형 여러 겹
             alpha_max = max(0, min(255, self._palette.shadow_alpha))
@@ -160,7 +170,9 @@ class ToastWidget(QWidget):
 
     def preferred_width(self) -> int:
         parent = self.parentWidget()
-        available = (parent.width() - 2 * _EDGE_MARGIN) if parent is not None else _MAX_WIDTH
+        available = (
+            (parent.width() - 2 * _EDGE_MARGIN) if parent is not None else _MAX_WIDTH
+        )
         return max(_MIN_WIDTH, min(_MAX_WIDTH, available)) + 2 * _SHADOW
 
     def show_message(
@@ -186,7 +198,11 @@ class ToastWidget(QWidget):
         parent_widget = self.parentWidget()
         if parent_widget is not None:
             x = parent_widget.width() - self.width() - _EDGE_MARGIN + _SHADOW
-            y = position_y if position_y is not None else parent_widget.height() - self.height()
+            y = (
+                position_y
+                if position_y is not None
+                else parent_widget.height() - self.height()
+            )
             self.move(max(0, x), max(0, y))
 
         self._closing = False
@@ -321,7 +337,12 @@ class ToastManager(QObject):
 
     def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
         host = getattr(self, "host", None)
-        if host is not None and a0 is host and a1 is not None and a1.type() == QEvent.Type.Resize:
+        if (
+            host is not None
+            and a0 is host
+            and a1 is not None
+            and a1.type() == QEvent.Type.Resize
+        ):
             self._update_positions()
         return False
 

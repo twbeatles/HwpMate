@@ -86,7 +86,10 @@ class HwpSecuritySession:
         if self.auto_accept_clicks >= self.max_auto_accepts:
             return False
         now = time.monotonic()
-        if self.last_auto_accept_at and (now - self.last_auto_accept_at) < self.cooldown_seconds:
+        if (
+            self.last_auto_accept_at
+            and (now - self.last_auto_accept_at) < self.cooldown_seconds
+        ):
             return False
         return True
 

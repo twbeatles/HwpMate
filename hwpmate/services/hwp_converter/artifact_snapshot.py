@@ -33,7 +33,9 @@ def _iter_candidate_artifact_files(output_file: Path, format_type: str) -> list[
     return iter_candidate_artifact_paths(output_file, format_type)
 
 
-def _snapshot_artifacts(output_file: Path, format_type: str) -> dict[Path, _FileSnapshot]:
+def _snapshot_artifacts(
+    output_file: Path, format_type: str
+) -> dict[Path, _FileSnapshot]:
     snapshots: dict[Path, _FileSnapshot] = {}
     for path in _iter_candidate_artifact_files(output_file, format_type):
         snapshot = _snapshot_file(path)

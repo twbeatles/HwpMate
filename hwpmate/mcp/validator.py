@@ -57,7 +57,10 @@ def validate_job_outputs(
     del cfg
     record = manager.get(job_id)
     if record.state not in TERMINAL_STATES:
-        raise McpError("JOB_NOT_DONE", f"아직 끝나지 않은 작업은 검증할 수 없습니다: {record.state}")
+        raise McpError(
+            "JOB_NOT_DONE",
+            f"아직 끝나지 않은 작업은 검증할 수 없습니다: {record.state}",
+        )
     expected_ext = _expected_ext(record.format)
     files: list[dict] = []
     for item in record.items:

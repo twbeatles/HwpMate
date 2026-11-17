@@ -56,12 +56,16 @@ def test_iter_supported_files_honors_cancel_checker(tmp_path: Path) -> None:
         calls["count"] += 1
         return calls["count"] > 1
 
-    files = list(iter_supported_files(tmp_path, include_sub=False, cancel_checker=cancel))
+    files = list(
+        iter_supported_files(tmp_path, include_sub=False, cancel_checker=cancel)
+    )
 
     assert len(files) <= 1
 
 
-def test_iter_supported_files_excludes_nested_backup_dirs_but_allows_backup_root(tmp_path: Path) -> None:
+def test_iter_supported_files_excludes_nested_backup_dirs_but_allows_backup_root(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "source"
     source.mkdir()
     root_file = source / "a.hwp"

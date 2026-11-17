@@ -48,12 +48,16 @@ def bring_hwp_windows_to_foreground(pids: set[int] | None = None) -> int:
 
         # 메인 편집 창 전체 TOPMOST 반복은 스팸이 되므로 보안/대화상자 위주
         raised = 0
-        for hwnd in api._list_top_level_hwnds_for_pids(target_pids, security_dialogs_only=True):
+        for hwnd in api._list_top_level_hwnds_for_pids(
+            target_pids, security_dialogs_only=True
+        ):
             if api._raise_hwnd_to_foreground(hwnd):
                 raised += 1
 
         if raised:
-            logger.debug(f"한글 보안/대화 창 전면화: pids={sorted(target_pids)}, raised={raised}")
+            logger.debug(
+                f"한글 보안/대화 창 전면화: pids={sorted(target_pids)}, raised={raised}"
+            )
         return raised
     except Exception as e:
         logger.debug(f"한글 창 전면화 전체 실패: {e}")
@@ -77,7 +81,9 @@ def hide_hwp_main_windows(pids: set[int] | None = None) -> int:
             return 0
 
         hidden = 0
-        for hwnd in api._list_top_level_hwnds_for_pids(target_pids, security_dialogs_only=False):
+        for hwnd in api._list_top_level_hwnds_for_pids(
+            target_pids, security_dialogs_only=False
+        ):
             if api.is_likely_hwp_security_dialog(hwnd):
                 continue
             try:
@@ -91,7 +97,9 @@ def hide_hwp_main_windows(pids: set[int] | None = None) -> int:
             except Exception as e:
                 logger.debug(f"HWND 숨김 실패: hwnd={hwnd}, {e}")
         if hidden:
-            logger.debug(f"한글 메인 창 숨김: pids={sorted(target_pids)}, hidden={hidden}")
+            logger.debug(
+                f"한글 메인 창 숨김: pids={sorted(target_pids)}, hidden={hidden}"
+            )
         return hidden
     except Exception as e:
         logger.debug(f"한글 메인 창 숨김 전체 실패: {e}")
@@ -168,7 +176,9 @@ def try_accept_hwp_security_dialog(pids: set[int] | None = None) -> bool:
                 if "button" in class_name or class_name.startswith("button"):
                     user32.SendMessageW(hwnd, _BM_CLICK, 0, 0)
                     clicked = True
-                    logger.info(f"한글 보안 대화상자 '모두 허용' 자동 클릭 시도: '{text}'")
+                    logger.info(
+                        f"한글 보안 대화상자 '모두 허용' 자동 클릭 시도: '{text}'"
+                    )
                     return False
             except Exception:
                 pass

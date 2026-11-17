@@ -44,7 +44,9 @@ class UpdateCheckWorker(QThread):
     finished_no_update = Signal()
     finished_with_error = Signal(str)
 
-    def __init__(self, manifest_url: str, public_key: str, current_version: str) -> None:
+    def __init__(
+        self, manifest_url: str, public_key: str, current_version: str
+    ) -> None:
         super().__init__()
         self.manifest_url = manifest_url
         self.public_key = public_key
@@ -105,7 +107,6 @@ class UpdateDownloadWorker(QThread):
             if not self._is_cancelled:
                 logger.error(f"업데이트 다운로드 실패: {exc}")
                 self.download_failed.emit(str(exc))
-
 
     def _on_progress(self, current: int, total: int) -> None:
         self.progress.emit(current, total)
@@ -183,7 +184,9 @@ class UpdateController(QObject):
         """업데이트 확인을 시작합니다."""
         if self._check_worker and self._check_worker.isRunning():
             if manual:
-                self.window.toast.show_message("업데이트를 확인하는 중입니다...", icon="ℹ️")
+                self.window.toast.show_message(
+                    "업데이트를 확인하는 중입니다...", icon="ℹ️"
+                )
             return
 
         self._is_manual_check = manual
@@ -281,7 +284,6 @@ class UpdateController(QObject):
         )
         self._download_worker.download_failed.connect(dialog.set_download_failed)
         self._download_worker.start()
-
 
     def _on_download_finished(
         self,

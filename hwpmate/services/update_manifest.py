@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import base64
 import json
@@ -162,7 +162,9 @@ def download_release_manifest(url: str) -> bytes:
     with urlopen(request, timeout=float(UPDATE_REQUEST_TIMEOUT_SECONDS)) as response:
         final_url = urlsplit(response.geturl())
         if final_url.scheme.lower() != "https" or not final_url.hostname:
-            raise ValueError("업데이트 매니페스트 리다이렉트는 HTTPS를 유지해야 합니다.")
+            raise ValueError(
+                "업데이트 매니페스트 리다이렉트는 HTTPS를 유지해야 합니다."
+            )
         payload = response.read(limit + 1)
     if len(payload) > limit:
         raise ValueError("매니페스트 크기가 허용 한도를 초과했습니다.")

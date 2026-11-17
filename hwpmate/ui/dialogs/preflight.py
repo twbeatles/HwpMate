@@ -53,10 +53,14 @@ class PreflightDialog(QDialog):
         info_layout = QVBoxLayout(info_group)
         info_layout.addWidget(QLabel(f"실행 대상 수: {plan.runnable_count}개"))
         info_layout.addWidget(QLabel(f"건너뜀 수: {plan.skipped_count}개"))
-        info_layout.addWidget(QLabel(f"덮어쓰기 회피로 이름 변경: {plan.conflict_renamed_count}개"))
+        info_layout.addWidget(
+            QLabel(f"덮어쓰기 회피로 이름 변경: {plan.conflict_renamed_count}개")
+        )
         info_layout.addWidget(QLabel(f"선택 형식: {plan.format_type}"))
         info_layout.addWidget(QLabel(f"저장 위치 정책: {plan.output_policy_label}"))
-        info_layout.addWidget(QLabel(f"원본 백업: {'사용' if plan.backup_enabled else '사용 안 함'}"))
+        info_layout.addWidget(
+            QLabel(f"원본 백업: {'사용' if plan.backup_enabled else '사용 안 함'}")
+        )
         info_layout.addWidget(QLabel(f"실패 시 재시도: {plan.retry_count}회"))
         if str(plan.format_type).upper() == "PDF":
             mode = getattr(plan, "pdf_export_mode", "saveas_first") or "saveas_first"
@@ -67,7 +71,11 @@ class PreflightDialog(QDialog):
             )
             info_layout.addWidget(QLabel(f"PDF 내보내기: {mode_label}"))
         registered_progids = get_registered_hwp_progids()
-        hwp_state = ", ".join(registered_progids) if registered_progids else "레지스트리에서 감지되지 않음"
+        hwp_state = (
+            ", ".join(registered_progids)
+            if registered_progids
+            else "레지스트리에서 감지되지 않음"
+        )
         info_layout.addWidget(QLabel(f"한글 COM ProgID: {hwp_state}"))
         layout.addWidget(info_group)
 
@@ -125,7 +133,9 @@ class PreflightDialog(QDialog):
         start_btn.clicked.connect(self.accept)
         if blocking_errors:
             start_btn.setEnabled(False)
-            start_btn.setToolTip("입력 파일 또는 출력 폴더의 확정 오류를 먼저 해결해야 합니다")
+            start_btn.setToolTip(
+                "입력 파일 또는 출력 폴더의 확정 오류를 먼저 해결해야 합니다"
+            )
         btn_layout.addWidget(start_btn)
 
         layout.addLayout(btn_layout)
@@ -161,7 +171,9 @@ class PreflightDialog(QDialog):
             if task.status == "건너뜀":
                 lines.append(f"   사유: {task.detail}")
             else:
-                lines.append(f"   백업: {'사용' if plan.backup_enabled else '사용 안 함'}")
+                lines.append(
+                    f"   백업: {'사용' if plan.backup_enabled else '사용 안 함'}"
+                )
             lines.append("")
 
         if total > PREFLIGHT_DETAIL_MAX_TASKS:
@@ -187,7 +199,9 @@ class PreflightDialog(QDialog):
         """입력/출력 경로가 경고 임계를 넘는 실행 대상 개수."""
         count = 0
         for task in plan.tasks:
-            if is_path_length_risky(task.input_file) or is_path_length_risky(task.output_file):
+            if is_path_length_risky(task.input_file) or is_path_length_risky(
+                task.output_file
+            ):
                 count += 1
         return count
 
@@ -236,4 +250,3 @@ class PreflightDialog(QDialog):
 
         self._deep_read_skipped = deep_read_skipped
         return errors
-

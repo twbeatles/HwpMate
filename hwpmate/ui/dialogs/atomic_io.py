@@ -46,7 +46,9 @@ def _write_text_file_atomically(
 
 def write_failed_list(path: Path, failed_tasks: list[ConversionTask]) -> None:
     def writer(f: TextIO) -> None:
-        f.write(f"HWP 변환 실패 목록 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(
+            f"HWP 변환 실패 목록 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        )
         f.write("=" * 50 + "\n\n")
         for task in failed_tasks:
             f.write(f"파일: {task.input_file}\n")

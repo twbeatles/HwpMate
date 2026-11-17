@@ -43,11 +43,25 @@ def parse_args() -> argparse.Namespace:
         description="Run real HWP COM smoke conversions and write one JSON report."
     )
     parser.add_argument("--input", required=True, help="Input .hwp or .hwpx file")
-    parser.add_argument("--format", default="", help="Single output format (compatibility alias)")
-    parser.add_argument("--formats", default="PDF", help="Comma-separated formats, e.g. PDF,DOCX,PNG,HTML")
-    parser.add_argument("--output-dir", default="", help="Output directory. Defaults to input folder.")
-    parser.add_argument("--result-json", default="", help="Result JSON path. Defaults to output directory.")
-    parser.add_argument("--allow-non-admin", action="store_true", help="Run even when not elevated.")
+    parser.add_argument(
+        "--format", default="", help="Single output format (compatibility alias)"
+    )
+    parser.add_argument(
+        "--formats",
+        default="PDF",
+        help="Comma-separated formats, e.g. PDF,DOCX,PNG,HTML",
+    )
+    parser.add_argument(
+        "--output-dir", default="", help="Output directory. Defaults to input folder."
+    )
+    parser.add_argument(
+        "--result-json",
+        default="",
+        help="Result JSON path. Defaults to output directory.",
+    )
+    parser.add_argument(
+        "--allow-non-admin", action="store_true", help="Run even when not elevated."
+    )
     return parser.parse_args()
 
 
@@ -60,7 +74,9 @@ def run_smoke(
 ) -> tuple[ConversionSummary, int]:
     warnings: list[str] = []
     if not is_admin():
-        message = "Administrator privileges are recommended for HWP COM smoke verification."
+        message = (
+            "Administrator privileges are recommended for HWP COM smoke verification."
+        )
         if not allow_non_admin:
             raise PermissionError(message)
         warnings.append(message)
@@ -74,12 +90,15 @@ def run_smoke(
         format_dir.mkdir(parents=True, exist_ok=True)
         task = ConversionTask(
             input_file=input_file,
-            output_file=format_dir / f"{input_file.stem}{FORMAT_TYPES[format_type].ext}",
+            output_file=format_dir
+            / f"{input_file.stem}{FORMAT_TYPES[format_type].ext}",
         )
         converter = HWPConverter()
         try:
             converter.initialize()
-            success, error = converter.convert_file(input_file, task.output_file, format_type)
+            success, error = converter.convert_file(
+                input_file, task.output_file, format_type
+            )
             task.status = "성공" if success else "실패"
             task.error = error
             task.created_files = list(converter.last_created_files)
@@ -89,7 +108,9 @@ def run_smoke(
             task.export_method = converter.last_export_method
             task.progid_used = converter.progid_used
             if converter.security_module_registered is False:
-                warnings.append(f"{format_type}: security module registration failed: {converter.security_module_error or ''}")
+                warnings.append(
+                    f"{format_type}: security module registration failed: {converter.security_module_error or ''}"
+                )
             if converter.process_tracking_warning:
                 warnings.append(f"{format_type}: {converter.process_tracking_warning}")
         except Exception as exc:
@@ -120,11 +141,19 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
-    output_dir = Path(args.output_dir).resolve() if args.output_dir else input_file.parent
+    output_dir = (
+        Path(args.output_dir).resolve() if args.output_dir else input_file.parent
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
-    result_json = Path(args.result_json).resolve() if args.result_json else output_dir / f"hwp_com_smoke_{int(time.time())}.json"
+    result_json = (
+        Path(args.result_json).resolve()
+        if args.result_json
+        else output_dir / f"hwp_com_smoke_{int(time.time())}.json"
+    )
     try:
-        summary, exit_code = run_smoke(input_file, formats, output_dir, allow_non_admin=args.allow_non_admin)
+        summary, exit_code = run_smoke(
+            input_file, formats, output_dir, allow_non_admin=args.allow_non_admin
+        )
     except PermissionError as exc:
         print(str(exc), file=sys.stderr)
         return 3
@@ -135,7 +164,9 @@ def main() -> int:
     print(f"Result JSON: {result_json}")
     for task in summary.tasks:
         if task.status == "성공":
-            print(f"{task.output_file.suffix}: {', '.join(str(path) for path in task.created_files) or task.output_file}")
+            print(
+                f"{task.output_file.suffix}: {', '.join(str(path) for path in task.created_files) or task.output_file}"
+            )
         else:
             print(f"{task.output_file.suffix}: {task.detail}", file=sys.stderr)
     return exit_code

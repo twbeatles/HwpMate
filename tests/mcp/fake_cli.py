@@ -34,7 +34,11 @@ def main() -> int:
     args = parser.parse_args()
 
     def _names(key: str) -> set[str]:
-        return {name.strip().lower() for name in os.environ.get(key, "").split(",") if name.strip()}
+        return {
+            name.strip().lower()
+            for name in os.environ.get(key, "").split(",")
+            if name.strip()
+        }
 
     mode = os.environ.get("HWPMATE_FAKECLI_MODE", "ok")
     input_name = Path(args.input).name.lower()
@@ -54,11 +58,18 @@ def main() -> int:
             "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL); "
             "print(p.pid)"
         )
-        done = subprocess.run([sys.executable, "-c", launcher], capture_output=True, text=True, timeout=30)
+        done = subprocess.run(
+            [sys.executable, "-c", launcher], capture_output=True, text=True, timeout=30
+        )
         child_pid = int(done.stdout.strip())
-        Path(args.owned_pids_file).write_text(json.dumps({"pids": [child_pid]}), encoding="utf-8")
+        Path(args.owned_pids_file).write_text(
+            json.dumps({"pids": [child_pid]}), encoding="utf-8"
+        )
     if mode == "busy":
-        print("[오류] HwpMate(GUI 또는 다른 CLI)가 이미 실행 중입니다. 종료한 뒤 다시 실행하세요.", file=sys.stderr)
+        print(
+            "[오류] HwpMate(GUI 또는 다른 CLI)가 이미 실행 중입니다. 종료한 뒤 다시 실행하세요.",
+            file=sys.stderr,
+        )
         return 1
     if mode == "nocom":
         print("[오류] 한글 COM 초기화 실패: fake", file=sys.stderr)
@@ -71,12 +82,24 @@ def main() -> int:
         import signal
 
         os.kill(child_pid, signal.SIGTERM)
-        Path(args.owned_pids_file).write_text(json.dumps({"pids": []}), encoding="utf-8")
+        Path(args.owned_pids_file).write_text(
+            json.dumps({"pids": []}), encoding="utf-8"
+        )
 
-    fail_names = {name.strip().lower() for name in os.environ.get("HWPMATE_FAKECLI_FAIL_NAMES", "").split(",") if name.strip()}
+    fail_names = {
+        name.strip().lower()
+        for name in os.environ.get("HWPMATE_FAKECLI_FAIL_NAMES", "").split(",")
+        if name.strip()
+    }
     input_path = Path(args.input)
     fmt = str(args.format).upper()
-    ext_map = {"PDF": ".pdf", "DOCX": ".docx", "TXT": ".txt", "HWP": ".hwp", "HWPX": ".hwpx"}
+    ext_map = {
+        "PDF": ".pdf",
+        "DOCX": ".docx",
+        "TXT": ".txt",
+        "HWP": ".hwp",
+        "HWPX": ".hwpx",
+    }
     ext = ext_map.get(fmt, ".pdf")
     out_dir = Path(args.output) if args.output else input_path.parent
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -117,7 +140,9 @@ def main() -> int:
     if args.report:
         report_path = Path(args.report)
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        report_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
     return 1 if failed else 0
 
 

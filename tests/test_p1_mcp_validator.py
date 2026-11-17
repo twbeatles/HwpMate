@@ -33,7 +33,9 @@ class _StubManager:
         return self.record
 
 
-def _validate(tmp_path: Path, fmt: str, payload: bytes | None, *, state: str = "succeeded") -> dict:
+def _validate(
+    tmp_path: Path, fmt: str, payload: bytes | None, *, state: str = "succeeded"
+) -> dict:
     target = tmp_path / f"out.{'jpeg' if fmt == 'JPG' else fmt.lower()}"
     items: list[dict] = []
     if payload is not None:

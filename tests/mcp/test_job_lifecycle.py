@@ -35,17 +35,33 @@ def _seed(tmp_path: Path, names: list[str]) -> Path:
 
 
 def _submit_ok(manager: JobManager, cfg: McpConfig, src: Path, out: str, key: str):
-    preview = preview_conversion(cfg, input_paths=[str(src)], format_type="PDF", output_dir=out)
-    record = manager.submit(get_plan(preview["plan_id"]), confirmation=CONFIRMATION_TOKEN, idempotency_key=key)
+    preview = preview_conversion(
+        cfg, input_paths=[str(src)], format_type="PDF", output_dir=out
+    )
+    record = manager.submit(
+        get_plan(preview["plan_id"]),
+        confirmation=CONFIRMATION_TOKEN,
+        idempotency_key=key,
+    )
     return record, preview
 
 
-def _submit_inputs(manager: JobManager, cfg: McpConfig, inputs: list[str], out: str, key: str):
-    preview = preview_conversion(cfg, input_paths=inputs, format_type="PDF", output_dir=out)
-    return manager.submit(get_plan(preview["plan_id"]), confirmation=CONFIRMATION_TOKEN, idempotency_key=key)
+def _submit_inputs(
+    manager: JobManager, cfg: McpConfig, inputs: list[str], out: str, key: str
+):
+    preview = preview_conversion(
+        cfg, input_paths=inputs, format_type="PDF", output_dir=out
+    )
+    return manager.submit(
+        get_plan(preview["plan_id"]),
+        confirmation=CONFIRMATION_TOKEN,
+        idempotency_key=key,
+    )
 
 
-def test_submit_status_result_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_submit_status_result_roundtrip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_MODE", "ok")
     src = _seed(tmp_path, ["a.hwp", "b.hwpx"])
     cfg = _cfg(tmp_path)
@@ -65,21 +81,37 @@ def test_confirmation_required(tmp_path: Path) -> None:
     src = _seed(tmp_path, ["a.hwp"])
     cfg = _cfg(tmp_path)
     manager = JobManager(cfg)
-    preview = preview_conversion(cfg, input_paths=[str(src)], format_type="PDF", output_dir=str(tmp_path / "out"))
+    preview = preview_conversion(
+        cfg, input_paths=[str(src)], format_type="PDF", output_dir=str(tmp_path / "out")
+    )
     with pytest.raises(McpError) as excinfo:
-        manager.submit(get_plan(preview["plan_id"]), confirmation="yes", idempotency_key="k")
+        manager.submit(
+            get_plan(preview["plan_id"]), confirmation="yes", idempotency_key="k"
+        )
     assert excinfo.value.code == "CONFIRMATION_REQUIRED"
 
 
-def test_idempotent_resubmit_returns_same_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_idempotent_resubmit_returns_same_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_MODE", "ok")
     src = _seed(tmp_path, ["a.hwp"])
     cfg = _cfg(tmp_path)
     manager = JobManager(cfg)
     out = str(tmp_path / "out")
-    preview = preview_conversion(cfg, input_paths=[str(src)], format_type="PDF", output_dir=out)
-    first = manager.submit(get_plan(preview["plan_id"]), confirmation=CONFIRMATION_TOKEN, idempotency_key="same")
-    second = manager.submit(get_plan(preview["plan_id"]), confirmation=CONFIRMATION_TOKEN, idempotency_key="same")
+    preview = preview_conversion(
+        cfg, input_paths=[str(src)], format_type="PDF", output_dir=out
+    )
+    first = manager.submit(
+        get_plan(preview["plan_id"]),
+        confirmation=CONFIRMATION_TOKEN,
+        idempotency_key="same",
+    )
+    second = manager.submit(
+        get_plan(preview["plan_id"]),
+        confirmation=CONFIRMATION_TOKEN,
+        idempotency_key="same",
+    )
     assert first.job_id == second.job_id
     wait_for_state(manager, first.job_id, timeout_seconds=60)
 
@@ -89,11 +121,23 @@ def test_idempotency_conflict_on_different_plan(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     manager = JobManager(cfg)
     out = str(tmp_path / "out")
-    preview_a = preview_conversion(cfg, input_paths=[str(src / "a.hwp")], format_type="PDF", output_dir=out)
-    preview_b = preview_conversion(cfg, input_paths=[str(src / "b.hwp")], format_type="PDF", output_dir=out)
-    manager.submit(get_plan(preview_a["plan_id"]), confirmation=CONFIRMATION_TOKEN, idempotency_key="same")
+    preview_a = preview_conversion(
+        cfg, input_paths=[str(src / "a.hwp")], format_type="PDF", output_dir=out
+    )
+    preview_b = preview_conversion(
+        cfg, input_paths=[str(src / "b.hwp")], format_type="PDF", output_dir=out
+    )
+    manager.submit(
+        get_plan(preview_a["plan_id"]),
+        confirmation=CONFIRMATION_TOKEN,
+        idempotency_key="same",
+    )
     with pytest.raises(McpError) as excinfo:
-        manager.submit(get_plan(preview_b["plan_id"]), confirmation=CONFIRMATION_TOKEN, idempotency_key="same")
+        manager.submit(
+            get_plan(preview_b["plan_id"]),
+            confirmation=CONFIRMATION_TOKEN,
+            idempotency_key="same",
+        )
     assert excinfo.value.code == "IDEMPOTENCY_CONFLICT"
 
 
@@ -105,9 +149,15 @@ def test_queue_full(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     manager = JobManager(cfg)
     out = str(tmp_path / "out")
     _submit_inputs(manager, cfg, [str(src / "a.hwp")], out, "q1")
-    preview = preview_conversion(cfg, input_paths=[str(src / "b.hwp")], format_type="PDF", output_dir=out)
+    preview = preview_conversion(
+        cfg, input_paths=[str(src / "b.hwp")], format_type="PDF", output_dir=out
+    )
     with pytest.raises(McpError) as excinfo:
-        manager.submit(get_plan(preview["plan_id"]), confirmation=CONFIRMATION_TOKEN, idempotency_key="q2")
+        manager.submit(
+            get_plan(preview["plan_id"]),
+            confirmation=CONFIRMATION_TOKEN,
+            idempotency_key="q2",
+        )
     assert excinfo.value.code == "JOB_QUEUE_FULL"
 
 
@@ -126,7 +176,9 @@ def test_cancel_queued_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert done.state in TERMINAL_STATES
 
 
-def test_cancel_running_unsupported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cancel_running_unsupported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_MODE", "sleep")
     monkeypatch.setenv("HWPMATE_FAKECLI_SLEEP", "8")
     src = _seed(tmp_path, ["a.hwp"])
@@ -143,7 +195,9 @@ def test_cancel_running_unsupported(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert excinfo.value.code == "CANCELLATION_UNSUPPORTED_WHILE_RUNNING"
 
 
-def test_busy_external_instance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_busy_external_instance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_MODE", "busy")
     src = _seed(tmp_path, ["a.hwp"])
     cfg = _cfg(tmp_path)
@@ -169,7 +223,9 @@ def test_partial_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     assert done.failed_count == 1
 
 
-def test_report_missing_is_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_report_missing_is_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_MODE", "noreport")
     src = _seed(tmp_path, ["a.hwp"])
     cfg = _cfg(tmp_path)
@@ -181,7 +237,9 @@ def test_report_missing_is_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert "REPORT_MISSING" in done.items[0]["detail"]
 
 
-def test_hancom_unavailable_mapped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_hancom_unavailable_mapped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_MODE", "nocom")
     src = _seed(tmp_path, ["a.hwp"])
     cfg = _cfg(tmp_path)
@@ -269,7 +327,9 @@ def test_platform_guard(monkeypatch: pytest.MonkeyPatch) -> None:
     assert excinfo.value.code == "PLATFORM_UNSUPPORTED"
 
 
-def test_restart_recovery_marks_interrupted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_restart_recovery_marks_interrupted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_MODE", "sleep")
     monkeypatch.setenv("HWPMATE_FAKECLI_SLEEP", "20")
     src = _seed(tmp_path, ["a.hwp"])
@@ -278,7 +338,10 @@ def test_restart_recovery_marks_interrupted(tmp_path: Path, monkeypatch: pytest.
     out = str(tmp_path / "out")
     record = _submit_inputs(manager, cfg, [str(src)], out, "z1")
     deadline = time.time() + 10
-    while manager.get(record.job_id).state not in ("running", "queued") and time.time() < deadline:
+    while (
+        manager.get(record.job_id).state not in ("running", "queued")
+        and time.time() < deadline
+    ):
         time.sleep(0.1)
     recovered = JobManager(cfg).get(record.job_id)
     assert recovered.state == "interrupted"

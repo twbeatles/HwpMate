@@ -59,7 +59,9 @@ def find_hwp_compat_dialogs(pids: set[int] | None) -> list[int]:
     from . import hwp_dialog_responder as module
 
     found: list[int] = []
-    for hwnd in api._list_top_level_hwnds_for_pids(set(pids), security_dialogs_only=False):
+    for hwnd in api._list_top_level_hwnds_for_pids(
+        set(pids), security_dialogs_only=False
+    ):
         try:
             if not module._is_window_visible(hwnd):
                 continue

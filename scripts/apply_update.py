@@ -28,7 +28,9 @@ def _wait_for_parent(parent_pid: int, timeout: float = 30.0) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="스테이징된 애플리케이션 업데이트 적용")
+    parser = argparse.ArgumentParser(
+        description="스테이징된 애플리케이션 업데이트 적용"
+    )
     parser.add_argument("--target", required=True)
     parser.add_argument("--staged", required=True)
     parser.add_argument("--backup", required=True)
@@ -59,7 +61,9 @@ def main(argv: list[str] | None = None) -> int:
             {**base_result, "status": status, "error": str(exc)},
         )
         return 1
-    write_update_result(args.result_file, {**base_result, "status": UPDATE_STATUS_APPLIED})
+    write_update_result(
+        args.result_file, {**base_result, "status": UPDATE_STATUS_APPLIED}
+    )
     return 0
 
 

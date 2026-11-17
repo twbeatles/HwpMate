@@ -63,7 +63,9 @@ class ConversionWorker(QThread):
         )
         self.cancel_requested = False
         self.converter: ConverterEngine | None = None
-        self._converter_factory: Callable[[], ConverterEngine] = converter_factory or HWPConverter
+        self._converter_factory: Callable[[], ConverterEngine] = (
+            converter_factory or HWPConverter
+        )
         self._task_planner = TaskPlanner()
         self.current_stage = "대기"
         self._started_at: float | None = None
@@ -101,7 +103,11 @@ class ConversionWorker(QThread):
                 setattr(  # noqa: B010 -- Protocol duck-typing; direct assign regresses pyright (verified)
                     converter,
                     "auto_continue_compat_dialogs",
-                    bool(getattr(self.planned_conversion, "auto_continue_compat_dialog", True)),
+                    bool(
+                        getattr(
+                            self.planned_conversion, "auto_continue_compat_dialog", True
+                        )
+                    ),
                 )
             self._set_stage("한글 연결")
             self.status_updated.emit(
@@ -161,7 +167,9 @@ class ConversionWorker(QThread):
                     and (idx + 1) < total
                     and not self.cancel_requested
                 ):
-                    self.status_updated.emit("대량 변환 최적화: 한글 프로세스 재순환 중...")
+                    self.status_updated.emit(
+                        "대량 변환 최적화: 한글 프로세스 재순환 중..."
+                    )
                     self._set_stage("한글 프로세스 재순환")
                     recycle_error = recycle_converter(converter, options)
                     if recycle_error is None:
@@ -175,13 +183,14 @@ class ConversionWorker(QThread):
                     break
 
             if self.cancel_requested:
-
                 for task in self.tasks:
                     if task.status == "대기":
                         task.status = "취소됨"
                         task.error = "사용자 취소"
 
-            self.progress_updated.emit(total, total, "완료" if not self.cancel_requested else "취소됨")
+            self.progress_updated.emit(
+                total, total, "완료" if not self.cancel_requested else "취소됨"
+            )
             note = compat_dialog_note(converter)
             if note:
                 runtime_warnings.append(note)
@@ -196,7 +205,11 @@ class ConversionWorker(QThread):
             for task in self.tasks:
                 if task.status in {"대기", "진행중"}:
                     task.status = "취소됨" if self.cancel_requested else "실패"
-                    task.error = "사용자 취소" if self.cancel_requested else f"변환 워커 오류: {e}"
+                    task.error = (
+                        "사용자 취소"
+                        if self.cancel_requested
+                        else f"변환 워커 오류: {e}"
+                    )
             summary = self._build_summary(
                 warnings=list(self.planned_conversion.warnings)
                 + runtime_warnings
@@ -237,7 +250,9 @@ class ConversionWorker(QThread):
         """파일 백업 생성"""
         return create_backup(file_path, max_files=self.backup_max_files_per_stem)
 
-    def _apply_converter_artifacts(self, task: ConversionTask, converter: ConverterEngine) -> None:
+    def _apply_converter_artifacts(
+        self, task: ConversionTask, converter: ConverterEngine
+    ) -> None:
         apply_converter_artifacts(task, converter)
 
     def _build_summary(

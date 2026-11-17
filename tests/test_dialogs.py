@@ -33,8 +33,15 @@ def build_summary(tmp_path: Path) -> ConversionSummary:
         backup_file=tmp_path / "backup" / "b.hwp",
         backup_error="",
     )
-    skipped = ConversionTask(tmp_path / "c.hwpx", tmp_path / "c.hwpx", status="건너뜀", error="이미 HWPX 형식입니다.")
-    canceled = ConversionTask(tmp_path / "d.hwp", tmp_path / "d.pdf", status="취소됨", error="사용자 취소")
+    skipped = ConversionTask(
+        tmp_path / "c.hwpx",
+        tmp_path / "c.hwpx",
+        status="건너뜀",
+        error="이미 HWPX 형식입니다.",
+    )
+    canceled = ConversionTask(
+        tmp_path / "d.hwp", tmp_path / "d.pdf", status="취소됨", error="사용자 취소"
+    )
     return ConversionSummary(
         format_type="PDF",
         tasks=[success, failed, skipped, canceled],
@@ -64,7 +71,10 @@ def test_write_results_csv_contains_all_statuses(tmp_path: Path) -> None:
     write_results_csv(output, summary)
     text = output.read_text(encoding="utf-8-sig")
 
-    assert "input_file,output_file,status,detail,retry_count,backup_file,backup_error,created_files,output_size,output_mtime,save_format,export_method,progid_used" in text
+    assert (
+        "input_file,output_file,status,detail,retry_count,backup_file,backup_error,created_files,output_size,output_mtime,save_format,export_method,progid_used"
+        in text
+    )
     assert "성공" in text
     assert "실패" in text
     assert "건너뜀" in text
@@ -73,7 +83,9 @@ def test_write_results_csv_contains_all_statuses(tmp_path: Path) -> None:
     assert not list(tmp_path.glob(".results.csv.*.tmp"))
 
 
-def test_preflight_dialog_includes_print_and_permission_notices(qapp, tmp_path: Path) -> None:
+def test_preflight_dialog_includes_print_and_permission_notices(
+    qapp, tmp_path: Path
+) -> None:
     del qapp
     from PySide6.QtWidgets import QTextEdit
 
@@ -128,7 +140,12 @@ def test_write_results_json_contains_summary_and_tasks(tmp_path: Path) -> None:
     assert data["summary"]["failed_count"] == 1
     assert data["summary"]["skipped_count"] == 1
     assert data["summary"]["canceled_count"] == 1
-    assert {task["status"] for task in data["tasks"]} == {"성공", "실패", "건너뜀", "취소됨"}
+    assert {task["status"] for task in data["tasks"]} == {
+        "성공",
+        "실패",
+        "건너뜀",
+        "취소됨",
+    }
     failed = next(task for task in data["tasks"] if task["status"] == "실패")
     assert failed["retry_count"] == 1
     assert failed["backup_file"]

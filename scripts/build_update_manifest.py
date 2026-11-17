@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import base64
@@ -29,7 +29,9 @@ def _load_private_key_from_env(name: str) -> Ed25519PrivateKey:
         raw_key = base64.b64decode(value, validate=True)
         return Ed25519PrivateKey.from_private_bytes(raw_key)
     except Exception as exc:
-        raise ValueError(f"{name}는 유효한 Base64 인코딩된 Ed25519 비공개키여야 합니다.") from exc
+        raise ValueError(
+            f"{name}는 유효한 Base64 인코딩된 Ed25519 비공개키여야 합니다."
+        ) from exc
 
 
 def _sha256_and_size(path: Path) -> tuple[str, int]:

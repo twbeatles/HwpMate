@@ -45,8 +45,14 @@ def _seed(tmp_path: Path, names: list[str]) -> Path:
 
 
 def _submit(manager: JobManager, cfg: McpConfig, inputs: list[str], key: str):
-    preview = preview_conversion(cfg, input_paths=inputs, format_type="PDF", output_dir=cfg.output_roots[0])
-    return manager.submit(get_plan(preview["plan_id"]), confirmation=CONFIRMATION_TOKEN, idempotency_key=key)
+    preview = preview_conversion(
+        cfg, input_paths=inputs, format_type="PDF", output_dir=cfg.output_roots[0]
+    )
+    return manager.submit(
+        get_plan(preview["plan_id"]),
+        confirmation=CONFIRMATION_TOKEN,
+        idempotency_key=key,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -65,7 +71,9 @@ def test_string_roots_are_wrapped_not_iterated(tmp_path: Path) -> None:
     outside = tmp_path / "outside" / "secret.hwp"
     outside.parent.mkdir()
     outside.write_bytes(b"x")
-    cfg = McpConfig.from_mapping({"input_roots": str(allowed), "output_roots": str(allowed)})
+    cfg = McpConfig.from_mapping(
+        {"input_roots": str(allowed), "output_roots": str(allowed)}
+    )
     assert cfg.input_roots == [str(allowed)]
     with pytest.raises(McpError) as excinfo:
         check_input_path(cfg, str(outside))
@@ -78,7 +86,9 @@ def test_string_roots_in_toml_file_do_not_open_drive(tmp_path: Path) -> None:
     allowed = tmp_path / "allowed"
     allowed.mkdir()
     toml_path = tmp_path / "config.toml"
-    toml_path.write_text(f'[paths]\ninput_roots = "{allowed.as_posix()}"\n', encoding="utf-8")
+    toml_path.write_text(
+        f'[paths]\ninput_roots = "{allowed.as_posix()}"\n', encoding="utf-8"
+    )
     cfg = load_config(toml_path)
     with pytest.raises(McpError):
         check_input_path(cfg, str(tmp_path / "x.hwp"))
@@ -128,7 +138,9 @@ def test_bad_toml_raises_config_error_with_path(tmp_path: Path) -> None:
     assert str(bad) in str(excinfo.value)
 
 
-def test_config_file_without_tomllib_is_not_silently_ignored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_config_file_without_tomllib_is_not_silently_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import hwpmate.mcp.config as config_module
 
     config = tmp_path / "config.toml"
@@ -140,9 +152,13 @@ def test_config_file_without_tomllib_is_not_silently_ignored(tmp_path: Path, mon
     assert load_config(tmp_path / "missing.toml").input_roots == []
 
 
-def test_main_exits_cleanly_on_bad_config(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_exits_cleanly_on_bad_config(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     bad = tmp_path / "bad.toml"
-    bad.write_text('[paths]\ninput_roots = ["C:\\Work"]\n', encoding="utf-8")  # 잘못된 이스케이프
+    bad.write_text(
+        '[paths]\ninput_roots = ["C:\\Work"]\n', encoding="utf-8"
+    )  # 잘못된 이스케이프
     assert mcp_main.main(["--config", str(bad)]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""  # stdout 은 JSON-RPC 전용
@@ -153,7 +169,9 @@ def test_main_exits_cleanly_on_bad_config(tmp_path: Path, capsys: pytest.Capture
 
 
 def test_fixed_policy_keys_produce_warnings(tmp_path: Path) -> None:
-    cfg = McpConfig.from_mapping({"allow_overwrite": True, "require_confirmation": False})
+    cfg = McpConfig.from_mapping(
+        {"allow_overwrite": True, "require_confirmation": False}
+    )
     assert any("allow_overwrite" in w for w in cfg.config_warnings)
     assert any("require_confirmation" in w for w in cfg.config_warnings)
     caps = gather_capabilities(cfg)
@@ -165,18 +183,26 @@ def test_require_confirmation_false_is_not_honored(tmp_path: Path) -> None:
     src = _seed(tmp_path, ["a.hwp"])
     cfg = _cfg(tmp_path, require_confirmation=False)
     manager = JobManager(cfg)
-    preview = preview_conversion(cfg, input_paths=[str(src)], format_type="PDF", output_dir=cfg.output_roots[0])
+    preview = preview_conversion(
+        cfg, input_paths=[str(src)], format_type="PDF", output_dir=cfg.output_roots[0]
+    )
     with pytest.raises(McpError) as excinfo:
-        manager.submit(get_plan(preview["plan_id"]), confirmation="", idempotency_key="k")
+        manager.submit(
+            get_plan(preview["plan_id"]), confirmation="", idempotency_key="k"
+        )
     assert excinfo.value.code == "CONFIRMATION_REQUIRED"
 
 
 # --- ISSUE-001: 권한 상승 필요 실행 파일 --------------------------------------
 
 
-def test_elevation_required_oserror_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_elevation_required_oserror_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _raise(*args: object, **kwargs: object) -> None:
-        raise OSError(None, "요청한 작업을 수행하려면 권한 상승이 필요합니다", None, 740)
+        raise OSError(
+            None, "요청한 작업을 수행하려면 권한 상승이 필요합니다", None, 740
+        )
 
     monkeypatch.setattr(runner.subprocess, "Popen", _raise)
     with pytest.raises(McpError) as excinfo:
@@ -190,7 +216,9 @@ def test_elevation_required_oserror_is_reported(tmp_path: Path, monkeypatch: pyt
     assert excinfo.value.code == "ELEVATION_REQUIRED"
 
 
-def test_elevation_required_fails_job_with_specific_code(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_elevation_required_fails_job_with_specific_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     src = _seed(tmp_path, ["a.hwp"])
     cfg = _cfg(tmp_path)
     manager = JobManager(cfg)
@@ -205,15 +233,23 @@ def test_elevation_required_fails_job_with_specific_code(tmp_path: Path, monkeyp
     assert done.error["code"] == "ELEVATION_REQUIRED"
 
 
-def test_capabilities_flag_admin_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_capabilities_flag_admin_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     admin_exe = tmp_path / "admin.exe"
-    admin_exe.write_bytes(b"MZ" + b"\0" * 1000 + b'<requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>')
+    admin_exe.write_bytes(
+        b"MZ"
+        + b"\0" * 1000
+        + b'<requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>'
+    )
     plain_exe = tmp_path / "plain.exe"
     plain_exe.write_bytes(b"MZ" + b'<requestedExecutionLevel level="asInvoker"/>')
     assert runner.executable_requires_admin(admin_exe) is True
     assert runner.executable_requires_admin(plain_exe) is False
 
-    monkeypatch.setattr("hwpmate.mcp.capabilities.current_process_is_elevated", lambda: False)
+    monkeypatch.setattr(
+        "hwpmate.mcp.capabilities.current_process_is_elevated", lambda: False
+    )
     caps = gather_capabilities(McpConfig(cli_executable=str(admin_exe)))
     assert caps["cli_path_valid"] is False
     assert caps["cli_requires_elevation"] is True
@@ -221,14 +257,21 @@ def test_capabilities_flag_admin_manifest(tmp_path: Path, monkeypatch: pytest.Mo
     assert caps_plain["cli_path_valid"] is True
     assert caps_plain["cli_requires_elevation"] is False
 
-    monkeypatch.setattr("hwpmate.mcp.capabilities.current_process_is_elevated", lambda: True)
-    assert gather_capabilities(McpConfig(cli_executable=str(admin_exe)))["cli_path_valid"] is True
+    monkeypatch.setattr(
+        "hwpmate.mcp.capabilities.current_process_is_elevated", lambda: True
+    )
+    assert (
+        gather_capabilities(McpConfig(cli_executable=str(admin_exe)))["cli_path_valid"]
+        is True
+    )
 
 
 # --- ISSUE-004: 중간 BUSY ----------------------------------------------------
 
 
-def test_busy_mid_job_records_remaining_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_busy_mid_job_records_remaining_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_BUSY_NAMES", "b.hwp")
     src = _seed(tmp_path, ["a.hwp", "b.hwp", "c.hwp"])
     cfg = _cfg(tmp_path)
@@ -240,14 +283,21 @@ def test_busy_mid_job_records_remaining_inputs(tmp_path: Path, monkeypatch: pyte
     assert done.state == "partially_failed"
     assert done.error["code"] == "BUSY_EXTERNAL_INSTANCE"
     status = done.to_status_dict()
-    total = status["success_count"] + status["failed_count"] + status["skipped_count"] + status["canceled_count"]
+    total = (
+        status["success_count"]
+        + status["failed_count"]
+        + status["skipped_count"]
+        + status["canceled_count"]
+    )
     assert total == status["requested"] == 3
 
 
 # --- ISSUE-003: 제한 시간 초과 ------------------------------------------------
 
 
-def test_timeout_stops_remaining_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_timeout_stops_remaining_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_SLEEP_NAMES", "a.hwp")
     monkeypatch.setenv("HWPMATE_FAKECLI_SLEEP", "30")
     src = _seed(tmp_path, ["a.hwp", "b.hwp"])
@@ -270,7 +320,9 @@ class _EveryPid:
         return set(other)
 
 
-def test_timeout_cleans_owned_processes_outside_cli_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_timeout_cleans_owned_processes_outside_cli_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_MODE", "sleep")
     monkeypatch.setenv("HWPMATE_FAKECLI_SLEEP", "30")
     monkeypatch.setenv("HWPMATE_FAKECLI_SPAWN_CHILD", "1")
@@ -289,11 +341,15 @@ def test_timeout_cleans_owned_processes_outside_cli_tree(tmp_path: Path, monkeyp
     assert any("한글 프로세스" in warning for warning in done.warnings)
 
 
-def test_normal_exit_leaves_nothing_to_clean(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_normal_exit_leaves_nothing_to_clean(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_SPAWN_CHILD", "1")
     killed: list[int] = []
     monkeypatch.setattr(runner, "_live_hwp_pids", lambda: _EveryPid())
-    monkeypatch.setattr(runner, "_terminate_pid", lambda pid: killed.append(pid) or True)
+    monkeypatch.setattr(
+        runner, "_terminate_pid", lambda pid: killed.append(pid) or True
+    )
     src = _seed(tmp_path, ["a.hwp"])
     cfg = _cfg(tmp_path)
     manager = JobManager(cfg)
@@ -303,12 +359,18 @@ def test_normal_exit_leaves_nothing_to_clean(tmp_path: Path, monkeypatch: pytest
     assert killed == []
 
 
-def test_cleanup_only_targets_live_hwp_pids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cleanup_only_targets_live_hwp_pids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     pids_file = tmp_path / "p.json"
-    pids_file.write_text(json.dumps({"pids": [111, 222, "x", -1, True]}), encoding="utf-8")
+    pids_file.write_text(
+        json.dumps({"pids": [111, 222, "x", -1, True]}), encoding="utf-8"
+    )
     killed: list[int] = []
     monkeypatch.setattr(runner, "_live_hwp_pids", lambda: {222, 333})
-    monkeypatch.setattr(runner, "_terminate_pid", lambda pid: killed.append(pid) or True)
+    monkeypatch.setattr(
+        runner, "_terminate_pid", lambda pid: killed.append(pid) or True
+    )
     assert runner.cleanup_owned_hwp_processes(pids_file) == [222]
     assert killed == [222]
     assert runner.cleanup_owned_hwp_processes(tmp_path / "missing.json") == []
@@ -360,7 +422,9 @@ def test_recheck_input_rejects_missing_and_outside(tmp_path: Path) -> None:
     assert excinfo.value.code == "INPUT_DENIED"
 
 
-def test_queued_job_input_removed_before_execution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_queued_job_input_removed_before_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_SLEEP_NAMES", "a.hwp")
     monkeypatch.setenv("HWPMATE_FAKECLI_SLEEP", "3")
     src = _seed(tmp_path, ["a.hwp", "b.hwp"])
@@ -394,7 +458,9 @@ def test_corrupt_idempotency_index_is_rebuilt(tmp_path: Path) -> None:
     assert json.loads(index.read_text(encoding="utf-8"))  # 유효한 JSON으로 다시 저장됨
 
 
-def test_concurrent_submits_keep_index_valid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_concurrent_submits_keep_index_valid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import threading
 
     names = [f"f{i}.hwp" for i in range(6)]
@@ -402,14 +468,23 @@ def test_concurrent_submits_keep_index_valid(tmp_path: Path, monkeypatch: pytest
     cfg = _cfg(tmp_path, max_queued_jobs=10)
     manager = JobManager(cfg)
     plans = [
-        get_plan(preview_conversion(cfg, input_paths=[str(src / n)], format_type="PDF", output_dir=cfg.output_roots[0])["plan_id"])
+        get_plan(
+            preview_conversion(
+                cfg,
+                input_paths=[str(src / n)],
+                format_type="PDF",
+                output_dir=cfg.output_roots[0],
+            )["plan_id"]
+        )
         for n in names
     ]
     errors: list[BaseException] = []
 
     def _go(i: int) -> None:
         try:
-            manager.submit(plans[i], confirmation=CONFIRMATION_TOKEN, idempotency_key=f"key-{i}")
+            manager.submit(
+                plans[i], confirmation=CONFIRMATION_TOKEN, idempotency_key=f"key-{i}"
+            )
         except BaseException as exc:  # pragma: no cover - 실패 시 진단용
             errors.append(exc)
 
@@ -421,7 +496,9 @@ def test_concurrent_submits_keep_index_valid(tmp_path: Path, monkeypatch: pytest
     assert not errors
     for job_id in list(manager._records):
         wait_for_state(manager, job_id, timeout_seconds=120)
-    index = json.loads((tmp_path / "jobs" / "idempotency.json").read_text(encoding="utf-8"))
+    index = json.loads(
+        (tmp_path / "jobs" / "idempotency.json").read_text(encoding="utf-8")
+    )
     assert len(index) == len(names)
 
 

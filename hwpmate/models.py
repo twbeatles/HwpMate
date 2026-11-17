@@ -95,7 +95,9 @@ class ConversionTask:
         if self.backup_file is not None:
             self.backup_file = Path(self.backup_file)
         if self.conflict_original_output_file is not None:
-            self.conflict_original_output_file = Path(self.conflict_original_output_file)
+            self.conflict_original_output_file = Path(
+                self.conflict_original_output_file
+            )
         self.created_files = [Path(path) for path in self.created_files]
 
     @property
@@ -109,7 +111,9 @@ class ConversionTask:
             "status": self.status,
             "detail": self.detail,
             "retry_count": self.retry_count,
-            "backup_file": str(self.backup_file) if self.backup_file is not None else "",
+            "backup_file": str(self.backup_file)
+            if self.backup_file is not None
+            else "",
             "backup_error": self.backup_error or "",
             "created_files": "; ".join(str(path) for path in self.created_files),
             "output_size": self.output_size if self.output_size is not None else "",
@@ -174,7 +178,10 @@ class PlannedConversion:
 
     @property
     def all_tasks(self) -> list[ConversionTask]:
-        return sorted(self.tasks + self.skipped_tasks, key=lambda task: str(task.input_file).lower())
+        return sorted(
+            self.tasks + self.skipped_tasks,
+            key=lambda task: str(task.input_file).lower(),
+        )
 
     @property
     def output_policy_label(self) -> str:

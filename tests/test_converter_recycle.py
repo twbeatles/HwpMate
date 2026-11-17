@@ -35,7 +35,6 @@ class MockRecycleConverter:
         self.convert_call_count += 1
         return True, None
 
-
     def cleanup(self) -> None:
         self.cleanup_call_count += 1
 
@@ -46,9 +45,12 @@ class MockRecycleConverter:
         return True
 
 
-def test_conversion_worker_recycle(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_conversion_worker_recycle(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     # 2건마다 재순환하도록 설정
     import hwpmate.workers.conversion_worker.worker as worker_module
+
     monkeypatch.setattr(worker_module, "CONVERTER_RECYCLE_BATCH_COUNT", 2)
 
     tasks = [
@@ -70,7 +72,6 @@ def test_conversion_worker_recycle(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         retry_count=0,
         tasks=tasks,
     )
-
 
     mock_converter = MockRecycleConverter()
     worker = ConversionWorker(plan, converter_factory=lambda: mock_converter)

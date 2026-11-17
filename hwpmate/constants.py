@@ -9,7 +9,9 @@ BACKUP_DIR_NAME = "backup"
 
 FORMAT_TYPES: dict[str, FormatSpec] = {
     "HWP": FormatSpec(ext=".hwp", save_format="HWP", icon="📝", desc="한글 문서"),
-    "HWPX": FormatSpec(ext=".hwpx", save_format="HWPX", icon="📘", desc="한글 표준 문서"),
+    "HWPX": FormatSpec(
+        ext=".hwpx", save_format="HWPX", icon="📘", desc="한글 표준 문서"
+    ),
     "PDF": FormatSpec(ext=".pdf", save_format="PDF", icon="📕", desc="PDF 문서"),
     "DOCX": FormatSpec(ext=".docx", save_format="OOXML", icon="📄", desc="MS Word"),
     # 한글 2022(12.0) 실측: "ODT" 는 SaveAs False, "ODF" 로만 .odt 생성
@@ -120,9 +122,7 @@ SECURITY_MODULE_DLL_SHA256 = (
 UPDATE_MANIFEST_URL_DEFAULT = (
     "https://raw.githubusercontent.com/twbeatles/HwpMate/main/updates/latest.json"
 )
-UPDATE_PUBLIC_KEY_B64_DEFAULT = (
-    "wrW1ov1NJbUeBjOKIyYNHa+AnjvHdCwSrxIRaQio2ac="
-)
+UPDATE_PUBLIC_KEY_B64_DEFAULT = "wrW1ov1NJbUeBjOKIyYNHa+AnjvHdCwSrxIRaQio2ac="
 UPDATE_MANIFEST_MAX_BYTES = 1024 * 1024  # 1MB
 UPDATE_ARTIFACT_MAX_BYTES = 250 * 1024 * 1024  # 250MB
 UPDATE_REQUEST_TIMEOUT_SECONDS = 30.0
@@ -130,5 +130,3 @@ UPDATE_BACKUP_KEEP_COUNT = 3
 
 # 대량 변환 시 한글 COM 프로세스 자동 재순환 주기 (N건마다 cleanup & re-init)
 CONVERTER_RECYCLE_BATCH_COUNT = 200
-
-

@@ -9,7 +9,9 @@ def uses_print_settings_control(format_type: str) -> bool:
     return format_type.upper() in PRINT_AFFECTED_FORMATS
 
 
-def normalize_pdf_export_mode(value: object, default: str = PDF_EXPORT_SAVEAS_FIRST) -> str:
+def normalize_pdf_export_mode(
+    value: object, default: str = PDF_EXPORT_SAVEAS_FIRST
+) -> str:
     if isinstance(value, str) and value.strip().lower() in PDF_EXPORT_MODES:
         return value.strip().lower()
     return default

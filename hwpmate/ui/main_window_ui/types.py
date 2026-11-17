@@ -72,4 +72,3 @@ class MainWindowCallbacks:
     start_conversion: Callable[..., None]
     cancel_conversion: Callable[..., None]
     update_format_cards: Callable[..., None]
-

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import time
 from collections.abc import Iterable
@@ -12,12 +12,13 @@ from ..path_utils import canonicalize_path, iter_supported_files, make_path_key
 
 logger = get_logger(__name__)
 
+
 class FileScanWorker(QThread):
     """파일/폴더 입력을 비동기로 스캔하고 배치 단위로 전달"""
 
-    batch_found = Signal(list)          # list[str]
-    scan_progress = Signal(int, int)    # current_root, total_roots
-    scan_finished = Signal(int, bool)   # total_found, canceled
+    batch_found = Signal(list)  # list[str]
+    scan_progress = Signal(int, int)  # current_root, total_roots
+    scan_finished = Signal(int, bool)  # total_found, canceled
     scan_error = Signal(str)
 
     def __init__(
@@ -30,7 +31,9 @@ class FileScanWorker(QThread):
         super().__init__()
         self.input_paths = [str(p) for p in input_paths if str(p).strip()]
         self.include_sub = include_sub
-        self.allowed_exts = {ext.lower() for ext in (allowed_exts or set(SUPPORTED_EXTENSIONS))}
+        self.allowed_exts = {
+            ext.lower() for ext in (allowed_exts or set(SUPPORTED_EXTENSIONS))
+        }
         self.batch_size = max(1, int(batch_size))
         self._cancel_requested = False
 

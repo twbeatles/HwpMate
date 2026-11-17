@@ -8,7 +8,13 @@ from hwpmate.workers.conversion_worker import ConversionWorker
 
 
 class StubConverter:
-    def __init__(self, *, results: dict[str, tuple[bool, str | None]], owned: bool = True, on_convert=None) -> None:
+    def __init__(
+        self,
+        *,
+        results: dict[str, tuple[bool, str | None]],
+        owned: bool = True,
+        on_convert=None,
+    ) -> None:
         self.results = results
         self.owned = owned
         self.on_convert = on_convert
@@ -22,7 +28,9 @@ class StubConverter:
         self.manage_com_apartment_args.append(manage_com_apartment)
         return True
 
-    def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+    def convert_file(
+        self, input_path, output_path, format_type="PDF", *, cancel_check=None
+    ):
         del cancel_check
         if self.on_convert is not None:
             self.on_convert(Path(input_path))
@@ -50,19 +58,25 @@ class SequenceConverter(StubConverter):
         super().__init__(results={})
         self.sequence = sequence
 
-    def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+    def convert_file(
+        self, input_path, output_path, format_type="PDF", *, cancel_check=None
+    ):
         del input_path, output_path, format_type, cancel_check
         return self.sequence.pop(0)
 
 
 class RaisingConverter(StubConverter):
-    def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+    def convert_file(
+        self, input_path, output_path, format_type="PDF", *, cancel_check=None
+    ):
         del input_path, output_path, format_type, cancel_check
         raise RuntimeError("worker boom")
 
 
 class ArtifactConverter(StubConverter):
-    def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+    def convert_file(
+        self, input_path, output_path, format_type="PDF", *, cancel_check=None
+    ):
         result = super().convert_file(
             input_path, output_path, format_type, cancel_check=cancel_check
         )
@@ -76,7 +90,9 @@ class ArtifactConverter(StubConverter):
         return result
 
 
-def test_conversion_worker_builds_summary_with_success_failure_and_skip(tmp_path: Path, monkeypatch) -> None:
+def test_conversion_worker_builds_summary_with_success_failure_and_skip(
+    tmp_path: Path, monkeypatch
+) -> None:
     import hwpmate.workers.conversion_worker as worker_module
 
     monkeypatch.setattr(worker_module.time, "sleep", lambda _: None)
@@ -95,7 +111,9 @@ def test_conversion_worker_builds_summary_with_success_failure_and_skip(tmp_path
             ConversionTask(second, second.with_suffix(".pdf")),
         ],
         skipped_tasks=[
-            ConversionTask(skipped, skipped, status="건너뜀", error="이미 HWPX 형식입니다."),
+            ConversionTask(
+                skipped, skipped, status="건너뜀", error="이미 HWPX 형식입니다."
+            ),
         ],
         warnings=["동일 형식 1개는 자동으로 건너뜁니다."],
     )
@@ -139,7 +157,9 @@ def test_conversion_worker_marks_remaining_tasks_as_canceled(tmp_path: Path) -> 
             ConversionTask(second, second.with_suffix(".pdf")),
         ],
         skipped_tasks=[
-            ConversionTask(skipped, skipped, status="건너뜀", error="이미 PDF 형식입니다."),
+            ConversionTask(
+                skipped, skipped, status="건너뜀", error="이미 PDF 형식입니다."
+            ),
         ],
     )
     summaries = []
@@ -163,7 +183,9 @@ def test_conversion_worker_marks_remaining_tasks_as_canceled(tmp_path: Path) -> 
     assert any(task.status == "취소됨" for task in summary.tasks)
 
 
-def test_conversion_worker_marks_in_progress_failure_as_canceled(tmp_path: Path) -> None:
+def test_conversion_worker_marks_in_progress_failure_as_canceled(
+    tmp_path: Path,
+) -> None:
     """취소 요청 후 COM 오류가 나도 실패가 아니라 취소로 집계한다."""
     first = tmp_path / "a.hwp"
     first.write_text("x", encoding="utf-8")
@@ -210,12 +232,16 @@ def test_conversion_worker_progress_emits_completed_count(tmp_path: Path) -> Non
     created: list[StubConverter] = []
 
     def factory() -> StubConverter:
-        converter = StubConverter(results={"a.hwp": (True, None), "b.hwp": (True, None)})
+        converter = StubConverter(
+            results={"a.hwp": (True, None), "b.hwp": (True, None)}
+        )
         created.append(converter)
         return converter
 
     worker = ConversionWorker(plan, converter_factory=factory)
-    worker.progress_updated.connect(lambda cur, total, name: progress_events.append((cur, total, name)))
+    worker.progress_updated.connect(
+        lambda cur, total, name: progress_events.append((cur, total, name))
+    )
     worker.run()
 
     assert (1, 2, "a.hwp") in progress_events
@@ -224,7 +250,9 @@ def test_conversion_worker_progress_emits_completed_count(tmp_path: Path) -> Non
     assert created and created[0].manage_com_apartment_args == [False]
 
 
-def test_conversion_worker_emits_failed_summary_when_initialize_fails(tmp_path: Path) -> None:
+def test_conversion_worker_emits_failed_summary_when_initialize_fails(
+    tmp_path: Path,
+) -> None:
     input_file = tmp_path / "a.hwp"
     input_file.write_text("x", encoding="utf-8")
     skipped = tmp_path / "b.hwpx"
@@ -234,7 +262,11 @@ def test_conversion_worker_emits_failed_summary_when_initialize_fails(tmp_path: 
         same_location=True,
         output_path="",
         tasks=[ConversionTask(input_file, input_file.with_suffix(".pdf"))],
-        skipped_tasks=[ConversionTask(skipped, skipped, status="건너뜀", error="이미 HWPX 형식입니다.")],
+        skipped_tasks=[
+            ConversionTask(
+                skipped, skipped, status="건너뜀", error="이미 HWPX 형식입니다."
+            )
+        ],
     )
     summaries = []
     worker = ConversionWorker(
@@ -252,7 +284,9 @@ def test_conversion_worker_emits_failed_summary_when_initialize_fails(tmp_path: 
     assert "한글 초기화 실패" in summary.failed_tasks[0].detail
 
 
-def test_conversion_worker_retries_failed_conversion(tmp_path: Path, monkeypatch) -> None:
+def test_conversion_worker_retries_failed_conversion(
+    tmp_path: Path, monkeypatch
+) -> None:
     import hwpmate.workers.conversion_worker as worker_module
 
     monkeypatch.setattr(worker_module.time, "sleep", lambda _: None)
@@ -268,7 +302,9 @@ def test_conversion_worker_retries_failed_conversion(tmp_path: Path, monkeypatch
     summaries = []
     worker = ConversionWorker(
         plan,
-        converter_factory=lambda: SequenceConverter(sequence=[(False, "temporary"), (True, None)]),
+        converter_factory=lambda: SequenceConverter(
+            sequence=[(False, "temporary"), (True, None)]
+        ),
     )
     worker.task_completed.connect(lambda summary: summaries.append(summary))
 
@@ -306,7 +342,9 @@ def test_conversion_worker_attaches_converter_artifacts(tmp_path: Path) -> None:
     assert task.progid_used == "Stub.Hwp"
 
 
-def test_conversion_worker_emits_summary_for_unexpected_worker_errors(tmp_path: Path) -> None:
+def test_conversion_worker_emits_summary_for_unexpected_worker_errors(
+    tmp_path: Path,
+) -> None:
     input_file = tmp_path / "a.hwp"
     input_file.write_text("x", encoding="utf-8")
     plan = PlannedConversion(
@@ -390,7 +428,9 @@ def test_create_backup_prunes_old_stem_files(tmp_path: Path, monkeypatch) -> Non
     assert len(remaining) <= 3
 
 
-def test_conversion_worker_renames_output_when_late_conflict_appears(tmp_path: Path) -> None:
+def test_conversion_worker_renames_output_when_late_conflict_appears(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "source.hwp"
     source.write_text("x", encoding="utf-8")
     original = tmp_path / "out.pdf"
@@ -407,7 +447,9 @@ def test_conversion_worker_renames_output_when_late_conflict_appears(tmp_path: P
     converted_outputs: list[Path] = []
 
     class OutputRecordingConverter(StubConverter):
-        def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+        def convert_file(
+            self, input_path, output_path, format_type="PDF", *, cancel_check=None
+        ):
             del input_path, format_type, cancel_check
             converted_outputs.append(Path(output_path))
             Path(output_path).write_bytes(b"%PDF-1.4\n")
@@ -446,7 +488,9 @@ def test_conversion_worker_emits_com_export_stage(tmp_path: Path) -> None:
     assert "COM 내보내기" in stages
 
 
-def test_create_backup_prune_keeps_backups_of_other_prefixed_files(tmp_path: Path) -> None:
+def test_create_backup_prune_keeps_backups_of_other_prefixed_files(
+    tmp_path: Path,
+) -> None:
     import hwpmate.workers.conversion_worker.backup as backup_module
 
     backup_dir = tmp_path / "backup"
@@ -464,7 +508,9 @@ def test_create_backup_prune_keeps_backups_of_other_prefixed_files(tmp_path: Pat
     assert all(path.exists() for path in others)
 
 
-def test_create_backup_prune_orders_by_backup_timestamp_not_source_mtime(tmp_path: Path) -> None:
+def test_create_backup_prune_orders_by_backup_timestamp_not_source_mtime(
+    tmp_path: Path,
+) -> None:
     import os
 
     import hwpmate.workers.conversion_worker.backup as backup_module
@@ -489,7 +535,9 @@ def test_create_backup_prune_orders_by_backup_timestamp_not_source_mtime(tmp_pat
     assert middle.exists() and newest.exists()
 
 
-def test_conversion_worker_fails_pending_tasks_when_recycle_initialize_fails(tmp_path: Path, monkeypatch) -> None:
+def test_conversion_worker_fails_pending_tasks_when_recycle_initialize_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
     import hwpmate.workers.conversion_worker.task_runner as runner_module
     import hwpmate.workers.conversion_worker.worker as worker_impl
 
@@ -536,7 +584,9 @@ def test_conversion_worker_fails_pending_tasks_when_recycle_initialize_fails(tmp
     assert all("dispatch failed" in (task.error or "") for task in failed)
 
 
-def test_conversion_worker_propagates_compat_dialog_setting_and_reports_responses(tmp_path: Path) -> None:
+def test_conversion_worker_propagates_compat_dialog_setting_and_reports_responses(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "a.hwp"
     source.write_text("x", encoding="utf-8")
 
@@ -544,9 +594,13 @@ def test_conversion_worker_propagates_compat_dialog_setting_and_reports_response
         auto_continue_compat_dialogs = True
         compat_dialog_responses = 0
 
-        def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+        def convert_file(
+            self, input_path, output_path, format_type="PDF", *, cancel_check=None
+        ):
             self.compat_dialog_responses += 1
-            return super().convert_file(input_path, output_path, format_type, cancel_check=cancel_check)
+            return super().convert_file(
+                input_path, output_path, format_type, cancel_check=cancel_check
+            )
 
     converter = CompatConverter(results={"a.hwp": (True, None)})
     plan = PlannedConversion(

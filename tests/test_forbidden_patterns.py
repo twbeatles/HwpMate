@@ -14,7 +14,10 @@ PACKAGE = Path(__file__).resolve().parents[1] / "hwpmate"
 
 
 def _sources() -> list[tuple[Path, str]]:
-    return [(path, path.read_text(encoding="utf-8")) for path in sorted(PACKAGE.rglob("*.py"))]
+    return [
+        (path, path.read_text(encoding="utf-8"))
+        for path in sorted(PACKAGE.rglob("*.py"))
+    ]
 
 
 def _code_lines(text: str) -> list[str]:

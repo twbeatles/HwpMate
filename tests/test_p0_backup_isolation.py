@@ -41,7 +41,9 @@ class OkConverter:
     def kill_owned_processes(self) -> bool:
         return False
 
-    def convert_file(self, input_path, output_path, format_type="PDF", *, cancel_check=None):
+    def convert_file(
+        self, input_path, output_path, format_type="PDF", *, cancel_check=None
+    ):
         del input_path, format_type, cancel_check
         Path(output_path).write_bytes(b"%PDF-1.4 ok\n")
         return True, None
@@ -55,7 +57,9 @@ def _snapshot_hashes(directory: Path) -> dict[str, str]:
     }
 
 
-def test_prune_never_touches_other_stems_with_overlapping_prefix(tmp_path: Path) -> None:
+def test_prune_never_touches_other_stems_with_overlapping_prefix(
+    tmp_path: Path,
+) -> None:
     """report 정리 시 report_1·report_final 백업은 개수·내용·해시 모두 불변."""
     report = tmp_path / "report.hwp"
     report.write_text("v", encoding="utf-8")
@@ -87,8 +91,16 @@ def test_prune_never_touches_other_stems_with_overlapping_prefix(tmp_path: Path)
     report_backups = [name for name in after if name.startswith("report_20")]
     assert 0 < len(report_backups) <= keep
     for stem, before in neighbor_hashes.items():
-        stem_files = {name: digest for name, digest in after.items() if name.startswith(f"{stem}_")}
-        expected = {name: digest for name, digest in before.items() if name.startswith(f"{stem}_")}
+        stem_files = {
+            name: digest
+            for name, digest in after.items()
+            if name.startswith(f"{stem}_")
+        }
+        expected = {
+            name: digest
+            for name, digest in before.items()
+            if name.startswith(f"{stem}_")
+        }
         assert stem_files == expected, stem
         assert len(stem_files) == neighbor_counts[stem], stem
 
@@ -125,7 +137,9 @@ def test_backup_failure_is_recorded_and_warned_not_silent(tmp_path: Path) -> Non
     warnings = execute_task(
         task,
         OkConverter(),
-        TaskRunOptions(format_type="PDF", overwrite=False, backup_enabled=True, retry_count=0),
+        TaskRunOptions(
+            format_type="PDF", overwrite=False, backup_enabled=True, retry_count=0
+        ),
         planner=TaskPlanner(),
         used_output_path_keys=set(),
         cancel_check=lambda: False,
@@ -159,7 +173,9 @@ def test_backup_dir_swapped_by_outsider_is_reported(tmp_path: Path) -> None:
     warnings = execute_task(
         task,
         OkConverter(),
-        TaskRunOptions(format_type="PDF", overwrite=False, backup_enabled=True, retry_count=0),
+        TaskRunOptions(
+            format_type="PDF", overwrite=False, backup_enabled=True, retry_count=0
+        ),
         planner=TaskPlanner(),
         used_output_path_keys=set(),
         cancel_check=lambda: False,

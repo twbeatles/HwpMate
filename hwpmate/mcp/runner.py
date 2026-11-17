@@ -44,14 +44,19 @@ class CliRun:
 def resolve_cli_executable(cfg: McpConfig) -> tuple[list[str], str]:
     raw = str(cfg.cli_executable or "").strip()
     if not raw:
-        raise McpError("CLI_NOT_TRUSTED", "CLI 실행 파일이 설정되지 않았습니다 (paths.cli_executable).")
+        raise McpError(
+            "CLI_NOT_TRUSTED",
+            "CLI 실행 파일이 설정되지 않았습니다 (paths.cli_executable).",
+        )
     candidate = Path(raw).expanduser()
     try:
         resolved = candidate.resolve()
     except OSError as exc:
         raise McpError("CLI_NOT_TRUSTED", f"CLI 실행 파일 해석 실패: {exc}") from exc
     if not resolved.is_file():
-        raise McpError("CLI_NOT_TRUSTED", f"CLI 실행 파일이 존재하지 않습니다: {resolved}")
+        raise McpError(
+            "CLI_NOT_TRUSTED", f"CLI 실행 파일이 존재하지 않습니다: {resolved}"
+        )
     if resolved.suffix.lower() == ".py":
         return [sys.executable, str(resolved)], str(resolved)
     return [str(resolved)], str(resolved)
@@ -185,7 +190,9 @@ def run_cli(
 
     timed_out = False
     try:
-        stdout_data, stderr_data = process.communicate(timeout=max(1, int(timeout_seconds)))
+        stdout_data, stderr_data = process.communicate(
+            timeout=max(1, int(timeout_seconds))
+        )
         returncode = int(process.returncode)
     except subprocess.TimeoutExpired:
         timed_out = True
@@ -265,7 +272,13 @@ def cleanup_owned_hwp_processes(path: Path) -> list[int]:
 def _decode_best_effort(data: bytes) -> str:
     import locale
 
-    candidates = ["utf-8", sys.getfilesystemencoding(), locale.getpreferredencoding(False), "cp949", "euc-kr"]
+    candidates = [
+        "utf-8",
+        sys.getfilesystemencoding(),
+        locale.getpreferredencoding(False),
+        "cp949",
+        "euc-kr",
+    ]
     seen: set[str] = set()
     for encoding in candidates:
         if not encoding or encoding.lower() in seen:

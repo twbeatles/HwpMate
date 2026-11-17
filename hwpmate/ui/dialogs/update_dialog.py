@@ -40,7 +40,9 @@ class UpdateDialog(QDialog):
     def _init_ui(self) -> None:
         self.setWindowTitle("새 버전 업데이트 안내")
         self.setFixedSize(480, 260)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+        self.setWindowFlags(
+            self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint
+        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
@@ -133,12 +135,16 @@ class UpdateDialog(QDialog):
             self.progress_bar.setValue(pct)
             cur_mb = current / (1024 * 1024)
             tot_mb = total / (1024 * 1024)
-            self.status_label.setText(f"다운로드 중... ({cur_mb:.1f} MB / {tot_mb:.1f} MB, {pct}%)")
+            self.status_label.setText(
+                f"다운로드 중... ({cur_mb:.1f} MB / {tot_mb:.1f} MB, {pct}%)"
+            )
 
     def set_download_complete(self) -> None:
         self._is_downloading = False
         self.progress_bar.setValue(100)
-        self.status_label.setText("다운로드 및 무결성 검증 완료! 프로그램을 재시작하여 적용하세요.")
+        self.status_label.setText(
+            "다운로드 및 무결성 검증 완료! 프로그램을 재시작하여 적용하세요."
+        )
         self.action_btn.setEnabled(True)
         self.action_btn.setText("지금 재시작하여 적용")
         self.cancel_btn.setEnabled(True)
@@ -152,4 +158,3 @@ class UpdateDialog(QDialog):
         self.action_btn.setText("다시 시도")
         self.cancel_btn.setEnabled(True)
         self.cancel_btn.setText("닫기")
-

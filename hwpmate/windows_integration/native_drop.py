@@ -70,7 +70,12 @@ class NativeDropFilter(QAbstractNativeEventFilter):
         if self._argtypes_configured:
             return
         try:
-            self._shell32.DragQueryFileW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_wchar_p, ctypes.c_uint]
+            self._shell32.DragQueryFileW.argtypes = [
+                ctypes.c_void_p,
+                ctypes.c_uint,
+                ctypes.c_wchar_p,
+                ctypes.c_uint,
+            ]
             self._shell32.DragQueryFileW.restype = ctypes.c_uint
             self._shell32.DragFinish.argtypes = [ctypes.c_void_p]
             self._shell32.DragFinish.restype = None
@@ -110,7 +115,9 @@ class NativeDropFilter(QAbstractNativeEventFilter):
 
             # 윈도우별 필터도 설정
             try:
-                user32.ChangeWindowMessageFilterEx(hwnd, self.WM_DROPFILES, MSGFLT_ALLOW, None)
+                user32.ChangeWindowMessageFilterEx(
+                    hwnd, self.WM_DROPFILES, MSGFLT_ALLOW, None
+                )
                 user32.ChangeWindowMessageFilterEx(hwnd, 0x004A, MSGFLT_ALLOW, None)
                 user32.ChangeWindowMessageFilterEx(hwnd, 0x0049, MSGFLT_ALLOW, None)
             except Exception as e:
@@ -156,11 +163,15 @@ class NativeDropFilter(QAbstractNativeEventFilter):
                     accepted_inputs = []
                     for raw_path in dropped_files:
                         path_obj = Path(raw_path)
-                        if path_obj.is_dir() or raw_path.lower().endswith(SUPPORTED_EXTENSIONS):
+                        if path_obj.is_dir() or raw_path.lower().endswith(
+                            SUPPORTED_EXTENSIONS
+                        ):
                             accepted_inputs.append(raw_path)
 
                     if accepted_inputs:
-                        logger.debug(f"네이티브 드롭 입력: {len(accepted_inputs)}개 경로")
+                        logger.debug(
+                            f"네이티브 드롭 입력: {len(accepted_inputs)}개 경로"
+                        )
                         self.files_dropped_callback(accepted_inputs)
 
                 # 메시지 처리 완료 (result 는 반드시 int)
@@ -195,6 +206,7 @@ class NativeDropFilter(QAbstractNativeEventFilter):
         except Exception as e:
             logger.error(f"드롭 파일 추출 실패: {e}")
             import traceback
+
             traceback.print_exc()
         finally:
             try:

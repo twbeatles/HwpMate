@@ -40,8 +40,14 @@ def _run_docx_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     cfg = _cfg(tmp_path)
     manager = JobManager(cfg)
     out = str(tmp_path / "out")
-    preview = preview_conversion(cfg, input_paths=[str(src)], format_type="DOCX", output_dir=out)
-    record = manager.submit(get_plan(preview["plan_id"]), confirmation=CONFIRMATION_TOKEN, idempotency_key="d1")
+    preview = preview_conversion(
+        cfg, input_paths=[str(src)], format_type="DOCX", output_dir=out
+    )
+    record = manager.submit(
+        get_plan(preview["plan_id"]),
+        confirmation=CONFIRMATION_TOKEN,
+        idempotency_key="d1",
+    )
     done = wait_for_state(manager, record.job_id, timeout_seconds=60)
     assert done.state == "succeeded"
     return manager, done

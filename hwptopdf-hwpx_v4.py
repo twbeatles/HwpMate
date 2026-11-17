@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 
 from hwpmate.bootstrap import main
 

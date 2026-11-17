@@ -8,7 +8,9 @@ from hwpmate.models import AppConfig
 
 def test_load_merges_defaults(tmp_path: Path) -> None:
     config_file = tmp_path / "config.json"
-    config_file.write_text('{"theme": "light", "last_folder": "C:/docs"}', encoding="utf-8")
+    config_file.write_text(
+        '{"theme": "light", "last_folder": "C:/docs"}', encoding="utf-8"
+    )
 
     repo = ConfigRepository(config_file)
     config = repo.load()
@@ -48,18 +50,23 @@ def test_save_and_reload_preserves_known_keys(tmp_path: Path) -> None:
     assert reloaded.pdf_export_mode == "saveas_first"
 
 
-def test_save_replaces_config_atomically_without_leaving_temp_files(tmp_path: Path) -> None:
+def test_save_replaces_config_atomically_without_leaving_temp_files(
+    tmp_path: Path,
+) -> None:
     config_file = tmp_path / "config.json"
     repo = ConfigRepository(config_file)
 
-    assert repo.save(
-        AppConfig(
-            theme="light",
-            backup_enabled=False,
-            retry_count=2,
-            pdf_export_mode="print_to_pdf_ex_first",
+    assert (
+        repo.save(
+            AppConfig(
+                theme="light",
+                backup_enabled=False,
+                retry_count=2,
+                pdf_export_mode="print_to_pdf_ex_first",
+            )
         )
-    ) is True
+        is True
+    )
 
     assert config_file.exists()
     assert not list(tmp_path.glob(".config.json.*.tmp"))
@@ -123,19 +130,25 @@ def test_save_reports_failure_when_parent_is_not_directory(tmp_path: Path) -> No
     assert blocked_parent.read_text(encoding="utf-8") == "not a directory"
 
 
-def test_auto_continue_compat_dialog_setting_roundtrip_and_repair(tmp_path: Path) -> None:
+def test_auto_continue_compat_dialog_setting_roundtrip_and_repair(
+    tmp_path: Path,
+) -> None:
     import json
 
     from hwpmate.config_repository import ConfigRepository
 
     config_file = tmp_path / "config.json"
-    config_file.write_text(json.dumps({"auto_continue_compat_dialog": "off"}), encoding="utf-8")
+    config_file.write_text(
+        json.dumps({"auto_continue_compat_dialog": "off"}), encoding="utf-8"
+    )
     repo = ConfigRepository(config_file)
 
     loaded = repo.load()
     assert loaded.auto_continue_compat_dialog is False
 
-    config_file.write_text(json.dumps({"auto_continue_compat_dialog": "garbage"}), encoding="utf-8")
+    config_file.write_text(
+        json.dumps({"auto_continue_compat_dialog": "garbage"}), encoding="utf-8"
+    )
     assert repo.load().auto_continue_compat_dialog is True
 
     loaded.auto_continue_compat_dialog = False

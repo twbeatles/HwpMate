@@ -40,7 +40,9 @@ def test_ensure_hwp_security_module_writes_registry_and_installs_dll(
     assert "DLL=" in msg
 
 
-def test_ensure_hwp_security_module_fails_without_dll(tmp_path: Path, monkeypatch) -> None:
+def test_ensure_hwp_security_module_fails_without_dll(
+    tmp_path: Path, monkeypatch
+) -> None:
     monkeypatch.setattr(sec, "_runtime_security_dir", lambda: tmp_path / "empty")
     monkeypatch.setattr(sec, "find_bundled_security_dll", lambda: None)
 

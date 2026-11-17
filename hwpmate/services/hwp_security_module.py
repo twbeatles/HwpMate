@@ -43,20 +43,26 @@ def _bundled_dll_candidates() -> list[Path]:
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
         base = Path(meipass)
-        candidates.append(base / "hwpmate" / "resources" / "security" / SECURITY_MODULE_DLL_NAME)
+        candidates.append(
+            base / "hwpmate" / "resources" / "security" / SECURITY_MODULE_DLL_NAME
+        )
         candidates.append(base / "resources" / "security" / SECURITY_MODULE_DLL_NAME)
         candidates.append(base / SECURITY_MODULE_DLL_NAME)
     # 패키지 상대: hwpmate/resources/security/ (개발 실행)
     try:
         pkg_root = Path(__file__).resolve().parent.parent
-        candidates.append(pkg_root / "resources" / "security" / SECURITY_MODULE_DLL_NAME)
+        candidates.append(
+            pkg_root / "resources" / "security" / SECURITY_MODULE_DLL_NAME
+        )
     except OSError:
         pass
     # 실행 파일 옆 (onedir 또는 수동 동봉)
     if getattr(sys, "frozen", False):
         exe_dir = Path(sys.executable).resolve().parent
         candidates.append(exe_dir / "security" / SECURITY_MODULE_DLL_NAME)
-        candidates.append(exe_dir / "hwpmate" / "resources" / "security" / SECURITY_MODULE_DLL_NAME)
+        candidates.append(
+            exe_dir / "hwpmate" / "resources" / "security" / SECURITY_MODULE_DLL_NAME
+        )
         candidates.append(exe_dir / SECURITY_MODULE_DLL_NAME)
     return candidates
 
@@ -72,7 +78,9 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def verify_dll_integrity(path: Path, *, expected_sha256: str = EXPECTED_DLL_SHA256) -> None:
+def verify_dll_integrity(
+    path: Path, *, expected_sha256: str = EXPECTED_DLL_SHA256
+) -> None:
     """DLL SHA-256 이 번들 기대값과 일치하는지 검증. 불일치 시 ValueError."""
     actual = sha256_file(path)
     if actual.lower() != expected_sha256.lower():
@@ -145,7 +153,9 @@ def install_security_dll() -> Path:
     return dest
 
 
-def write_security_module_registry(dll_path: Path, alias: str = SECURITY_MODULE_ALIAS) -> str:
+def write_security_module_registry(
+    dll_path: Path, alias: str = SECURITY_MODULE_ALIAS
+) -> str:
     """HKCU 보안 모듈 경로를 Automation/Ctrl 키에 모두 등록. 등록된 별칭 반환."""
     try:
         import winreg
@@ -170,8 +180,13 @@ def write_security_module_registry(dll_path: Path, alias: str = SECURITY_MODULE_
             try:
                 winreg.SetValueEx(key, alias, 0, winreg.REG_SZ, dll_abs)
                 value, reg_type = winreg.QueryValueEx(key, alias)
-                if reg_type != winreg.REG_SZ or str(value).strip().strip('"') != dll_abs:
-                    raise RuntimeError(f"레지스트리 검증 실패: {reg_path}\\{alias}={value!r}")
+                if (
+                    reg_type != winreg.REG_SZ
+                    or str(value).strip().strip('"') != dll_abs
+                ):
+                    raise RuntimeError(
+                        f"레지스트리 검증 실패: {reg_path}\\{alias}={value!r}"
+                    )
             finally:
                 winreg.CloseKey(key)
             written += 1
@@ -192,7 +207,9 @@ def read_security_module_registry(alias: str = SECURITY_MODULE_ALIAS) -> str | N
         return None
     for reg_path in REGISTRY_KEY_PATHS:
         try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path, 0, winreg.KEY_QUERY_VALUE)
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER, reg_path, 0, winreg.KEY_QUERY_VALUE
+            )
             try:
                 value, _ = winreg.QueryValueEx(key, alias)
                 return str(value).strip().strip('"')
@@ -203,7 +220,9 @@ def read_security_module_registry(alias: str = SECURITY_MODULE_ALIAS) -> str | N
     return None
 
 
-def ensure_hwp_security_module(alias: str = SECURITY_MODULE_ALIAS) -> tuple[bool, str, str | None]:
+def ensure_hwp_security_module(
+    alias: str = SECURITY_MODULE_ALIAS,
+) -> tuple[bool, str, str | None]:
     """
     보안 모듈 DLL 설치 + 레지스트리 등록을 보장한다.
 

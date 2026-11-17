@@ -66,7 +66,9 @@ def _prune_old_backups(
         if len(candidates) <= slots_for_old:
             return
         candidates.sort(key=lambda item: (item[0], item[1], item[2]))
-        for _timestamp, _counter, _name, old in candidates[: len(candidates) - slots_for_old]:
+        for _timestamp, _counter, _name, old in candidates[
+            : len(candidates) - slots_for_old
+        ]:
             try:
                 old.unlink(missing_ok=True)
                 logger.debug(f"오래된 백업 정리: {old}")

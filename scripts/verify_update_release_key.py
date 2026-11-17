@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import base64
@@ -28,7 +28,9 @@ def verify_release_keypair(private_key_b64: str, public_key_b64: str) -> None:
         )
         configured_public_key = base64.b64decode(public_key_b64, validate=True)
     except Exception as exc:
-        raise ValueError("업데이트 서명 키는 유효한 Base64 Ed25519 키여야 합니다.") from exc
+        raise ValueError(
+            "업데이트 서명 키는 유효한 Base64 Ed25519 키여야 합니다."
+        ) from exc
     derived_public_key = private_key.public_key().public_bytes(
         serialization.Encoding.Raw,
         serialization.PublicFormat.Raw,
@@ -65,10 +67,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     private_key_b64 = os.environ.get(args.private_key_env, "").strip()
     if not private_key_b64:
-        raise ValueError(f"필수 환경 변수가 설정되지 않았습니다: {args.private_key_env}")
+        raise ValueError(
+            f"필수 환경 변수가 설정되지 않았습니다: {args.private_key_env}"
+        )
     configured_public_key = os.environ.get(args.public_key_env, "").strip()
     if configured_public_key != UPDATE_PUBLIC_KEY_B64_DEFAULT:
-        raise ValueError("릴리즈 공개키 시크릿이 내장된 기본 공개키와 일치하지 않습니다.")
+        raise ValueError(
+            "릴리즈 공개키 시크릿이 내장된 기본 공개키와 일치하지 않습니다."
+        )
     verify_release_keypair(private_key_b64, UPDATE_PUBLIC_KEY_B64_DEFAULT)
     print("업데이트 서명 키 검증 성공!")
     return 0

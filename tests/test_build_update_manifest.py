@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import base64
 import json
@@ -41,25 +41,35 @@ def test_build_manifest_and_verify(tmp_path: Path) -> None:
     assert manifest.artifact_size == len(b"dummy executable payload")
 
 
-def test_build_update_manifest_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_update_manifest_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     private_key = Ed25519PrivateKey.generate()
     priv_bytes = private_key.private_bytes(
         encoding=serialization.Encoding.Raw,
         format=serialization.PrivateFormat.Raw,
         encryption_algorithm=serialization.NoEncryption(),
     )
-    monkeypatch.setenv("HWPMATE_UPDATE_PRIVATE_KEY_B64", base64.b64encode(priv_bytes).decode("ascii"))
+    monkeypatch.setenv(
+        "HWPMATE_UPDATE_PRIVATE_KEY_B64", base64.b64encode(priv_bytes).decode("ascii")
+    )
 
     artifact = tmp_path / "HwpMate-v9.2.0.exe"
     artifact.write_bytes(b"another executable")
     output_json = tmp_path / "latest.json"
 
-    ret = main([
-        "--version", "9.2.0",
-        "--artifact", str(artifact),
-        "--artifact-url", "https://github.com/twbeatles/HwpMate/releases/download/v9.2.0/HwpMate-v9.2.0.exe",
-        "--output", str(output_json),
-    ])
+    ret = main(
+        [
+            "--version",
+            "9.2.0",
+            "--artifact",
+            str(artifact),
+            "--artifact-url",
+            "https://github.com/twbeatles/HwpMate/releases/download/v9.2.0/HwpMate-v9.2.0.exe",
+            "--output",
+            str(output_json),
+        ]
+    )
     assert ret == 0
     assert output_json.is_file()
 

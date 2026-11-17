@@ -16,7 +16,9 @@ class MockCliConverter:
     def initialize(self, *, manage_com_apartment: bool = True) -> bool:
         return True
 
-    def convert_file(self, in_p: Any, out_p: Any, fmt: str = "PDF", *, cancel_check: Any = None) -> tuple[bool, str | None]:
+    def convert_file(
+        self, in_p: Any, out_p: Any, fmt: str = "PDF", *, cancel_check: Any = None
+    ) -> tuple[bool, str | None]:
         del cancel_check
         return True, None
 
@@ -37,7 +39,18 @@ class FakeLock:
 
 
 def test_parse_args_cli() -> None:
-    args = _parse_args(["--input", "test.hwp", "--format", "DOCX", "--output", "out_dir", "--recursive", "--overwrite"])
+    args = _parse_args(
+        [
+            "--input",
+            "test.hwp",
+            "--format",
+            "DOCX",
+            "--output",
+            "out_dir",
+            "--recursive",
+            "--overwrite",
+        ]
+    )
     assert args.input == "test.hwp"
     assert args.format == "DOCX"
     assert args.output == "out_dir"
@@ -59,16 +72,21 @@ def test_cli_conversion_invalid_format(tmp_path: Path) -> None:
     assert ret == 1
 
 
-def test_cli_conversion_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_conversion_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     doc = tmp_path / "test.hwp"
     doc.write_bytes(b"dummy")
 
     import hwpmate.app as app_module
+
     monkeypatch.setattr(app_module, "PYWIN32_AVAILABLE", True)
     monkeypatch.setattr(app_module, "HWPConverter", MockCliConverter)
     monkeypatch.setattr(app_module, "SingleInstanceLock", lambda: FakeLock())
 
-    args = _parse_args(["--input", str(doc), "--format", "PDF", "--output", str(tmp_path / "out")])
+    args = _parse_args(
+        ["--input", str(doc), "--format", "PDF", "--output", str(tmp_path / "out")]
+    )
     ret = _run_cli_conversion(args)
     assert ret == 0
 
@@ -85,7 +103,9 @@ class ScriptedCliConverter(MockCliConverter):
         self.auto_continue_compat_dialogs = True
         ScriptedCliConverter.instances.append(self)
 
-    def convert_file(self, in_p: Any, out_p: Any, fmt: str = "PDF", *, cancel_check: Any = None) -> tuple[bool, str | None]:
+    def convert_file(
+        self, in_p: Any, out_p: Any, fmt: str = "PDF", *, cancel_check: Any = None
+    ) -> tuple[bool, str | None]:
         del in_p, fmt, cancel_check
         self.calls += 1
         ok = self.script.pop(0) if self.script else True
@@ -95,7 +115,9 @@ class ScriptedCliConverter(MockCliConverter):
         return False, "temporary COM failure"
 
 
-def _patch_cli(monkeypatch: pytest.MonkeyPatch, *, script: list[bool], lock: FakeLock | None = None) -> None:
+def _patch_cli(
+    monkeypatch: pytest.MonkeyPatch, *, script: list[bool], lock: FakeLock | None = None
+) -> None:
     import hwpmate.app as app_module
     import hwpmate.workers.conversion_worker.task_runner as runner_module
 
@@ -107,18 +129,24 @@ def _patch_cli(monkeypatch: pytest.MonkeyPatch, *, script: list[bool], lock: Fak
     monkeypatch.setattr(runner_module, "RETRY_DELAY_SECONDS", 0)
 
 
-def test_cli_applies_retry_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_applies_retry_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     doc = tmp_path / "a.hwp"
     doc.write_bytes(b"dummy")
     _patch_cli(monkeypatch, script=[False, False, True])
 
-    ret = _run_cli_conversion(_parse_args(["--input", str(doc), "--retry", "2", "--no-backup"]))
+    ret = _run_cli_conversion(
+        _parse_args(["--input", str(doc), "--retry", "2", "--no-backup"])
+    )
 
     assert ret == 0
     assert ScriptedCliConverter.instances[0].calls == 3
 
 
-def test_cli_creates_backup_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_creates_backup_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     doc = tmp_path / "a.hwp"
     doc.write_bytes(b"dummy")
     _patch_cli(monkeypatch, script=[True])
@@ -130,7 +158,9 @@ def test_cli_creates_backup_by_default(tmp_path: Path, monkeypatch: pytest.Monke
     assert len(backups) == 1
 
 
-def test_cli_reports_skipped_same_format_and_writes_json_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+def test_cli_reports_skipped_same_format_and_writes_json_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
     import json
 
     (tmp_path / "x.hwp").write_bytes(b"dummy")
@@ -139,7 +169,17 @@ def test_cli_reports_skipped_same_format_and_writes_json_report(tmp_path: Path, 
     _patch_cli(monkeypatch, script=[True])
 
     ret = _run_cli_conversion(
-        _parse_args(["--input", str(tmp_path), "--format", "HWPX", "--no-backup", "--report", str(report)])
+        _parse_args(
+            [
+                "--input",
+                str(tmp_path),
+                "--format",
+                "HWPX",
+                "--no-backup",
+                "--report",
+                str(report),
+            ]
+        )
     )
 
     assert ret == 0
@@ -149,7 +189,9 @@ def test_cli_reports_skipped_same_format_and_writes_json_report(tmp_path: Path, 
     assert data["summary"]["skipped_count"] == 1
 
 
-def test_cli_empty_folder_returns_error_without_exception(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+def test_cli_empty_folder_returns_error_without_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
     _patch_cli(monkeypatch, script=[])
 
     ret = _run_cli_conversion(_parse_args(["--input", str(tmp_path)]))
@@ -158,7 +200,9 @@ def test_cli_empty_folder_returns_error_without_exception(tmp_path: Path, monkey
     assert "변환할 파일이 없습니다" in capsys.readouterr().err
 
 
-def test_cli_rejects_non_hwp_input(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_rejects_non_hwp_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     doc = tmp_path / "a.docx"
     doc.write_bytes(b"dummy")
     _patch_cli(monkeypatch, script=[])
@@ -167,7 +211,9 @@ def test_cli_rejects_non_hwp_input(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert ScriptedCliConverter.instances == []
 
 
-def test_cli_refuses_when_single_instance_lock_is_held(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_refuses_when_single_instance_lock_is_held(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     doc = tmp_path / "a.hwp"
     doc.write_bytes(b"dummy")
     _patch_cli(monkeypatch, script=[True], lock=FakeLock(available=False))
@@ -176,17 +222,23 @@ def test_cli_refuses_when_single_instance_lock_is_held(tmp_path: Path, monkeypat
     assert ScriptedCliConverter.instances == []
 
 
-def test_cli_no_auto_continue_flag_disables_compat_dialog_response(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_no_auto_continue_flag_disables_compat_dialog_response(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     doc = tmp_path / "a.hwp"
     doc.write_bytes(b"dummy")
     _patch_cli(monkeypatch, script=[True])
 
-    _run_cli_conversion(_parse_args(["--input", str(doc), "--no-backup", "--no-auto-continue"]))
+    _run_cli_conversion(
+        _parse_args(["--input", str(doc), "--no-backup", "--no-auto-continue"])
+    )
 
     assert ScriptedCliConverter.instances[0].auto_continue_compat_dialogs is False
 
 
-def test_cli_survives_non_utf8_console_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_survives_non_utf8_console_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """실 COM 현장 결함 회귀: cp949 콘솔에서 ⚠️ 경고 출력이 UnicodeEncodeError 로 죽지 않는다."""
     import io
     import sys as sys_module
@@ -203,7 +255,9 @@ def test_cli_survives_non_utf8_console_output(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setattr(sys_module, "stdout", ascii_out)
     monkeypatch.setattr(sys_module, "stderr", ascii_err)
 
-    ret = _run_cli_conversion(_parse_args(["--input", str(doc), "--format", "PDF", "--output", str(out)]))
+    ret = _run_cli_conversion(
+        _parse_args(["--input", str(doc), "--format", "PDF", "--output", str(out)])
+    )
 
     assert ret == 0
     assert (out / "a.pdf").read_bytes() == b"planted"
@@ -223,18 +277,24 @@ class PidTrackingCliConverter(ScriptedCliConverter):
         self.owned_pids = {4321}
         return True
 
-    def convert_file(self, in_p: Any, out_p: Any, fmt: str = "PDF", *, cancel_check: Any = None) -> tuple[bool, str | None]:
+    def convert_file(
+        self, in_p: Any, out_p: Any, fmt: str = "PDF", *, cancel_check: Any = None
+    ) -> tuple[bool, str | None]:
         import json
 
         assert PidTrackingCliConverter.pids_file is not None
-        PidTrackingCliConverter.observed.append(json.loads(PidTrackingCliConverter.pids_file.read_text(encoding="utf-8")))
+        PidTrackingCliConverter.observed.append(
+            json.loads(PidTrackingCliConverter.pids_file.read_text(encoding="utf-8"))
+        )
         return super().convert_file(in_p, out_p, fmt, cancel_check=cancel_check)
 
     def cleanup(self) -> None:
         self.owned_pids.clear()
 
 
-def test_cli_records_and_clears_owned_pids_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_records_and_clears_owned_pids_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import json
 
     import hwpmate.app as app_module
@@ -248,7 +308,9 @@ def test_cli_records_and_clears_owned_pids_file(tmp_path: Path, monkeypatch: pyt
     monkeypatch.setattr(app_module, "HWPConverter", PidTrackingCliConverter)
 
     ret = _run_cli_conversion(
-        _parse_args(["--input", str(doc), "--no-backup", "--owned-pids-file", str(pids_file)])
+        _parse_args(
+            ["--input", str(doc), "--no-backup", "--owned-pids-file", str(pids_file)]
+        )
     )
 
     assert ret == 0
@@ -256,7 +318,9 @@ def test_cli_records_and_clears_owned_pids_file(tmp_path: Path, monkeypatch: pyt
     assert json.loads(pids_file.read_text(encoding="utf-8")) == {"pids": []}
 
 
-def test_cli_owned_pids_option_is_optional(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_owned_pids_option_is_optional(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     doc = tmp_path / "a.hwp"
     doc.write_bytes(b"dummy")
     _patch_cli(monkeypatch, script=[True])

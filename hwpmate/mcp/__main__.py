@@ -16,8 +16,14 @@ def build_parser() -> argparse.ArgumentParser:
         prog="python -m hwpmate.mcp",
         description="HwpMate 로컬 MCP 서버 (stdio 전용, 읽기 전용 미리보기 + 승인 기반 변환 실행).",
     )
-    parser.add_argument("--config", default="", help="MCP config.toml 경로 (기본: %%LOCALAPPDATA%%/HwpMate/mcp/config.toml).")
-    parser.add_argument("--version", action="store_true", help="MCP 스키마 버전을 출력하고 종료합니다.")
+    parser.add_argument(
+        "--config",
+        default="",
+        help="MCP config.toml 경로 (기본: %%LOCALAPPDATA%%/HwpMate/mcp/config.toml).",
+    )
+    parser.add_argument(
+        "--version", action="store_true", help="MCP 스키마 버전을 출력하고 종료합니다."
+    )
     return parser
 
 

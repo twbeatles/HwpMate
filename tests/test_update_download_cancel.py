@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timedelta, timezone
@@ -24,7 +24,9 @@ def sample_manifest() -> ReleaseManifest:
     )
 
 
-def test_prepare_staged_update_cancellation(sample_manifest: ReleaseManifest, tmp_path: Path) -> None:
+def test_prepare_staged_update_cancellation(
+    sample_manifest: ReleaseManifest, tmp_path: Path
+) -> None:
     is_cancelled = False
 
     def check_cancel() -> bool:
@@ -47,10 +49,13 @@ def test_prepare_staged_update_cancellation(sample_manifest: ReleaseManifest, tm
     assert len(list(tmp_path.glob("update-*.exe"))) == 0
 
 
-def test_update_download_worker_cancel(sample_manifest: ReleaseManifest, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_update_download_worker_cancel(
+    sample_manifest: ReleaseManifest, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     worker = UpdateDownloadWorker(sample_manifest, tmp_path)
 
     import hwpmate.ui.main_window_controllers.update as update_module
+
     monkeypatch.setattr(
         update_module,
         "stream_update_artifact",

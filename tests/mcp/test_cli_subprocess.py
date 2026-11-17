@@ -27,7 +27,11 @@ def test_resolve_py_uses_allowed_interpreter(tmp_path: Path) -> None:
     script = tmp_path / "cli.py"
     script.write_text("x", encoding="utf-8")
     base, display = resolve_cli_executable(McpConfig(cli_executable=str(script)))
-    assert base[0].endswith("python.exe") or base[0] == "python" or "python" in base[0].lower()
+    assert (
+        base[0].endswith("python.exe")
+        or base[0] == "python"
+        or "python" in base[0].lower()
+    )
     assert base[1] == str(script.resolve())
     assert display == str(script.resolve())
 
@@ -41,23 +45,45 @@ def test_argv_is_fixed_array() -> None:
         report_path="r.json",
     )
     assert argv == [
-        "exe", "--input", "a.hwp", "--format", "PDF", "--output", "out",
-        "--report", "r.json", "--retry", "1", "--pdf-export-mode", "saveas_first",
+        "exe",
+        "--input",
+        "a.hwp",
+        "--format",
+        "PDF",
+        "--output",
+        "out",
+        "--report",
+        "r.json",
+        "--retry",
+        "1",
+        "--pdf-export-mode",
+        "saveas_first",
     ]
     assert "--overwrite" not in argv
     assert "--no-backup" not in argv
 
 
-def test_run_cli_captures_logs_to_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_cli_captures_logs_to_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     fake = Path(__file__).parent / "fake_cli.py"
     monkeypatch.setenv("HWPMATE_FAKECLI_MODE", "ok")
     cfg = McpConfig(cli_executable=str(fake))
     base, _ = resolve_cli_executable(cfg)
     argv = build_cli_argv(
-        base, input_path="a.hwp", format_type="PDF",
-        output_dir=str(tmp_path / "out"), report_path=str(tmp_path / "r.json"),
+        base,
+        input_path="a.hwp",
+        format_type="PDF",
+        output_dir=str(tmp_path / "out"),
+        report_path=str(tmp_path / "r.json"),
     )
-    run = run_cli(cfg, argv=argv, job_private_dir=tmp_path / "job", report_path=tmp_path / "r.json", timeout_seconds=60)
+    run = run_cli(
+        cfg,
+        argv=argv,
+        job_private_dir=tmp_path / "job",
+        report_path=tmp_path / "r.json",
+        timeout_seconds=60,
+    )
     assert run.returncode == 0
     assert not is_busy_failure(run)
     assert Path(run.stdout_path).is_file()
@@ -71,9 +97,18 @@ def test_run_cli_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     cfg = McpConfig(cli_executable=str(fake))
     base, _ = resolve_cli_executable(cfg)
     argv = build_cli_argv(
-        base, input_path="a.hwp", format_type="PDF",
-        output_dir=str(tmp_path / "out"), report_path=str(tmp_path / "r.json"),
+        base,
+        input_path="a.hwp",
+        format_type="PDF",
+        output_dir=str(tmp_path / "out"),
+        report_path=str(tmp_path / "r.json"),
     )
-    run = run_cli(cfg, argv=argv, job_private_dir=tmp_path / "job", report_path=tmp_path / "r.json", timeout_seconds=2)
+    run = run_cli(
+        cfg,
+        argv=argv,
+        job_private_dir=tmp_path / "job",
+        report_path=tmp_path / "r.json",
+        timeout_seconds=2,
+    )
     assert run.timed_out is True
     assert run.returncode == 124

@@ -44,9 +44,13 @@ class TaskRunOptions:
             format_type=plan.format_type,
             overwrite=bool(plan.overwrite),
             backup_enabled=bool(plan.backup_enabled),
-            backup_max_files_per_stem=int(getattr(plan, "backup_max_files_per_stem", 20) or 20),
+            backup_max_files_per_stem=int(
+                getattr(plan, "backup_max_files_per_stem", 20) or 20
+            ),
             retry_count=max(0, min(MAX_RETRY_COUNT, int(plan.retry_count))),
-            pdf_export_mode=normalize_pdf_export_mode(getattr(plan, "pdf_export_mode", None)),
+            pdf_export_mode=normalize_pdf_export_mode(
+                getattr(plan, "pdf_export_mode", None)
+            ),
         )
 
 
@@ -150,7 +154,9 @@ def execute_task(
         if attempt < options.retry_count:
             on_stage("재시도 대기")
             task.retry_count += 1
-            on_status(f"재시도 중: {task.input_file.name} ({task.retry_count}/{options.retry_count})")
+            on_status(
+                f"재시도 중: {task.input_file.name} ({task.retry_count}/{options.retry_count})"
+            )
             time.sleep(RETRY_DELAY_SECONDS)
 
     if success:
@@ -173,7 +179,9 @@ def execute_task(
     return runtime_warnings
 
 
-def recycle_converter(converter: ConverterEngine, options: TaskRunOptions) -> str | None:
+def recycle_converter(
+    converter: ConverterEngine, options: TaskRunOptions
+) -> str | None:
     """한글 프로세스를 정리 후 재초기화한다. 실패 시 오류 메시지를 반환."""
     try:
         converter.cleanup()

@@ -51,13 +51,17 @@ class ResultDialog(QDialog):
 
         summary_frame = QFrame()
         summary_layout = QVBoxLayout(summary_frame)
-        summary_layout.addWidget(self._make_heading(f"✅ 성공: {summary.success_count}개"))
+        summary_layout.addWidget(
+            self._make_heading(f"✅ 성공: {summary.success_count}개")
+        )
         summary_layout.addWidget(QLabel(f"❌ 실패: {summary.failed_count}개"))
         summary_layout.addWidget(QLabel(f"⏭️ 건너뜀: {summary.skipped_count}개"))
         summary_layout.addWidget(QLabel(f"🛑 취소됨: {summary.canceled_count}개"))
         summary_layout.addWidget(QLabel(f"📄 전체 요청: {summary.total_requested}개"))
         if summary.elapsed_seconds is not None:
-            summary_layout.addWidget(QLabel(f"⏱️ 소요 시간: {summary.elapsed_seconds:.1f}초"))
+            summary_layout.addWidget(
+                QLabel(f"⏱️ 소요 시간: {summary.elapsed_seconds:.1f}초")
+            )
         layout.addWidget(summary_frame)
 
         if summary.warnings:
@@ -65,7 +69,9 @@ class ResultDialog(QDialog):
             warning_layout = QVBoxLayout(warning_group)
             warning_text = QTextEdit()
             warning_text.setReadOnly(True)
-            warning_text.setPlainText("\n".join(f"- {warning}" for warning in summary.warnings))
+            warning_text.setPlainText(
+                "\n".join(f"- {warning}" for warning in summary.warnings)
+            )
             warning_layout.addWidget(warning_text)
             layout.addWidget(warning_group)
 
@@ -146,7 +152,9 @@ class ResultDialog(QDialog):
         if file_path:
             try:
                 write_failed_list(Path(file_path), self.summary.failed_tasks)
-                QMessageBox.information(self, "저장 완료", f"실패 목록이 저장되었습니다:\n{file_path}")
+                QMessageBox.information(
+                    self, "저장 완료", f"실패 목록이 저장되었습니다:\n{file_path}"
+                )
             except Exception as e:
                 QMessageBox.warning(self, "저장 실패", f"파일 저장 중 오류 발생:\n{e}")
 
@@ -163,14 +171,18 @@ class ResultDialog(QDialog):
 
         output_path = Path(file_path)
         if output_path.suffix.lower() not in {".csv", ".json"}:
-            output_path = output_path.with_suffix(".json" if "JSON" in selected_filter else ".csv")
+            output_path = output_path.with_suffix(
+                ".json" if "JSON" in selected_filter else ".csv"
+            )
 
         try:
             if output_path.suffix.lower() == ".json":
                 write_results_json(output_path, self.summary)
             else:
                 write_results_csv(output_path, self.summary)
-            QMessageBox.information(self, "저장 완료", f"변환 결과가 저장되었습니다:\n{output_path}")
+            QMessageBox.information(
+                self, "저장 완료", f"변환 결과가 저장되었습니다:\n{output_path}"
+            )
         except Exception as e:
             QMessageBox.warning(self, "저장 실패", f"결과 저장 중 오류 발생:\n{e}")
 
@@ -180,7 +192,9 @@ class ResultDialog(QDialog):
 
             if first_path.exists():
                 try:
-                    subprocess.run(["explorer", "/select,", str(first_path)], check=False)
+                    subprocess.run(
+                        ["explorer", "/select,", str(first_path)], check=False
+                    )
                     return
                 except Exception as e:
                     logger.debug(f"파일 선택 열기 실패: {e}")

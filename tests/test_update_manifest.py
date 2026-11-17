@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import base64
 from datetime import datetime, timedelta, timezone
@@ -34,7 +34,9 @@ def test_is_newer_version() -> None:
     assert not is_newer_version("9.0.0", "9.0.0")
 
 
-def test_verify_release_manifest_success(signing_keypair: tuple[Ed25519PrivateKey, str]) -> None:
+def test_verify_release_manifest_success(
+    signing_keypair: tuple[Ed25519PrivateKey, str],
+) -> None:
     private_key, public_key_b64 = signing_keypair
     payload = {
         "version": "9.1.0",
@@ -62,7 +64,7 @@ def test_verify_release_manifest_success(signing_keypair: tuple[Ed25519PrivateKe
 
 
 def test_verify_release_manifest_rejects_tampered_payload(
-    signing_keypair: tuple[Ed25519PrivateKey, str]
+    signing_keypair: tuple[Ed25519PrivateKey, str],
 ) -> None:
     private_key, public_key_b64 = signing_keypair
     payload = {
@@ -91,7 +93,7 @@ def test_verify_release_manifest_rejects_tampered_payload(
 
 
 def test_verify_release_manifest_rejects_expired(
-    signing_keypair: tuple[Ed25519PrivateKey, str]
+    signing_keypair: tuple[Ed25519PrivateKey, str],
 ) -> None:
     private_key, public_key_b64 = signing_keypair
     payload = {
@@ -118,7 +120,7 @@ def test_verify_release_manifest_rejects_expired(
 
 
 def test_verify_release_manifest_rejects_older_version(
-    signing_keypair: tuple[Ed25519PrivateKey, str]
+    signing_keypair: tuple[Ed25519PrivateKey, str],
 ) -> None:
     private_key, public_key_b64 = signing_keypair
     payload = {
@@ -145,7 +147,7 @@ def test_verify_release_manifest_rejects_older_version(
 
 
 def test_verify_release_manifest_rejects_non_https_url(
-    signing_keypair: tuple[Ed25519PrivateKey, str]
+    signing_keypair: tuple[Ed25519PrivateKey, str],
 ) -> None:
     private_key, public_key_b64 = signing_keypair
     payload = {

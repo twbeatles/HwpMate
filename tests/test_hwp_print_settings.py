@@ -195,9 +195,7 @@ def test_try_export_rejects_non_pdf_magic(tmp_path: Path) -> None:
 def test_try_export_respects_cancel(tmp_path: Path) -> None:
     hwp = FakePrintHwp()
     out = tmp_path / "out.pdf"
-    ok, method = try_export_pdf_via_print_to_pdf_ex(
-        hwp, out, cancel_check=lambda: True
-    )
+    ok, method = try_export_pdf_via_print_to_pdf_ex(hwp, out, cancel_check=lambda: True)
     assert ok is False
     assert method is None
     assert hwp.HAction.execute_calls == []
@@ -228,7 +226,9 @@ def test_remove_incomplete_output_keeps_unchanged_existing(tmp_path: Path) -> No
     path = tmp_path / "keep.pdf"
     path.write_bytes(b"%PDF-old")
     st = path.stat()
-    remove_incomplete_output(path, before_mtime_ns=st.st_mtime_ns, before_size=st.st_size)
+    remove_incomplete_output(
+        path, before_mtime_ns=st.st_mtime_ns, before_size=st.st_size
+    )
     assert path.exists()
 
 

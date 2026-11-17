@@ -51,7 +51,9 @@ def create_window(monkeypatch: pytest.MonkeyPatch, qapp: Any):
     monkeypatch.setattr(
         main_window_module,
         "save_config",
-        lambda config: saved_configs.append(config.to_dict() if hasattr(config, "to_dict") else dict(config)),
+        lambda config: saved_configs.append(
+            config.to_dict() if hasattr(config, "to_dict") else dict(config)
+        ),
     )
     monkeypatch.setattr(
         main_window_module.MainWindow,
@@ -61,7 +63,9 @@ def create_window(monkeypatch: pytest.MonkeyPatch, qapp: Any):
     return main_window_module.MainWindow(), saved_configs
 
 
-def test_file_selection_controller_clears_finished_scan_worker(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
+def test_file_selection_controller_clears_finished_scan_worker(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
     window, _ = create_window(monkeypatch, qapp)
     fake_worker = FakeScanWorker()
     window.state.scan_worker = fake_worker  # type: ignore[assignment]
@@ -78,14 +82,18 @@ def test_file_selection_controller_clears_finished_scan_worker(monkeypatch: pyte
     assert window._scan_preview_count == 0
 
 
-def test_file_selection_controller_appends_unique_files(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
+def test_file_selection_controller_appends_unique_files(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
     window, _ = create_window(monkeypatch, qapp)
     first = tmp_path / "a.hwp"
     second = tmp_path / "b.hwpx"
     first.write_text("x", encoding="utf-8")
     second.write_text("x", encoding="utf-8")
 
-    added = window.file_selection_controller.append_files_batch([str(first), str(first), str(second)])
+    added = window.file_selection_controller.append_files_batch(
+        [str(first), str(first), str(second)]
+    )
 
     assert added == 2
     assert window.file_store.count == 2
@@ -96,7 +104,9 @@ def test_file_selection_controller_appends_unique_files(monkeypatch: pytest.Monk
     assert window.file_count_label.text() == "📄 파일: 2개"
 
 
-def test_conversion_controller_validates_custom_output_folder(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
+def test_conversion_controller_validates_custom_output_folder(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
     window, _ = create_window(monkeypatch, qapp)
     window.same_location_check.setChecked(False)
     window.output_entry.setText("")
@@ -105,7 +115,9 @@ def test_conversion_controller_validates_custom_output_folder(monkeypatch: pytes
         window.conversion_controller.validate_output_settings()
 
 
-def test_conversion_controller_shows_skipped_only_result(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
+def test_conversion_controller_shows_skipped_only_result(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
     window, _ = create_window(monkeypatch, qapp)
     skipped_file = tmp_path / "same.hwpx"
     skipped_file.write_text("x", encoding="utf-8")
@@ -114,7 +126,12 @@ def test_conversion_controller_shows_skipped_only_result(monkeypatch: pytest.Mon
         same_location=True,
         output_path="",
         skipped_tasks=[
-            ConversionTask(skipped_file, skipped_file, status="건너뜀", error="이미 HWPX 형식입니다."),
+            ConversionTask(
+                skipped_file,
+                skipped_file,
+                status="건너뜀",
+                error="이미 HWPX 형식입니다.",
+            ),
         ],
     )
     shown = []
@@ -139,7 +156,9 @@ def test_conversion_controller_shows_skipped_only_result(monkeypatch: pytest.Mon
     assert window.plan is None
 
 
-def test_start_conversion_ignores_duplicate_start_while_converting(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
+def test_start_conversion_ignores_duplicate_start_while_converting(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
     window, _ = create_window(monkeypatch, qapp)
     window.is_converting = True
 
@@ -149,7 +168,9 @@ def test_start_conversion_ignores_duplicate_start_while_converting(monkeypatch: 
     assert "이미 진행" in window.status_label.text()
 
 
-def test_set_converting_state_disables_menu_actions_and_start_shortcut(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
+def test_set_converting_state_disables_menu_actions_and_start_shortcut(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
     window, _ = create_window(monkeypatch, qapp)
 
     window._set_converting_state(True)
@@ -166,7 +187,9 @@ def test_set_converting_state_disables_menu_actions_and_start_shortcut(monkeypat
     assert window.lifecycle_controller.start_shortcut.isEnabled() is True
 
 
-def test_file_selection_ignores_changes_while_converting(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
+def test_file_selection_ignores_changes_while_converting(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
     window, _ = create_window(monkeypatch, qapp)
     dropped = tmp_path / "doc.hwp"
     dropped.write_text("x", encoding="utf-8")
@@ -178,9 +201,13 @@ def test_file_selection_ignores_changes_while_converting(monkeypatch: pytest.Mon
     assert "변환 중" in window.status_label.text()
 
 
-def test_worker_finished_preserves_failed_hwp_status(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
+def test_worker_finished_preserves_failed_hwp_status(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
     window, _ = create_window(monkeypatch, qapp)
-    failed = ConversionTask(tmp_path / "a.hwp", tmp_path / "a.pdf", status="실패", error="boom")
+    failed = ConversionTask(
+        tmp_path / "a.hwp", tmp_path / "a.pdf", status="실패", error="boom"
+    )
     window.last_summary = ConversionSummary(
         format_type="PDF",
         tasks=[failed],
@@ -191,7 +218,9 @@ def test_worker_finished_preserves_failed_hwp_status(monkeypatch: pytest.MonkeyP
     assert "실패" in window.hwp_status_label.text()
 
 
-def test_on_status_updated_syncs_hwp_status_label(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
+def test_on_status_updated_syncs_hwp_status_label(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
     window, _ = create_window(monkeypatch, qapp)
     controller = window.conversion_controller
 
@@ -214,7 +243,9 @@ def test_retry_failed_tasks_builds_plan_and_starts_worker(
     window, _ = create_window(monkeypatch, qapp)
     failed_path = tmp_path / "a.hwp"
     failed_path.write_text("x", encoding="utf-8")
-    failed = ConversionTask(failed_path, failed_path.with_suffix(".pdf"), status="실패", error="boom")
+    failed = ConversionTask(
+        failed_path, failed_path.with_suffix(".pdf"), status="실패", error="boom"
+    )
     window.last_summary = ConversionSummary(format_type="PDF", tasks=[failed])
     started: list[object] = []
 
@@ -232,13 +263,19 @@ def test_retry_failed_tasks_builds_plan_and_starts_worker(
             self.status_updated = type("S", (), {"connect": lambda *a, **k: None})()
             self.task_completed = type("S", (), {"connect": lambda *a, **k: None})()
             self.finished = type("S", (), {"connect": lambda *a, **k: None})()
-            self.engine_status_updated = type("S", (), {"connect": lambda *a, **k: None})()
+            self.engine_status_updated = type(
+                "S", (), {"connect": lambda *a, **k: None}
+            )()
 
         def start(self):
             started.append(self.plan)
 
-    monkeypatch.setattr(window, "_create_preflight_dialog", lambda plan: AcceptPreflight(plan))
-    monkeypatch.setattr(window, "_create_conversion_worker", lambda plan: FakeWorker(plan))
+    monkeypatch.setattr(
+        window, "_create_preflight_dialog", lambda plan: AcceptPreflight(plan)
+    )
+    monkeypatch.setattr(
+        window, "_create_conversion_worker", lambda plan: FakeWorker(plan)
+    )
     monkeypatch.setattr(window.toast, "show_message", lambda *a, **k: None)
 
     window.conversion_controller.retry_failed_tasks([failed])
@@ -392,7 +429,9 @@ def test_start_conversion_blocked_while_planning(
     assert "준비" in window.status_label.text() or "진행" in window.status_label.text()
 
 
-def test_on_engine_status_updates_session(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
+def test_on_engine_status_updates_session(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
     window, _ = create_window(monkeypatch, qapp)
     controller = window.conversion_controller
     controller.on_engine_status_updated(
@@ -414,8 +453,15 @@ def test_folder_cache_freshness_detects_missing_files(
     existing = tmp_path / "a.hwp"
     existing.write_text("x", encoding="utf-8")
     missing = tmp_path / "gone.hwp"
-    paths = [str(existing), str(missing), str(tmp_path / "b.hwp"), str(tmp_path / "c.hwp")]
-    ok, reason = window.file_selection_controller.validate_folder_scan_cache_freshness(paths)
+    paths = [
+        str(existing),
+        str(missing),
+        str(tmp_path / "b.hwp"),
+        str(tmp_path / "c.hwp"),
+    ]
+    ok, reason = window.file_selection_controller.validate_folder_scan_cache_freshness(
+        paths
+    )
     assert ok is False
     assert "변경" in reason or "없음" in reason
 
@@ -459,10 +505,14 @@ def test_poll_skips_window_control_without_owned_pids(
         conv_mod, "hide_hwp_main_windows", lambda pids: hidden.append(pids) or 0
     )
     monkeypatch.setattr(
-        conv_mod, "bring_hwp_windows_to_foreground", lambda pids: brought.append(pids) or 0
+        conv_mod,
+        "bring_hwp_windows_to_foreground",
+        lambda pids: brought.append(pids) or 0,
     )
     monkeypatch.setattr(
-        conv_mod, "try_accept_hwp_security_dialog", lambda pids: accepted.append(pids) or True
+        conv_mod,
+        "try_accept_hwp_security_dialog",
+        lambda pids: accepted.append(pids) or True,
     )
 
     controller._poll_hwp_foreground()
@@ -478,7 +528,9 @@ def test_retry_failed_tasks_blocked_while_planning(
     window.state.is_planning = True
     src = tmp_path / "a.hwp"
     src.write_text("x", encoding="utf-8")
-    failed = [ConversionTask(input_file=src, output_file=tmp_path / "a.pdf", status="실패")]
+    failed = [
+        ConversionTask(input_file=src, output_file=tmp_path / "a.pdf", status="실패")
+    ]
     window.conversion_controller.retry_failed_tasks(failed)
     assert window.worker is None
 
@@ -516,10 +568,14 @@ def test_request_worker_stop_sets_force_kill_pending(
     assert ok is False
     assert fake.cancel_called is True
     assert window.state.force_kill_pending is True
-    assert "강제 종료" in window.cancel_btn.text() or "응답" in window.status_label.text()
+    assert (
+        "강제 종료" in window.cancel_btn.text() or "응답" in window.status_label.text()
+    )
 
 
-def test_native_drop_controller_routes_file_mode_paths(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
+def test_native_drop_controller_routes_file_mode_paths(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
     window, _ = create_window(monkeypatch, qapp)
     dropped = tmp_path / "doc.hwp"
     dropped.write_text("x", encoding="utf-8")
@@ -534,7 +590,9 @@ def test_native_drop_controller_routes_file_mode_paths(monkeypatch: pytest.Monke
     assert calls == [[str(dropped.resolve())]]
 
 
-def test_native_drop_ignores_paths_while_converting(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
+def test_native_drop_ignores_paths_while_converting(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
     window, _ = create_window(monkeypatch, qapp)
     dropped = tmp_path / "doc.hwp"
     dropped.write_text("x", encoding="utf-8")
@@ -615,9 +673,13 @@ def test_folder_conversion_starts_even_when_scan_is_slower_than_cancel_wait(
     # 과거 구현은 변환 직전 재스캔을 이 짧은 값만큼만 기다렸다.
     monkeypatch.setattr(selection_module, "SCAN_CANCEL_WAIT_MS", 100)
     warnings: list[str] = []
-    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: warnings.append(str(args[2])))
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda *args, **kwargs: warnings.append(str(args[2]))
+    )
     toasts: list[str] = []
-    monkeypatch.setattr(window.toast, "show_message", lambda message, *a, **k: toasts.append(message))
+    monkeypatch.setattr(
+        window.toast, "show_message", lambda message, *a, **k: toasts.append(message)
+    )
     reached: list[int] = []
     monkeypatch.setattr(
         window.conversion_controller,
@@ -631,11 +693,15 @@ def test_folder_conversion_starts_even_when_scan_is_slower_than_cancel_wait(
 
     assert reached == [1]
     assert warnings == []
-    assert not any("작업 준비 중에는 입력을 변경할 수 없습니다" in toast for toast in toasts)
+    assert not any(
+        "작업 준비 중에는 입력을 변경할 수 없습니다" in toast for toast in toasts
+    )
     window.file_selection_controller.wait_for_active_scan(5000)
 
 
-def test_update_apply_is_refused_while_converting(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path) -> None:
+def test_update_apply_is_refused_while_converting(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
     from datetime import datetime, timezone
 
     import hwpmate.ui.main_window_controllers.update as update_module
@@ -657,9 +723,13 @@ def test_update_apply_is_refused_while_converting(monkeypatch: pytest.MonkeyPatc
     controller._staged_manifest = manifest
     controller._current_manifest = manifest
     launched: list[object] = []
-    monkeypatch.setattr(update_module, "launch_update_helper", lambda **kwargs: launched.append(kwargs))
+    monkeypatch.setattr(
+        update_module, "launch_update_helper", lambda **kwargs: launched.append(kwargs)
+    )
     toasts: list[str] = []
-    monkeypatch.setattr(window.toast, "show_message", lambda message, *a, **k: toasts.append(message))
+    monkeypatch.setattr(
+        window.toast, "show_message", lambda message, *a, **k: toasts.append(message)
+    )
     window.state.is_converting = True
 
     controller._apply_and_restart()
@@ -669,15 +739,25 @@ def test_update_apply_is_refused_while_converting(monkeypatch: pytest.MonkeyPatc
     assert controller._has_staged_file_for(manifest) is True
 
 
-def test_update_startup_tasks_run_once_across_show_events(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
+def test_update_startup_tasks_run_once_across_show_events(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
     import hwpmate.ui.main_window_controllers.update as update_module
 
     window, _ = create_window(monkeypatch, qapp)
     controller = window.update_controller
     scheduled: list[int] = []
-    monkeypatch.setattr(update_module.QTimer, "singleShot", lambda delay, callback: scheduled.append(delay))
+    monkeypatch.setattr(
+        update_module.QTimer,
+        "singleShot",
+        lambda delay, callback: scheduled.append(delay),
+    )
     consumed: list[object] = []
-    monkeypatch.setattr(update_module, "consume_update_result", lambda path: consumed.append(path) or None)
+    monkeypatch.setattr(
+        update_module,
+        "consume_update_result",
+        lambda path: consumed.append(path) or None,
+    )
     monkeypatch.setattr(update_module, "cleanup_update_staging", lambda root: 0)
 
     controller.schedule_startup_check(3000)

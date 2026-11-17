@@ -9,17 +9,51 @@ from hwpmate.mcp.errors import McpError
 from hwpmate.mcp.report_reader import classify_job, read_cli_report
 
 
-def _report(tmp_path: Path, *, success: int, failed: int, canceled: int = 0, skipped: int = 0) -> Path:
+def _report(
+    tmp_path: Path, *, success: int, failed: int, canceled: int = 0, skipped: int = 0
+) -> Path:
     path = tmp_path / "result.json"
     tasks = []
     for i in range(success):
-        tasks.append({"input_file": f"a{i}.hwp", "output_file": f"a{i}.pdf", "status": "성공", "detail": "", "created_files": [f"a{i}.pdf"]})
+        tasks.append(
+            {
+                "input_file": f"a{i}.hwp",
+                "output_file": f"a{i}.pdf",
+                "status": "성공",
+                "detail": "",
+                "created_files": [f"a{i}.pdf"],
+            }
+        )
     for i in range(failed):
-        tasks.append({"input_file": f"b{i}.hwp", "output_file": f"b{i}.pdf", "status": "실패", "detail": "boom", "created_files": []})
+        tasks.append(
+            {
+                "input_file": f"b{i}.hwp",
+                "output_file": f"b{i}.pdf",
+                "status": "실패",
+                "detail": "boom",
+                "created_files": [],
+            }
+        )
     for i in range(canceled):
-        tasks.append({"input_file": f"c{i}.hwp", "output_file": f"c{i}.pdf", "status": "취소됨", "detail": "", "created_files": []})
+        tasks.append(
+            {
+                "input_file": f"c{i}.hwp",
+                "output_file": f"c{i}.pdf",
+                "status": "취소됨",
+                "detail": "",
+                "created_files": [],
+            }
+        )
     for i in range(skipped):
-        tasks.append({"input_file": f"s{i}.pdf", "output_file": f"s{i}.pdf", "status": "건너뜀", "detail": "", "created_files": []})
+        tasks.append(
+            {
+                "input_file": f"s{i}.pdf",
+                "output_file": f"s{i}.pdf",
+                "status": "건너뜀",
+                "detail": "",
+                "created_files": [],
+            }
+        )
     payload = {
         "summary": {
             "format_type": "PDF",
@@ -71,7 +105,14 @@ def test_read_report_missing_keys(tmp_path: Path) -> None:
 
 def test_classify_matrix() -> None:
     def overall(success: int, failed: int, canceled: int = 0, skipped: int = 0) -> dict:
-        return {"summary": {"success_count": success, "failed_count": failed, "canceled_count": canceled, "skipped_count": skipped}}
+        return {
+            "summary": {
+                "success_count": success,
+                "failed_count": failed,
+                "canceled_count": canceled,
+                "skipped_count": skipped,
+            }
+        }
 
     assert classify_job(0, overall(2, 0)) == ("succeeded", None)
     assert classify_job(0, overall(1, 1))[0] == "partially_failed"

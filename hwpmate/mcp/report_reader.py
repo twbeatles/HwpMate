@@ -25,17 +25,27 @@ def read_cli_report(report_path: Path) -> dict:
     try:
         raw = report_path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise McpError("REPORT_MISSING", f"CLI 결과 보고서를 읽을 수 없습니다: {report_path} ({exc})") from exc
+        raise McpError(
+            "REPORT_MISSING",
+            f"CLI 결과 보고서를 읽을 수 없습니다: {report_path} ({exc})",
+        ) from exc
     try:
         payload = json.loads(raw)
     except (ValueError, UnicodeError) as exc:
-        raise McpError("REPORT_MISSING", f"CLI 결과 보고서가 손상되었습니다: {report_path} ({exc})") from exc
+        raise McpError(
+            "REPORT_MISSING", f"CLI 결과 보고서가 손상되었습니다: {report_path} ({exc})"
+        ) from exc
     if not isinstance(payload, dict):
-        raise McpError("REPORT_MISSING", f"CLI 결과 보고서 형식이 올바르지 않습니다: {report_path}")
+        raise McpError(
+            "REPORT_MISSING", f"CLI 결과 보고서 형식이 올바르지 않습니다: {report_path}"
+        )
     summary = payload.get("summary")
     tasks = payload.get("tasks")
     if not isinstance(summary, dict) or not isinstance(tasks, list):
-        raise McpError("REPORT_MISSING", f"CLI 결과 보고서에 summary/tasks가 없습니다: {report_path}")
+        raise McpError(
+            "REPORT_MISSING",
+            f"CLI 결과 보고서에 summary/tasks가 없습니다: {report_path}",
+        )
     missing = _REQUIRED_SUMMARY_KEYS - set(summary.keys())
     if missing:
         raise McpError(

@@ -38,8 +38,14 @@ def _run_ok_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     cfg = _cfg(tmp_path)
     manager = JobManager(cfg)
     out = str(tmp_path / "out")
-    preview = preview_conversion(cfg, input_paths=[str(src)], format_type="PDF", output_dir=out)
-    record = manager.submit(get_plan(preview["plan_id"]), confirmation=CONFIRMATION_TOKEN, idempotency_key="v1")
+    preview = preview_conversion(
+        cfg, input_paths=[str(src)], format_type="PDF", output_dir=out
+    )
+    record = manager.submit(
+        get_plan(preview["plan_id"]),
+        confirmation=CONFIRMATION_TOKEN,
+        idempotency_key="v1",
+    )
     done = wait_for_state(manager, record.job_id, timeout_seconds=60)
     assert done.state == "succeeded"
     return manager, done
@@ -63,7 +69,9 @@ def test_validate_missing_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert result["invalid"][0]["reasons"] == ["파일 없음"]
 
 
-def test_validate_bad_signature(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_validate_bad_signature(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     manager, done = _run_ok_job(tmp_path, monkeypatch)
     for output in done.items[0]["outputs"]:
         Path(output).write_bytes(b"not a pdf at all")
@@ -72,7 +80,9 @@ def test_validate_bad_signature(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert any("서명" in reason for reason in result["invalid"][0]["reasons"])
 
 
-def test_validate_unfinished_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_validate_unfinished_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_MODE", "sleep")
     monkeypatch.setenv("HWPMATE_FAKECLI_SLEEP", "10")
     src = tmp_path / "in"
@@ -81,14 +91,22 @@ def test_validate_unfinished_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     cfg = _cfg(tmp_path)
     manager = JobManager(cfg)
     out = str(tmp_path / "out")
-    preview = preview_conversion(cfg, input_paths=[str(src)], format_type="PDF", output_dir=out)
-    record = manager.submit(get_plan(preview["plan_id"]), confirmation=CONFIRMATION_TOKEN, idempotency_key="u1")
+    preview = preview_conversion(
+        cfg, input_paths=[str(src)], format_type="PDF", output_dir=out
+    )
+    record = manager.submit(
+        get_plan(preview["plan_id"]),
+        confirmation=CONFIRMATION_TOKEN,
+        idempotency_key="u1",
+    )
     with pytest.raises(McpError) as excinfo:
         validate_job_outputs(manager, record.job_id)
     assert excinfo.value.code == "JOB_NOT_DONE"
 
 
-def test_cancel_tool_via_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cancel_tool_via_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HWPMATE_FAKECLI_MODE", "sleep")
     monkeypatch.setenv("HWPMATE_FAKECLI_SLEEP", "10")
     src = tmp_path / "in"
@@ -112,12 +130,45 @@ def test_cancel_tool_via_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         return asyncio.run(coro)
 
     out = str(tmp_path / "out")
-    first = run(call("hwpmate_preview_conversion", {"input_paths": [str(src / "a.hwp")], "output_dir": out}))
-    second = run(call("hwpmate_preview_conversion", {"input_paths": [str(src / "b.hwp")], "output_dir": out}))
-    job_a = run(call("hwpmate_submit_conversion", {"plan_id": first["plan_id"], "confirmation": CONFIRMATION_TOKEN, "idempotency_key": "ca"}))
-    job_b = run(call("hwpmate_submit_conversion", {"plan_id": second["plan_id"], "confirmation": CONFIRMATION_TOKEN, "idempotency_key": "cb"}))
+    first = run(
+        call(
+            "hwpmate_preview_conversion",
+            {"input_paths": [str(src / "a.hwp")], "output_dir": out},
+        )
+    )
+    second = run(
+        call(
+            "hwpmate_preview_conversion",
+            {"input_paths": [str(src / "b.hwp")], "output_dir": out},
+        )
+    )
+    job_a = run(
+        call(
+            "hwpmate_submit_conversion",
+            {
+                "plan_id": first["plan_id"],
+                "confirmation": CONFIRMATION_TOKEN,
+                "idempotency_key": "ca",
+            },
+        )
+    )
+    job_b = run(
+        call(
+            "hwpmate_submit_conversion",
+            {
+                "plan_id": second["plan_id"],
+                "confirmation": CONFIRMATION_TOKEN,
+                "idempotency_key": "cb",
+            },
+        )
+    )
     status: dict = {}
-    canceled = run(call("hwpmate_cancel_job", {"job_id": job_b["job_id"], "confirmation": CONFIRMATION_TOKEN}))
+    canceled = run(
+        call(
+            "hwpmate_cancel_job",
+            {"job_id": job_b["job_id"], "confirmation": CONFIRMATION_TOKEN},
+        )
+    )
     assert canceled["ok"] is True
     assert canceled["state"] == "canceled"
     validated = run(call("hwpmate_validate_artifacts", {"job_id": job_b["job_id"]}))

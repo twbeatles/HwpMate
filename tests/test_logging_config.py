@@ -18,7 +18,9 @@ def test_resolve_log_file_falls_back_when_primary_path_is_file(tmp_path: Path) -
     assert log_file.exists()
 
 
-def test_resolve_log_file_reports_failure_when_all_candidates_are_blocked(tmp_path: Path) -> None:
+def test_resolve_log_file_reports_failure_when_all_candidates_are_blocked(
+    tmp_path: Path,
+) -> None:
     blocked_dir_1 = tmp_path / "blocked-1"
     blocked_dir_2 = tmp_path / "blocked-2"
     blocked_dir_1.write_text("not a directory", encoding="utf-8")

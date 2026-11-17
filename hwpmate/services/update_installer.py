@@ -71,7 +71,9 @@ def update_status_for_exception(exc: BaseException) -> str:
     return UPDATE_STATUS_FAILED
 
 
-def wait_for_process_exit(pid: int, timeout: float = UPDATE_PARENT_WAIT_SECONDS) -> bool:
+def wait_for_process_exit(
+    pid: int, timeout: float = UPDATE_PARENT_WAIT_SECONDS
+) -> bool:
     """PID 프로세스가 종료될 때까지 대기. 종료(또는 존재하지 않음)면 True.
 
     Windows 에서 os.kill(pid, 0) 은 존재 확인이 아니라 CTRL_C_EVENT 전송이며,
@@ -92,7 +94,10 @@ def wait_for_process_exit(pid: int, timeout: float = UPDATE_PARENT_WAIT_SECONDS)
     # 공용 ctypes.windll 의 argtypes 를 바꾸지 않도록 전용 인스턴스를 사용한다.
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.OpenProcess.restype = ctypes.c_void_p
-    kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+    kernel32.GetExitCodeProcess.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_ulong),
+    ]
     kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
     kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
     handle = kernel32.OpenProcess(_SYNCHRONIZE, False, int(pid))
@@ -110,7 +115,9 @@ def wait_for_process_exit(pid: int, timeout: float = UPDATE_PARENT_WAIT_SECONDS)
     deadline = time.monotonic() + timeout
     exit_code = ctypes.c_ulong()
     while time.monotonic() < deadline:
-        query = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        query = kernel32.OpenProcess(
+            _PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid)
+        )
         if not query:
             return ctypes.get_last_error() == _ERROR_INVALID_PARAMETER
         try:
@@ -124,7 +131,9 @@ def wait_for_process_exit(pid: int, timeout: float = UPDATE_PARENT_WAIT_SECONDS)
     return False
 
 
-def wait_for_file_writable(path: Path, timeout: float = UPDATE_FILE_UNLOCK_WAIT_SECONDS) -> bool:
+def wait_for_file_writable(
+    path: Path, timeout: float = UPDATE_FILE_UNLOCK_WAIT_SECONDS
+) -> bool:
     """실행 중인 exe 이미지 잠금이 풀려 쓰기 모드로 열 수 있을 때까지 대기."""
     deadline = time.monotonic() + timeout
     while True:
@@ -170,7 +179,9 @@ def unique_update_backup_path(target: str | Path, version: str) -> Path:
     return candidate
 
 
-def cleanup_update_staging(staging_root: str | Path, *, keep: Iterable[Path] = ()) -> int:
+def cleanup_update_staging(
+    staging_root: str | Path, *, keep: Iterable[Path] = ()
+) -> int:
     """스테이징 폴더의 남은 헬퍼 exe·미적용 업데이트 exe 를 best-effort 로 정리한다.
 
     실행 중인 헬퍼는 삭제가 실패하므로 조용히 건너뛴다.
@@ -294,7 +305,9 @@ def prepare_staged_update(
                 if total > manifest.artifact_size or total > int(
                     UPDATE_ARTIFACT_MAX_BYTES
                 ):
-                    raise ValueError("업데이트 파일 크기가 매니페스트와 일치하지 않습니다.")
+                    raise ValueError(
+                        "업데이트 파일 크기가 매니페스트와 일치하지 않습니다."
+                    )
                 digest.update(chunk)
                 handle.write(chunk)
                 if progress_callback is not None:
@@ -319,7 +332,6 @@ def prepare_staged_update(
     except Exception:
         staged.unlink(missing_ok=True)
         raise
-
 
 
 def stream_update_artifact(
@@ -350,7 +362,6 @@ def stream_update_artifact(
             yield chunk
 
 
-
 def _validate_apply_paths(target: Path, staged: Path, backup: Path) -> None:
     """교체 경로의 형태·존재를 검증한다.
 
@@ -368,7 +379,9 @@ def _validate_apply_paths(target: Path, staged: Path, backup: Path) -> None:
     backup.parent.mkdir(parents=True, exist_ok=True)
 
 
-def _newest_swap_backup(target_path: Path, *, exclude: Path | None = None) -> Path | None:
+def _newest_swap_backup(
+    target_path: Path, *, exclude: Path | None = None
+) -> Path | None:
     """설치 디렉터리에서 대상의 교체 백업 후보 중 최신 파일을 찾는다."""
     try:
         candidates = [
@@ -420,7 +433,9 @@ def recover_interrupted_swap(
     return chosen
 
 
-def cleanup_update_backups(target: str | Path, *, keep_count: int | None = None) -> None:
+def cleanup_update_backups(
+    target: str | Path, *, keep_count: int | None = None
+) -> None:
     target_path = Path(target).resolve()
     keep = max(0, int(UPDATE_BACKUP_KEEP_COUNT if keep_count is None else keep_count))
     candidates: list[tuple[float, Path]] = []

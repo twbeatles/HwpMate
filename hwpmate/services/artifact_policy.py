@@ -18,7 +18,9 @@ MAX_AUXILIARY_SCAN_FILES = 500
 _PAGE_NUMBER_REST = re.compile(r"^\d{3}(\.|$)")
 _IMAGE_PAGE_SUFFIX = re.compile(r"^[_-]?\d{3}$")
 # 한글 2022 HTML 저장 시 본문 이미지·수식은 문서 이름과 무관한 "PIC388B.png" 형태로 생성된다.
-_HTML_EMBEDDED_IMAGE = re.compile(r"^PIC[0-9A-F]+\.(png|jpe?g|gif|bmp|wmf|emf)$", re.IGNORECASE)
+_HTML_EMBEDDED_IMAGE = re.compile(
+    r"^PIC[0-9A-F]+\.(png|jpe?g|gif|bmp|wmf|emf)$", re.IGNORECASE
+)
 
 # 산출물 후보에서 제외: 원본 한글 문서는 절대 산출물로 취급하지 않는다.
 PROTECTED_SOURCE_EXTENSIONS = frozenset(ext.lower() for ext in SUPPORTED_EXTENSIONS)
@@ -29,7 +31,9 @@ def uses_auxiliary_artifacts(format_type: str) -> bool:
     return format_type.upper() in AUXILIARY_ARTIFACT_FORMATS
 
 
-def matches_artifact_stem(name: str, stem: str, *, allow_page_number: bool = False) -> bool:
+def matches_artifact_stem(
+    name: str, stem: str, *, allow_page_number: bool = False
+) -> bool:
     """Return True when a file/directory name belongs to the output stem."""
     name_key = name.lower()
     stem_key = stem.lower()
@@ -41,7 +45,7 @@ def matches_artifact_stem(name: str, stem: str, *, allow_page_number: bool = Fal
         return False
     if len(name_key) == len(stem_key):
         return True
-    rest = name_key[len(stem_key):]
+    rest = name_key[len(stem_key) :]
     if rest[0] in AUXILIARY_NAME_DELIMITERS:
         return True
     return allow_page_number and bool(_PAGE_NUMBER_REST.match(rest))
@@ -89,7 +93,7 @@ def is_artifact_candidate(
         stem_key = output_file.stem.lower()
         if not stem_key or not base_key.startswith(stem_key):
             return False
-        return bool(_IMAGE_PAGE_SUFFIX.match(base_key[len(stem_key):]))
+        return bool(_IMAGE_PAGE_SUFFIX.match(base_key[len(stem_key) :]))
     if fmt == "HTML" and not for_conflict and _HTML_EMBEDDED_IMAGE.match(name):
         return True
     return matches_artifact_stem(name, output_file.stem)
@@ -157,7 +161,9 @@ def existing_artifact_conflicts(output_file: Path, format_type: str) -> list[Pat
         for child in parent.iterdir():
             if child == output_file:
                 continue
-            if is_artifact_candidate(child, output_file, format_type, for_conflict=True):
+            if is_artifact_candidate(
+                child, output_file, format_type, for_conflict=True
+            ):
                 conflicts[artifact_key(child)] = child
     except OSError:
         return list(conflicts.values())

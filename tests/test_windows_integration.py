@@ -39,7 +39,9 @@ def test_get_dropped_files_handles_paths_longer_than_max_path() -> None:
     assert fake_shell32.finished is True
 
 
-def test_native_admin_drag_drop_policy_disabled_by_default_on_python_314(monkeypatch) -> None:
+def test_native_admin_drag_drop_policy_disabled_by_default_on_python_314(
+    monkeypatch,
+) -> None:
     monkeypatch.delenv(windows_integration.NATIVE_DND_DISABLE_ENV, raising=False)
     monkeypatch.delenv(windows_integration.NATIVE_DND_FORCE_ENV, raising=False)
     monkeypatch.setattr(windows_integration, "is_running_under_idle", lambda: False)
@@ -233,7 +235,9 @@ def test_try_accept_hwp_security_dialog_clicks_matching_button(monkeypatch) -> N
         "_list_top_level_hwnds_for_pids",
         lambda pids, **kwargs: [100],
     )
-    monkeypatch.setattr(windows_integration, "_raise_hwnd_to_foreground", lambda hwnd: True)
+    monkeypatch.setattr(
+        windows_integration, "_raise_hwnd_to_foreground", lambda hwnd: True
+    )
 
     class FakeUser32:
         def EnumChildWindows(self, parent, callback, lparam):
@@ -261,7 +265,9 @@ def test_try_accept_hwp_security_dialog_clicks_matching_button(monkeypatch) -> N
             return 0
 
     fake = FakeUser32()
-    monkeypatch.setattr(windows_integration.ctypes.windll, "user32", fake, raising=False)
+    monkeypatch.setattr(
+        windows_integration.ctypes.windll, "user32", fake, raising=False
+    )
     # windll.user32 is not always patchable this way; patch module-level access via lambda in function
     import ctypes as ct
 

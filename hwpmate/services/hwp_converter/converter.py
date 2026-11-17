@@ -126,7 +126,9 @@ class HWPConverter:
                     try:
                         result = hwp.RegisterModule("FilePathCheckDLL", alias)
                         if result is False or result == 0:
-                            module_errors.append(f"{alias}: RegisterModule returned {result!r}")
+                            module_errors.append(
+                                f"{alias}: RegisterModule returned {result!r}"
+                            )
                             continue
                         # 레지스트리+DLL 사전 준비가 된 경우에만 "완전 성공" (팝업 억제 기대)
                         if prep_ok:
@@ -146,9 +148,12 @@ class HWPConverter:
                     except Exception as module_error:
                         module_errors.append(f"{alias}: {module_error}")
 
-                if not self.security_module_registered and self.security_module_error is None:
-                    self.security_module_error = (
-                        f"prep={prep_msg}; " + ("; ".join(module_errors) or "알 수 없는 오류")
+                if (
+                    not self.security_module_registered
+                    and self.security_module_error is None
+                ):
+                    self.security_module_error = f"prep={prep_msg}; " + (
+                        "; ".join(module_errors) or "알 수 없는 오류"
                     )
                     logger.warning(
                         "한글 보안 모듈 등록 실패 (파일 접근 시 '모두 허용' 창이 뜰 수 있음): "
@@ -159,7 +164,9 @@ class HWPConverter:
                 time.sleep(0.2)
                 after_pids = _snapshot_hwp_pids()
                 fail_count, fail_msg = get_snapshot_health()
-                self.snapshot_unreliable = fail_count > 0 and not after_pids and not before_pids
+                self.snapshot_unreliable = (
+                    fail_count > 0 and not after_pids and not before_pids
+                )
                 self.owned_pids = after_pids - before_pids
                 self.is_initialized = True
                 logger.info(f"한글 연결 성공: {progid}")
@@ -172,7 +179,9 @@ class HWPConverter:
                     logger.warning(self.process_tracking_warning)
                 elif self.owned_pids:
                     self.process_tracking_warning = None
-                    logger.info(f"앱 소유 한글 프로세스 추적: {sorted(self.owned_pids)}")
+                    logger.info(
+                        f"앱 소유 한글 프로세스 추적: {sorted(self.owned_pids)}"
+                    )
                 else:
                     self.process_tracking_warning = (
                         "새로 생성된 한글 프로세스를 추적하지 못했습니다. "
@@ -191,7 +200,9 @@ class HWPConverter:
                 # 새로 뜬 한글 프로세스가 고아로 남으므로 이번 시도에서 생긴 PID 만 정리한다.
                 orphan_pids = _snapshot_hwp_pids() - before_pids
                 if orphan_pids:
-                    logger.warning(f"한글 연결 실패로 생성된 프로세스 정리: {sorted(orphan_pids)}")
+                    logger.warning(
+                        f"한글 연결 실패로 생성된 프로세스 정리: {sorted(orphan_pids)}"
+                    )
                     self._terminate_hwp_pids(orphan_pids)
                 continue
 
@@ -337,7 +348,9 @@ class HWPConverter:
                 alias = SECURITY_MODULE_ALIAS
                 hwp.RegisterModule("FilePathCheckDLL", alias)
             except Exception as re_reg_error:
-                logger.debug(f"Open 전 RegisterModule 재호출 실패(무시): {re_reg_error}")
+                logger.debug(
+                    f"Open 전 RegisterModule 재호출 실패(무시): {re_reg_error}"
+                )
 
             if _cancelled():
                 return False, "사용자 취소"
@@ -383,7 +396,9 @@ class HWPConverter:
                     if apply_default_print_settings(hwp):
                         logger.debug(f"인쇄 설정 리셋 적용: format={format_key}")
                     else:
-                        logger.debug(f"인쇄 설정 리셋 미적용(무시): format={format_key}")
+                        logger.debug(
+                            f"인쇄 설정 리셋 미적용(무시): format={format_key}"
+                        )
                 except Exception as print_reset_error:
                     logger.debug(f"인쇄 설정 리셋 예외(무시): {print_reset_error}")
 
@@ -426,7 +441,9 @@ class HWPConverter:
                             )
                             return True
                     except Exception as pdf_ex_error:
-                        logger.debug(f"PrintToPDF 경로 예외 ({output_str}): {pdf_ex_error}")
+                        logger.debug(
+                            f"PrintToPDF 경로 예외 ({output_str}): {pdf_ex_error}"
+                        )
                 return False
 
             def _try_saveas() -> bool:
@@ -445,12 +462,16 @@ class HWPConverter:
                                 raise RuntimeError(
                                     f"SaveAs 2-param returned failure: {save_result!r}"
                                 )
-                            logger.debug(f"SaveAs 2-param 성공: {format_name} {output_str}")
+                            logger.debug(
+                                f"SaveAs 2-param 성공: {format_name} {output_str}"
+                            )
                             self.last_save_format = format_name
                             self.last_export_method = EXPORT_METHOD_SAVEAS_2
                             return True
                         except Exception as e1:
-                            logger.debug(f"SaveAs 2-param 실패 ({format_name} {output_str}): {e1}")
+                            logger.debug(
+                                f"SaveAs 2-param 실패 ({format_name} {output_str}): {e1}"
+                            )
                             if _cancelled():
                                 return False
                             try:
@@ -459,7 +480,9 @@ class HWPConverter:
                                     raise RuntimeError(
                                         f"SaveAs 3-param returned failure: {save_result!r}"
                                     )
-                                logger.debug(f"SaveAs 3-param 성공: {format_name} {output_str}")
+                                logger.debug(
+                                    f"SaveAs 3-param 성공: {format_name} {output_str}"
+                                )
                                 self.last_save_format = format_name
                                 self.last_export_method = EXPORT_METHOD_SAVEAS_3
                                 return True
@@ -510,9 +533,19 @@ class HWPConverter:
                 after = _snapshot_artifacts(output_file, format_type)
                 primary = after.get(output_file)
                 if not after:
-                    return False, f"출력 파일이 생성되지 않았습니다: {output_file.name}", [], None
+                    return (
+                        False,
+                        f"출력 파일이 생성되지 않았습니다: {output_file.name}",
+                        [],
+                        None,
+                    )
                 if primary is not None and primary.size <= 0:
-                    return False, f"출력 파일이 비어 있습니다: {output_file.name}", [], None
+                    return (
+                        False,
+                        f"출력 파일이 비어 있습니다: {output_file.name}",
+                        [],
+                        None,
+                    )
                 changed = _changed_artifacts(before_artifacts, after)
                 if not changed:
                     return (
@@ -535,7 +568,9 @@ class HWPConverter:
                 ):
                     if _try_print_to_pdf():
                         used_print_path = True
-                        ok, artifact_error, changed_files, after_artifacts = _artifact_ok()
+                        ok, artifact_error, changed_files, after_artifacts = (
+                            _artifact_ok()
+                        )
                         recovered = ok
                 if not recovered:
                     try:
@@ -593,14 +628,18 @@ class HWPConverter:
                         )
 
             assert after_artifacts is not None
-            representative = output_file if output_file in changed_files else changed_files[0]
+            representative = (
+                output_file if output_file in changed_files else changed_files[0]
+            )
             representative_snapshot = after_artifacts[representative]
             self.last_created_files = changed_files
             self.last_output_size = representative_snapshot.size
             try:
                 self.last_output_mtime = representative.stat().st_mtime
             except OSError:
-                self.last_output_mtime = representative_snapshot.mtime_ns / 1_000_000_000
+                self.last_output_mtime = (
+                    representative_snapshot.mtime_ns / 1_000_000_000
+                )
 
             try:
                 hwp.Clear(option=1)
@@ -656,10 +695,14 @@ class HWPConverter:
                 )
                 if result.returncode == 0:
                     killed_any = True
-                    logger.warning(f"앱 소유 한글 프로세스를 강제 종료했습니다: PID={pid}")
+                    logger.warning(
+                        f"앱 소유 한글 프로세스를 강제 종료했습니다: PID={pid}"
+                    )
                 else:
                     remaining.add(pid)
-                    logger.debug(f"PID 종료 실패 또는 이미 종료됨: PID={pid}, code={result.returncode}")
+                    logger.debug(
+                        f"PID 종료 실패 또는 이미 종료됨: PID={pid}, code={result.returncode}"
+                    )
             except Exception as e:
                 remaining.add(pid)
                 logger.error(f"PID 강제 종료 실패: PID={pid}, 오류={e}")
@@ -701,7 +744,14 @@ def _with_document_access_hint(message: str) -> str:
         return message
     lowered = message.lower()
     tokens_ko = ("암호", "비밀번호", "패스워드", "보호", "권한")
-    tokens_en = ("password", "passwd", "encrypted", "protected", "access denied", "permission")
+    tokens_en = (
+        "password",
+        "passwd",
+        "encrypted",
+        "protected",
+        "access denied",
+        "permission",
+    )
     if any(t in message for t in tokens_ko) or any(t in lowered for t in tokens_en):
         return f"{message} {hint}"
     return message

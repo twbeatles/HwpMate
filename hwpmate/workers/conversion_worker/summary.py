@@ -61,9 +61,13 @@ def collect_converter_warnings(converter: ConverterEngine) -> list[str]:
 def engine_status_payload(converter: ConverterEngine) -> dict:
     owned = getattr(converter, "owned_pids", None) or set()
     return {
-        "security_module_registered": getattr(converter, "security_module_registered", None),
+        "security_module_registered": getattr(
+            converter, "security_module_registered", None
+        ),
         "owned_pids": sorted(int(pid) for pid in owned),
         "snapshot_unreliable": bool(getattr(converter, "snapshot_unreliable", False)),
-        "process_tracking_warning": getattr(converter, "process_tracking_warning", None),
+        "process_tracking_warning": getattr(
+            converter, "process_tracking_warning", None
+        ),
         "progid_used": converter.progid_used,
     }

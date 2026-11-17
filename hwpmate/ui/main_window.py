@@ -107,7 +107,6 @@ class MainWindow(QMainWindow):
         self.lifecycle_controller = LifecycleController(self, self.state, save_config)
         self.update_controller = UpdateController(self)
 
-
         self._init_menu_bar()
         self._init_ui()
         self._init_status_bar()
@@ -120,7 +119,9 @@ class MainWindow(QMainWindow):
         self.toast = ToastManager(self)
 
         logger.info(f"HWP 변환기 v{VERSION} 시작")
-        logger.info(f"시스템 정보: {platform.system()} {platform.release()} ({platform.version()})")
+        logger.info(
+            f"시스템 정보: {platform.system()} {platform.release()} ({platform.version()})"
+        )
         logger.info(f"Python 버전: {sys.version}")
 
     @property
@@ -295,7 +296,6 @@ class MainWindow(QMainWindow):
         )
         self.ui = build_main_window_ui(self, self.config, callbacks)
 
-
     def _init_menu_bar(self) -> None:
         self.lifecycle_controller.init_menu_bar()
 
@@ -363,7 +363,9 @@ class MainWindow(QMainWindow):
         include_sub: bool = True,
         allowed_exts: Iterable[str] | None = None,
     ) -> None:
-        self.file_selection_controller.start_scan(input_paths, mode, include_sub, allowed_exts)
+        self.file_selection_controller.start_scan(
+            input_paths, mode, include_sub, allowed_exts
+        )
 
     def _start_folder_preview_scan(self, folder_path: str) -> None:
         self.file_selection_controller.start_folder_preview_scan(folder_path)

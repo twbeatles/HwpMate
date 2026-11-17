@@ -27,7 +27,9 @@ class ConfigRepository:
     def default_config(self) -> AppConfig:
         return AppConfig(config_version=CONFIG_VERSION)
 
-    def _normalize_mapping(self, data: dict[str, Any], default_config: AppConfig) -> tuple[AppConfig, list[str]]:
+    def _normalize_mapping(
+        self, data: dict[str, Any], default_config: AppConfig
+    ) -> tuple[AppConfig, list[str]]:
         merged = {**default_config.to_dict(), **data}
         repairs: list[str] = []
 
@@ -61,7 +63,10 @@ class ConfigRepository:
             merged.get("pdf_export_mode"),
             default=PDF_EXPORT_SAVEAS_FIRST,
         )
-        if pdf_mode not in PDF_EXPORT_MODES or merged.get("pdf_export_mode") != pdf_mode:
+        if (
+            pdf_mode not in PDF_EXPORT_MODES
+            or merged.get("pdf_export_mode") != pdf_mode
+        ):
             repair("pdf_export_mode", pdf_mode)
 
         bool_keys = {
@@ -101,7 +106,10 @@ class ConfigRepository:
 
         try:
             backup_max = int(
-                merged.get("backup_max_files_per_stem", default_config.backup_max_files_per_stem)
+                merged.get(
+                    "backup_max_files_per_stem",
+                    default_config.backup_max_files_per_stem,
+                )
             )
             if (
                 backup_max < BACKUP_MAX_FILES_PER_STEM_MIN
@@ -110,7 +118,9 @@ class ConfigRepository:
                 raise ValueError
             merged["backup_max_files_per_stem"] = backup_max
         except (TypeError, ValueError):
-            repair("backup_max_files_per_stem", default_config.backup_max_files_per_stem)
+            repair(
+                "backup_max_files_per_stem", default_config.backup_max_files_per_stem
+            )
 
         merged["config_version"] = CONFIG_VERSION
         return AppConfig.from_mapping(merged), repairs
@@ -128,10 +138,14 @@ class ConfigRepository:
                         except (TypeError, ValueError):
                             saved_version = 0
                         if saved_version < CONFIG_VERSION:
-                            logger.info(f"설정 파일 버전 업그레이드: {saved_version} -> {CONFIG_VERSION}")
+                            logger.info(
+                                f"설정 파일 버전 업그레이드: {saved_version} -> {CONFIG_VERSION}"
+                            )
                         config, repairs = self._normalize_mapping(data, default_config)
                         if repairs:
-                            logger.warning(f"설정 값 타입/범위 복구: {', '.join(sorted(set(repairs)))}")
+                            logger.warning(
+                                f"설정 값 타입/범위 복구: {', '.join(sorted(set(repairs)))}"
+                            )
                         return config
                     logger.warning("설정 파일 형식이 올바르지 않습니다. 기본값 사용")
         except json.JSONDecodeError as e:
@@ -155,9 +169,13 @@ class ConfigRepository:
             if isinstance(config, AppConfig):
                 config_data = config.to_dict()
             else:
-                normalized, repairs = self._normalize_mapping(config, self.default_config())
+                normalized, repairs = self._normalize_mapping(
+                    config, self.default_config()
+                )
                 if repairs:
-                    logger.warning(f"저장 전 설정 값 타입/범위 복구: {', '.join(sorted(set(repairs)))}")
+                    logger.warning(
+                        f"저장 전 설정 값 타입/범위 복구: {', '.join(sorted(set(repairs)))}"
+                    )
                 config_data = normalized.to_dict()
             self.config_file.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(

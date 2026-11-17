@@ -30,7 +30,9 @@ class NativeDropController:
         try:
             native_dnd_enabled, native_dnd_reason = get_native_admin_drag_drop_policy()
             if not native_dnd_enabled:
-                logger.warning(f"네이티브 드래그 앤 드롭 초기화 건너뜀: {native_dnd_reason}")
+                logger.warning(
+                    f"네이티브 드래그 앤 드롭 초기화 건너뜀: {native_dnd_reason}"
+                )
                 return
 
             drop_filter = NativeDropFilter.get_instance()
@@ -39,7 +41,9 @@ class NativeDropController:
 
             try:
                 user32 = ctypes.windll.user32
-                WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+                WNDENUMPROC = ctypes.WINFUNCTYPE(
+                    ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p
+                )
 
                 def enum_callback(child_hwnd: int, _: int) -> bool:
                     try:
@@ -73,14 +77,20 @@ class NativeDropController:
         worker = self.state.worker
         worker_running = bool(worker and getattr(worker, "isRunning", lambda: False)())
         if self.state.is_planning:
-            self.window.status_label.setText("작업 준비 중에는 드롭 입력을 받을 수 없습니다")
+            self.window.status_label.setText(
+                "작업 준비 중에는 드롭 입력을 받을 수 없습니다"
+            )
             if hasattr(self.window, "toast"):
-                self.window.toast.show_message("작업 준비 중에는 드롭 입력을 받을 수 없습니다", "⚠️")
+                self.window.toast.show_message(
+                    "작업 준비 중에는 드롭 입력을 받을 수 없습니다", "⚠️"
+                )
             return
         if self.state.is_converting or worker_running:
             self.window.status_label.setText("변환 중에는 드롭 입력을 받을 수 없습니다")
             if hasattr(self.window, "toast"):
-                self.window.toast.show_message("변환 중에는 드롭 입력을 받을 수 없습니다", "⚠️")
+                self.window.toast.show_message(
+                    "변환 중에는 드롭 입력을 받을 수 없습니다", "⚠️"
+                )
             return
 
         normalized = [canonicalize_path(path) for path in files if str(path).strip()]
@@ -95,7 +105,9 @@ class NativeDropController:
                 self.window.config["folder_path"] = folder
                 self.window._start_folder_preview_scan(folder)
                 if hasattr(self.window, "toast"):
-                    self.window.toast.show_message("폴더 드롭을 받아 미리보기 스캔을 시작합니다", "✅")
+                    self.window.toast.show_message(
+                        "폴더 드롭을 받아 미리보기 스캔을 시작합니다", "✅"
+                    )
                 return
 
             QMessageBox.warning(
@@ -111,4 +123,6 @@ class NativeDropController:
         if drop_area is not None:
             drop_area.show_feedback("✅", f"{len(normalized)}개 경로 스캔 시작")
         if hasattr(self.window, "toast"):
-            self.window.toast.show_message(f"{len(normalized)}개 경로를 스캔합니다", "✅")
+            self.window.toast.show_message(
+                f"{len(normalized)}개 경로를 스캔합니다", "✅"
+            )

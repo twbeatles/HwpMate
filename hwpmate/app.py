@@ -40,7 +40,11 @@ _CLI_CONSOLE_ATTACHED = False
 
 def _ensure_cli_console_output() -> None:
     global _CLI_CONSOLE_ATTACHED
-    if _CLI_CONSOLE_ATTACHED or os.name != "nt" or not bool(getattr(sys, "frozen", False)):
+    if (
+        _CLI_CONSOLE_ATTACHED
+        or os.name != "nt"
+        or not bool(getattr(sys, "frozen", False))
+    ):
         return
     _CLI_CONSOLE_ATTACHED = True
     try:
@@ -122,7 +126,9 @@ def _print_json_line(payload: dict[str, object], *, output_path: str = "") -> No
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=f"HwpMate v{VERSION} - 한글(HWP/HWPX) 일괄 변환기")
+    parser = argparse.ArgumentParser(
+        description=f"HwpMate v{VERSION} - 한글(HWP/HWPX) 일괄 변환기"
+    )
     parser.add_argument(
         "--smoke",
         action="store_true",
@@ -135,22 +141,26 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     # 헤드리스 CLI 변환 인자
     parser.add_argument(
-        "--input", "-i",
+        "--input",
+        "-i",
         default="",
         help="변환할 HWP/HWPX 파일 또는 폴더 경로입니다.",
     )
     parser.add_argument(
-        "--format", "-f",
+        "--format",
+        "-f",
         default="PDF",
         help=f"출력 형식 ({', '.join(FORMAT_TYPES.keys())}, 기본값: PDF).",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         default="",
         help="변환 결과물이 저장될 출력 폴더 경로입니다. (생략 시 원본과 동일 위치)",
     )
     parser.add_argument(
-        "--recursive", "-r",
+        "--recursive",
+        "-r",
         action="store_true",
         help="폴더 입력 시 하위 폴더의 모든 파일을 포함하여 변환합니다.",
     )
@@ -195,9 +205,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--update-target", default="", help=argparse.SUPPRESS)
     parser.add_argument("--update-staged", default="", help=argparse.SUPPRESS)
     parser.add_argument("--update-backup", default="", help=argparse.SUPPRESS)
-    parser.add_argument("--update-parent-pid", default=0, type=int, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--update-parent-pid", default=0, type=int, help=argparse.SUPPRESS
+    )
     parser.add_argument("--update-expected-sha256", default="", help=argparse.SUPPRESS)
-    parser.add_argument("--update-expected-size", default=0, type=int, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--update-expected-size", default=0, type=int, help=argparse.SUPPRESS
+    )
     parser.add_argument("--update-result-file", default="", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
@@ -213,6 +227,7 @@ def _run_smoke(args: argparse.Namespace) -> int:
 
         from .services.update_installer import apply_staged_update  # noqa: F401
         from .services.update_manifest import verify_release_manifest  # noqa: F401
+
         result["cryptography_available"] = True
     except Exception as exc:
         result["status"] = "error"
@@ -270,7 +285,9 @@ def _run_apply_update(args: argparse.Namespace) -> int:
             _relaunch(target)
         return 1
 
-    write_update_result(args.update_result_file, {**base_result, "status": UPDATE_STATUS_APPLIED})
+    write_update_result(
+        args.update_result_file, {**base_result, "status": UPDATE_STATUS_APPLIED}
+    )
     _relaunch(target)
     return 0
 
@@ -304,7 +321,9 @@ def _write_owned_pids(path_text: str, pids: set[int]) -> None:
     try:
         from .services.update_installer import atomic_write_json
 
-        atomic_write_json(Path(target).resolve(), {"pids": sorted(int(pid) for pid in pids)})
+        atomic_write_json(
+            Path(target).resolve(), {"pids": sorted(int(pid) for pid in pids)}
+        )
     except Exception as exc:
         logger.warning(f"소유 한글 PID 기록 실패(무시): {exc}")
 
@@ -369,9 +388,13 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
     except ValueError as exc:
         return _cli_error(str(exc))
 
-    renamed = planner.resolve_output_conflicts(plan.tasks, overwrite=args.overwrite, format_type=format_type)
+    renamed = planner.resolve_output_conflicts(
+        plan.tasks, overwrite=args.overwrite, format_type=format_type
+    )
     if renamed:
-        plan.warnings.append(f"출력 경로 충돌 {renamed}개는 자동으로 새 이름으로 저장됩니다.")
+        plan.warnings.append(
+            f"출력 경로 충돌 {renamed}개는 자동으로 새 이름으로 저장됩니다."
+        )
     protected = count_protected_source_renames(plan.tasks)
     if args.overwrite and protected:
         plan.warnings.append(
@@ -380,7 +403,9 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
 
     tasks = plan.tasks
     print(f"=== HwpMate v{VERSION} CLI 일괄 변환 ===")
-    print(f"변환 대상: {len(tasks)}개 | 건너뜀: {plan.skipped_count}개 | 목표 형식: {format_type}")
+    print(
+        f"변환 대상: {len(tasks)}개 | 건너뜀: {plan.skipped_count}개 | 목표 형식: {format_type}"
+    )
     for warning in plan.warnings:
         print(f"⚠️ [경고] {warning}")
     for skipped in plan.skipped_tasks:
@@ -399,12 +424,16 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
         return 0
 
     if not PYWIN32_AVAILABLE:
-        return _cli_error("pywin32 라이브러리가 필요합니다. pip install pywin32 후 다시 실행하세요.")
+        return _cli_error(
+            "pywin32 라이브러리가 필요합니다. pip install pywin32 후 다시 실행하세요."
+        )
 
     # GUI 또는 다른 CLI 와 같은 한글 COM·출력 파일을 동시에 다루지 않게 한다.
     instance_lock = SingleInstanceLock()
     if not instance_lock.try_lock():
-        return _cli_error("HwpMate(GUI 또는 다른 CLI)가 이미 실행 중입니다. 종료한 뒤 다시 실행하세요.")
+        return _cli_error(
+            "HwpMate(GUI 또는 다른 CLI)가 이미 실행 중입니다. 종료한 뒤 다시 실행하세요."
+        )
 
     converter = HWPConverter()
     options = TaskRunOptions.from_plan(plan)
@@ -413,7 +442,9 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
         try:
             converter.auto_continue_compat_dialogs = not args.no_auto_continue
             converter.initialize(manage_com_apartment=True)
-            _write_owned_pids(args.owned_pids_file, set(getattr(converter, "owned_pids", ()) or ()))
+            _write_owned_pids(
+                args.owned_pids_file, set(getattr(converter, "owned_pids", ()) or ())
+            )
             converter.pdf_export_mode = normalize_pdf_export_mode(args.pdf_export_mode)
             runtime_warnings.extend(collect_converter_warnings(converter))
         except Exception as exc:
@@ -424,7 +455,11 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
         try:
             for idx, task in enumerate(tasks):
                 prefix = f"[{idx + 1}/{total}]"
-                print(f"{prefix} 🔄 {task.input_file.name} ➔ {task.output_file.name} ...", end=" ", flush=True)
+                print(
+                    f"{prefix} 🔄 {task.input_file.name} ➔ {task.output_file.name} ...",
+                    end=" ",
+                    flush=True,
+                )
                 runtime_warnings.extend(
                     execute_task(
                         task,
@@ -443,7 +478,10 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
 
                 if (idx + 1) % CONVERTER_RECYCLE_BATCH_COUNT == 0 and (idx + 1) < total:
                     recycle_error = recycle_converter(converter, options)
-                    _write_owned_pids(args.owned_pids_file, set(getattr(converter, "owned_pids", ()) or ()))
+                    _write_owned_pids(
+                        args.owned_pids_file,
+                        set(getattr(converter, "owned_pids", ()) or ()),
+                    )
                     if recycle_error is not None:
                         message = f"한글 프로세스 재순환 실패로 남은 작업을 중단했습니다: {recycle_error}"
                         fail_pending_tasks(tasks, message)
@@ -470,7 +508,8 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
 
     summary = ConversionSummary(
         format_type=format_type,
-        tasks=[task.snapshot() for task in tasks] + [task.snapshot() for task in plan.skipped_tasks],
+        tasks=[task.snapshot() for task in tasks]
+        + [task.snapshot() for task in plan.skipped_tasks],
         warnings=summary_warnings + runtime_warnings,
         elapsed_seconds=time.perf_counter() - started,
         progid_used=converter.progid_used,
@@ -529,8 +568,7 @@ def main(argv: list[str] | None = None) -> int:
     if not PYWIN32_AVAILABLE:
         app = QApplication(sys.argv)
         QMessageBox.critical(
-            None, "오류",
-            "pywin32 라이브러리가 필요합니다.\n\npip install pywin32"
+            None, "오류", "pywin32 라이브러리가 필요합니다.\n\npip install pywin32"
         )
         del app
         return 1
@@ -542,7 +580,7 @@ def main(argv: list[str] | None = None) -> int:
             "관리자 권한 필요",
             "이 프로그램은 관리자 권한으로 실행해야 합니다.\n\n"
             "파일을 마우스 오른쪽 버튼으로 클릭하여\n"
-            "'관리자 권한으로 실행'을 선택하세요."
+            "'관리자 권한으로 실행'을 선택하세요.",
         )
         del app
         return 1
@@ -552,7 +590,9 @@ def main(argv: list[str] | None = None) -> int:
         if native_dnd_enabled:
             enable_drag_drop_for_admin()
         else:
-            logger.warning(f"관리자용 네이티브 드래그 앤 드롭 비활성화: {native_dnd_reason}")
+            logger.warning(
+                f"관리자용 네이티브 드래그 앤 드롭 비활성화: {native_dnd_reason}"
+            )
 
         app = QApplication(sys.argv)
         app.setStyle(QStyleFactory.create("Fusion"))
