@@ -229,11 +229,25 @@ def read_owned_pids(path: Path) -> set[int]:
 
 
 def _live_hwp_pids() -> set[int]:
+    """현재 살아 있고 COM(DcomLaunch)이 띄운 한글 PID.
+
+    사용자가 직접 연 한글(부모가 explorer 등이거나 부모를 확인할 수 없음)은
+    PID 가 겹치더라도 확인 없이 종료하지 않도록 제외한다.
+    """
     if os.name != "nt":
         return set()
-    from ..services.hwp_converter.process_snapshot import _snapshot_hwp_pids
+    from ..services.hwp_converter.process_snapshot import (
+        HWP_PROCESS_NAMES,
+        _snapshot_process_table,
+        select_com_launched_pids,
+    )
 
-    return _snapshot_hwp_pids()
+    table = _snapshot_process_table()
+    if table is None:
+        return set()
+    hwp_pids = {pid for pid, (image, _ppid) in table.items() if image in HWP_PROCESS_NAMES}
+    accepted, _foreign = select_com_launched_pids(hwp_pids, table, allow_unknown=False)
+    return accepted
 
 
 def _terminate_pid(pid: int) -> bool:

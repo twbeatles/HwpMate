@@ -2,11 +2,11 @@
 
 <p align="center">
   <a href="https://github.com/twbeatles/HwpMate/releases/latest">
-    <img src="https://img.shields.io/badge/Release-v9.2.4-blue.svg?style=for-the-badge&logo=github" alt="Latest Release" />
+    <img src="https://img.shields.io/badge/Release-v9.2.5-blue.svg?style=for-the-badge&logo=github" alt="Latest Release" />
   </a>
   <img src="https://img.shields.io/badge/Platform-Windows_10%2F11_(64--bit)-lightgrey.svg?style=for-the-badge&logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/Tests-326%20Passed-success.svg?style=for-the-badge" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-390%20Passed-success.svg?style=for-the-badge" alt="Tests" />
   <img src="https://img.shields.io/badge/Type%20Check-Pyright%200%20Errors-blueviolet.svg?style=for-the-badge" alt="Type Check" />
 </p>
 
@@ -20,7 +20,7 @@
 > ### 🚀 [초고속 다운로드 (무설치 포터블)]
 > Python 설치나 복잡한 환경 설정 없이, 아래 링크에서 단일 실행 파일(`.exe`)을 다운로드하여 즉시 사용하실 수 있습니다.
 > 
-> 👉 **[최신 버전 HwpMate-v9.2.4.exe 다운로드 (GitHub Releases)](https://github.com/twbeatles/HwpMate/releases/latest)**  
+> 👉 **[최신 버전 HwpMate-v9.2.5.exe 다운로드 (GitHub Releases)](https://github.com/twbeatles/HwpMate/releases/latest)**  
 > *(x64용입니다. ARM64 PC는 v9.2.1 에셋을 사용하세요. 다운로드 후 마우스 오른쪽 버튼을 클릭하여 **'관리자 권한으로 실행'**해 주세요.)*
 
 ---
@@ -51,7 +51,7 @@
 * ⏩ **“호환 문서 — 배치가 변경될 수 있습니다” 확인 창 자동 계속**:
   DOCX·RTF 등으로 저장할 때 한글이 띄우는 「저장을 계속할까요?」 창에 자동으로 「계속」하여 대량 변환이 멈추지 않습니다. 앱이 띄운 한글 프로세스에만 적용되며 옵션에서 끌 수 있습니다.
 * 🔄 **메모리 누수 제로 (200건 단위 프로세스 자동 재순환)**:
-  대량 문서 변환 시 한컴 프로세스가 느려지거나 멈추는 현상을 방지하기 위해, 200건 변환마다 백그라운드 한글 COM 인스턴스를 무결하게 재순환(Recycle)합니다.
+  대량 문서 변환 시 한컴 프로세스가 느려지거나 멈추는 현상을 방지하기 위해, 200건 변환마다 백그라운드 한글 COM 인스턴스를 무결하게 재순환(Recycle)합니다. 변환 도중 한글 프로세스가 비정상 종료되면(RPC 연결 끊김) **즉시 다시 연결해 같은 파일을 한 번 더 시도**하고, 결과 리포트에 재연결 경고를 남깁니다. 재연결에도 실패하면 남은 작업을 실패로 표시하고 중단합니다.
 * 💾 **철저한 원본 보호 및 안전 백업**:
   변환 작업 전 원본 문서를 `backup/` 폴더에 자동으로 안전하게 복사하며, 중복 파일 덮어쓰기 방지 및 백업 수량 순환 보관(파일당 1~100개)을 지원합니다. 「기존 파일 덮어쓰기」를 켜도 **기존 `.hwp`/`.hwpx` 원본 문서는 절대 덮어쓰지 않고** 새 이름으로 저장합니다.
 * 🎯 **듀얼 PDF 엔진 탑재**:
@@ -107,7 +107,7 @@
 ```
 
 ### 1단계: 프로그램 실행
-다운로드한 `HwpMate-v9.2.4.exe` 파일을 마우스 우클릭한 뒤 **[관리자 권한으로 실행]**을 클릭합니다.
+다운로드한 `HwpMate-v9.2.5.exe` 파일을 마우스 우클릭한 뒤 **[관리자 권한으로 실행]**을 클릭합니다.
 
 ### 2단계: 문서 또는 폴더 추가
 * **폴더 통째로 변환할 때**: 상단 모드를 **[폴더 일괄 변환]**으로 두고, 변환할 폴더를 창으로 끌어다 놓거나 `[폴더 선택]`을 누릅니다. (하위 폴더를 포함하려면 체크박스 선택)
@@ -119,6 +119,8 @@
 ### 4단계: 변환 시작
 * 우측 하단의 **[변환 시작]** 버튼을 누르거나 단축키 `Ctrl + Enter`를 누릅니다.
 * **사전 점검(Preflight Check)** 팝업에서 총 변환 대상 개수, 예상 건너뜀, 저장 경로를 확인하고 [확인]을 누르면 변환이 진행됩니다.
+* 입력 파일 없음·읽기 불가·경로 260자 이상·출력 폴더 쓰기 불가 같은 차단 오류가 일부 항목에만 있으면 **[문제 N개 제외하고 시작]**으로 나머지만 변환할 수 있습니다. 제외한 항목은 결과에 「건너뜀」과 사유로 남습니다.
+* 결과 창의 「실패만 재변환」은 **이전 변환과 같은 출력 경로**에 다시 저장합니다(그 사이 바꾼 출력 폴더 설정은 적용하지 않음).
 * 변환이 완료되면 결과 창에서 성공/실패 통계를 확인하고, 실패한 파일만 원클릭으로 재시도하거나 결과 폴더를 즉시 열 수 있습니다.
 
 ---
@@ -131,25 +133,25 @@ HwpMate는 GUI 창 없이 윈도우 작업 스케줄러, 배치 파일(`.bat`), 
 
 ```powershell
 # 1. 단일 파일 변환 (HWP -> PDF)
-HwpMate-v9.2.4.exe --input "C:\문서\보고서.hwp" --format PDF
+HwpMate-v9.2.5.exe --input "C:\문서\보고서.hwp" --format PDF
 
 # 2. 폴더 전체 일괄 변환 (하위 폴더 포함, MS Word DOCX로 변환)
-HwpMate-v9.2.4.exe --input "C:\업무자료" --format DOCX --recursive --output "C:\변환완료"
+HwpMate-v9.2.5.exe --input "C:\업무자료" --format DOCX --recursive --output "C:\변환완료"
 
 # 3. 초고속 변환 (백업 생성 안 함, 기존 파일 덮어쓰기)
-HwpMate-v9.2.4.exe --input "C:\문서폴더" --format PDF --overwrite --no-backup
+HwpMate-v9.2.5.exe --input "C:\문서폴더" --format PDF --overwrite --no-backup
 
 # 4. 모아찍기 해제 인쇄 모드로 PDF 변환 (실패 시 2회 재시도)
-HwpMate-v9.2.4.exe --input "C:\공문서" --format PDF --pdf-export-mode print_to_pdf_ex_first --retry 2
+HwpMate-v9.2.5.exe --input "C:\공문서" --format PDF --pdf-export-mode print_to_pdf_ex_first --retry 2
 
 # 5. 결과를 JSON으로 저장 (CSV는 .csv 확장자)
-HwpMate-v9.2.4.exe --input "C:\문서폴더" --format DOCX --report "C:\변환결과\result.json"
+HwpMate-v9.2.5.exe --input "C:\문서폴더" --format DOCX --report "C:\변환결과\result.json"
 
 # 6. 시스템 및 COM 의존성 무결성 진단 (스모크 테스트)
-HwpMate-v9.2.4.exe --smoke
+HwpMate-v9.2.5.exe --smoke
 ```
 
-> CLI는 GUI와 같은 변환 엔진(백업 → 출력 충돌 회피 → 재시도 → 산출물 검증)을 사용합니다. 같은 한글 COM·출력 파일을 동시에 다루지 않도록 **GUI 또는 다른 CLI가 실행 중이면 오류 코드 1로 종료**합니다. 실패·취소가 없으면 종료 코드 0입니다.
+> CLI는 GUI와 같은 변환 엔진(백업 → 출력 충돌 회피 → 재시도 → 산출물 검증)을 사용합니다. 같은 한글 COM·출력 파일을 동시에 다루지 않도록 **GUI 또는 다른 CLI가 실행 중이면 오류 코드 1로 종료**합니다. 실패·취소가 없으면 종료 코드 0입니다. `--report` 저장에 실패하면 `[경고] 결과 저장 실패`만 출력하고 종료 코드는 변환 결과로 정합니다.
 
 ### CLI 옵션 상세 안내
 
@@ -163,7 +165,7 @@ HwpMate-v9.2.4.exe --smoke
 | `--no-backup` | | `False` | 변환 전 원본 파일 백업(`backup/` 폴더) 생성을 건너뜀 |
 | `--retry` | | `1` | 변환 실패 시 자동 재시도 횟수 (`0` ~ `3`) |
 | `--pdf-export-mode` | | `saveas_first` | PDF 엔진 우선순위 (`saveas_first`: 용지 품질 / `print_to_pdf_ex_first`: 모아찍기 완화) |
-| `--report` | | (없음) | 변환 결과를 CSV 또는 JSON 파일로 저장 (확장자로 형식 결정, 감사 필드 포함) |
+| `--report` | | (없음) | 변환 결과를 CSV 또는 JSON 파일로 저장 (감사 필드 포함). 확장자가 `.json`이면 JSON, 그 외는 확장자를 `.csv`로 바꿔 CSV로 저장 (예: `report.txt` → `report.csv`) |
 | `--no-auto-continue` | | `False` | 한글 「호환 문서(배치가 변경될 수 있습니다)」 확인 창에 자동으로 계속하지 않음 |
 | `--smoke` | | `False` | GUI를 띄우지 않고 의존성 및 모듈 무결성 점검 실행 후 종료 |
 
@@ -222,9 +224,11 @@ python -m hwpmate.mcp
 
 ### Q7. 변환 중 한글 프로그램을 만져도 되나요?
 > **A:** 변환 작업이 진행되는 동안에는 백그라운드에서 한글 프로세스가 초고속으로 문서를 열고 닫으므로, **한글 창을 직접 클릭하거나 조작하지 마세요.** 원활한 변환을 위해 변환 시작 전 열려있는 다른 한글 문서를 모두 저장하고 닫아주시는 것이 좋습니다.
+>
+> HwpMate는 **COM(DcomLaunch)이 띄운 한글 프로세스만** 앱 소유로 추적합니다. 변환 도중 탐색기에서 `.hwp`를 더블클릭해 연 한글은 추적 대상이 아니므로 창이 숨겨지거나 「강제 종료」·MCP 시간 초과 정리로 종료되지 않습니다. 다만 같은 한글 프로그램을 변환과 동시에 쓰면 느려질 수 있으니 변환이 끝난 뒤 사용하는 것을 권장합니다.
 
 ### Q8. 자동 업데이트 도중 PC가 꺼져서 실행 파일이 사라졌습니다.
-> **A:** 업데이트는 기존 실행 파일을 `<실행파일명>.exe.v<이전버전>.bak`으로 옮긴 뒤 새 파일을 제자리로 옮기는 두 단계로 진행됩니다. 두 단계 사이에서 중단되어 실행 파일이 없다면, 같은 폴더의 가장 최근 `*.exe.v*.bak` 파일 이름에서 `.v<버전>.bak`을 지워 원래 이름(예: `HwpMate-v9.2.4.exe`)으로 바꾸면 이전 버전으로 복구됩니다. 복구 후 앱에서 업데이트를 다시 적용하면 됩니다.
+> **A:** 업데이트는 기존 실행 파일을 `<실행파일명>.exe.v<이전버전>.bak`으로 옮긴 뒤 새 파일을 제자리로 옮기는 두 단계로 진행됩니다. 두 단계 사이에서 중단되어 실행 파일이 없다면, 같은 폴더의 가장 최근 `*.exe.v*.bak` 파일 이름에서 `.v<버전>.bak`을 지워 원래 이름(예: `HwpMate-v9.2.5.exe`)으로 바꾸면 이전 버전으로 복구됩니다. 복구 후 앱에서 업데이트를 다시 적용하면 됩니다.
 
 ---
 
@@ -254,7 +258,7 @@ pyinstaller --noconfirm --clean hwp_converter.spec
 빌드가 완료되면 `dist/` 폴더 내에 단일 실행 파일이 생성됩니다.
 
 ### 4. 품질 검증 및 테스트 실행
-HwpMate는 신뢰성을 위해 310개 이상의 단위/통합 테스트와 엄격한 타입 체킹을 유지합니다. 실제 한글 COM 동작은 `tools/hwp_com_smoke.py`와 `HWP_COM_SMOKE_TEST_CHECKLIST.md`로 별도 검증합니다.
+HwpMate는 신뢰성을 위해 380개 이상의 단위/통합 테스트와 엄격한 타입 체킹을 유지합니다. 실제 한글 COM 동작은 `tools/hwp_com_smoke.py`와 `HWP_COM_SMOKE_TEST_CHECKLIST.md`로 별도 검증합니다.
 ```powershell
 # 정적 타입 검사
 pyright .

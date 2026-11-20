@@ -8,19 +8,17 @@ from ..constants import BACKUP_DIR_NAME, SUPPORTED_EXTENSIONS
 
 AUXILIARY_ARTIFACT_FORMATS = frozenset({"HTML", "PNG", "JPG", "BMP", "GIF"})
 IMAGE_ARTIFACT_FORMATS = frozenset({"PNG", "JPG", "BMP", "GIF"})
-# 공백·괄호는 제외: "report (1)" 같은 형제 문서의 산출물을 "report" 의 보조 산출물로 오인한다.
-AUXILIARY_NAME_DELIMITERS = frozenset({"_", "-", "."})
 MAX_AUXILIARY_SCAN_FILES = 500
 
 # 한글 2022(12.0) 실측: 이미지 SaveAs 는 요청 경로 대신 페이지마다
 # "{stem}001.png", "{stem}002.png" 처럼 구분자 없이 3자리 번호를 붙여 저장한다.
 # 자릿수를 넓히면 형제 문서 "report1.hwp" 의 "report1001.png" 를 "report" 의 페이지로 오인한다.
-_PAGE_NUMBER_REST = re.compile(r"^\d{3}(\.|$)")
+# 폴더는 만들지 않으므로 이미지 형식에서는 폴더를 산출물로 보지 않는다.
 _IMAGE_PAGE_SUFFIX = re.compile(r"^[_-]?\d{3}$")
 # 한글 2022 HTML 저장 시 본문 이미지·수식은 문서 이름과 무관한 "PIC388B.png" 형태로 생성된다.
-_HTML_EMBEDDED_IMAGE = re.compile(
-    r"^PIC[0-9A-F]+\.(png|jpe?g|gif|bmp|wmf|emf)$", re.IGNORECASE
-)
+_HTML_EMBEDDED_IMAGE = re.compile(r"^PIC[0-9A-F]+\.(png|jpe?g|gif|bmp|wmf|emf)$", re.IGNORECASE)
+# HTML 보조 폴더로 인정하는 이름 (웹 페이지 저장의 일반 관례). "{stem}_2024" 같은 형제 폴더는 제외.
+_HTML_ASSET_DIR_SUFFIXES = ("_files", ".files")
 
 # 산출물 후보에서 제외: 원본 한글 문서는 절대 산출물로 취급하지 않는다.
 PROTECTED_SOURCE_EXTENSIONS = frozenset(ext.lower() for ext in SUPPORTED_EXTENSIONS)
@@ -31,24 +29,12 @@ def uses_auxiliary_artifacts(format_type: str) -> bool:
     return format_type.upper() in AUXILIARY_ARTIFACT_FORMATS
 
 
-def matches_artifact_stem(
-    name: str, stem: str, *, allow_page_number: bool = False
-) -> bool:
-    """Return True when a file/directory name belongs to the output stem."""
-    name_key = name.lower()
+def is_html_asset_dir_name(name: str, stem: str) -> bool:
+    """HTML 보조 폴더 이름인지 ({stem}_files, {stem}.files)."""
     stem_key = stem.lower()
     if not stem_key:
         return False
-    if name_key == stem_key:
-        return True
-    if not name_key.startswith(stem_key):
-        return False
-    if len(name_key) == len(stem_key):
-        return True
-    rest = name_key[len(stem_key) :]
-    if rest[0] in AUXILIARY_NAME_DELIMITERS:
-        return True
-    return allow_page_number and bool(_PAGE_NUMBER_REST.match(rest))
+    return name.lower() in {stem_key + suffix for suffix in _HTML_ASSET_DIR_SUFFIXES}
 
 
 def is_protected_source_path(path: Path) -> bool:
@@ -67,7 +53,9 @@ def is_artifact_candidate(
 
     - 기본 출력 파일 이름은 항상 후보
     - 원본 한글 문서(.hwp/.hwpx)와 앱 백업 폴더는 제외
-    - 이미지 형식은 같은 확장자의 페이지 파일만 ({stem}001, {stem}_001)
+    - 이미지 형식은 같은 확장자의 페이지 파일만 ({stem}001, {stem}_001). 폴더는 제외
+    - HTML 은 같은 stem 의 파일({stem}.htm, {stem}.css 등)과 {stem}_files / {stem}.files 폴더만.
+      "{stem}_final.html" 같은 형제 파일은 제외
     - HTML 의 문서 이름과 무관한 PIC* 이미지는 변경 감지(스냅샷)용 후보일 뿐 충돌로 보지 않는다
     """
     name = path.name
@@ -83,20 +71,22 @@ def is_artifact_candidate(
     if is_dir:
         if name.lower() in EXCLUDED_ARTIFACT_DIR_NAMES:
             return False
-        return matches_artifact_stem(name, output_file.stem)
+        return fmt == "HTML" and is_html_asset_dir_name(name, output_file.stem)
     if is_protected_source_path(path):
+        return False
+    stem_key = output_file.stem.lower()
+    if not stem_key:
         return False
     if fmt in IMAGE_ARTIFACT_FORMATS:
         if path.suffix.lower() != output_file.suffix.lower():
             return False
         base_key = path.stem.lower()
-        stem_key = output_file.stem.lower()
-        if not stem_key or not base_key.startswith(stem_key):
+        if not base_key.startswith(stem_key):
             return False
         return bool(_IMAGE_PAGE_SUFFIX.match(base_key[len(stem_key) :]))
     if fmt == "HTML" and not for_conflict and _HTML_EMBEDDED_IMAGE.match(name):
         return True
-    return matches_artifact_stem(name, output_file.stem)
+    return path.stem.lower() == stem_key
 
 
 def artifact_key(path: Path) -> str:
@@ -131,7 +121,7 @@ def iter_candidate_artifact_paths(
                     continue
                 try:
                     for nested in child.rglob("*"):
-                        if not nested.is_file():
+                        if not nested.is_file() or is_protected_source_path(nested):
                             continue
                         if nested_count >= nested_limit:
                             break

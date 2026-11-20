@@ -313,6 +313,17 @@ def _write_cli_report(report_path: str, summary: ConversionSummary) -> str | Non
     return str(path)
 
 
+def _save_cli_report(report_path: str, summary: ConversionSummary) -> None:
+    """--report 저장. 실패해도 경고만 출력하고 종료 코드는 변환 결과로 정한다."""
+    try:
+        report = _write_cli_report(report_path, summary)
+    except Exception as exc:
+        print(f"[경고] 결과 저장 실패: {exc}", file=sys.stderr)
+        return
+    if report:
+        print(f"결과 저장: {report}")
+
+
 def _write_owned_pids(path_text: str, pids: set[int]) -> None:
     """소유 한글 PID 목록을 원자적으로 기록한다 (best-effort, 실패해도 변환은 계속)."""
     target = str(path_text or "").strip()
@@ -333,6 +344,7 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
     from .constants import CONVERTER_RECYCLE_BATCH_COUNT, MAX_RETRY_COUNT
     from .workers.conversion_worker.summary import collect_converter_warnings
     from .workers.conversion_worker.task_runner import (
+        EngineUnavailableError,
         TaskRunOptions,
         compat_dialog_note,
         execute_task,
@@ -420,7 +432,7 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
             warnings=summary_warnings,
             elapsed_seconds=time.perf_counter() - started,
         )
-        _write_cli_report(args.report, summary)
+        _save_cli_report(args.report, summary)
         return 0
 
     if not PYWIN32_AVAILABLE:
@@ -455,22 +467,32 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
         try:
             for idx, task in enumerate(tasks):
                 prefix = f"[{idx + 1}/{total}]"
-                print(
-                    f"{prefix} 🔄 {task.input_file.name} ➔ {task.output_file.name} ...",
-                    end=" ",
-                    flush=True,
-                )
-                runtime_warnings.extend(
-                    execute_task(
-                        task,
-                        converter,
-                        options,
-                        planner=planner,
-                        used_output_path_keys=used_output_path_keys,
-                        cancel_check=lambda: False,
-                        on_status=lambda text: print(f"({text})", end=" ", flush=True),
+                print(f"{prefix} 🔄 {task.input_file.name} ➔ {task.output_file.name} ...", end=" ", flush=True)
+                try:
+                    runtime_warnings.extend(
+                        execute_task(
+                            task,
+                            converter,
+                            options,
+                            planner=planner,
+                            used_output_path_keys=used_output_path_keys,
+                            cancel_check=lambda: False,
+                            on_status=lambda text: print(f"({text})", end=" ", flush=True),
+                            on_reconnected=lambda: _write_owned_pids(
+                                args.owned_pids_file,
+                                set(getattr(converter, "owned_pids", ()) or ()),
+                            ),
+                        )
                     )
-                )
+                except EngineUnavailableError as engine_error:
+                    print(f"❌ {task.status}: {task.detail}")
+                    runtime_warnings.extend(engine_error.warnings)
+                    _write_owned_pids(args.owned_pids_file, set(getattr(converter, "owned_pids", ()) or ()))
+                    message = f"{engine_error} — 남은 작업을 중단했습니다."
+                    fail_pending_tasks(tasks, message)
+                    runtime_warnings.append(message)
+                    print(f"[오류] {message}", file=sys.stderr)
+                    break
                 if task.status == "성공":
                     print("✅ 성공")
                 else:
@@ -521,12 +543,7 @@ def _run_cli_conversion(args: argparse.Namespace) -> int:
     )
     for warning in runtime_warnings:
         print(f"⚠️ {warning}")
-    try:
-        report = _write_cli_report(args.report, summary)
-        if report:
-            print(f"결과 저장: {report}")
-    except Exception as exc:
-        print(f"[경고] 결과 저장 실패: {exc}", file=sys.stderr)
+    _save_cli_report(args.report, summary)
     return 0 if summary.failed_count == 0 and summary.canceled_count == 0 else 1
 
 

@@ -23,7 +23,7 @@ from ...constants import (
     WINDOWS_PATH_BLOCK_LENGTH,
     WINDOWS_PATH_WARN_LENGTH,
 )
-from ...models import PlannedConversion
+from ...models import ConversionTask, PlannedConversion
 from ...path_utils import (
     check_write_permission,
     is_path_length_blocking,
@@ -80,6 +80,9 @@ class PreflightDialog(QDialog):
         layout.addWidget(info_group)
 
         self._deep_read_skipped = 0
+        # 문제 항목만 제외하고 시작할 때 호출자가 계획에서 뺄 작업과 사유
+        self._blocked_tasks: list[tuple[ConversionTask, str]] = []
+        self.excluded_tasks: list[tuple[ConversionTask, str]] = []
         blocking_errors = self._blocking_errors(plan)
         warnings = list(plan.warnings)
         if blocking_errors:
@@ -129,6 +132,18 @@ class PreflightDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
 
+        blocked_count = len(self._blocked_tasks)
+        if blocking_errors and 0 < blocked_count < plan.runnable_count:
+            # 1건 때문에 배치 전체를 막지 않도록 문제 항목만 빼고 시작하는 선택지를 준다.
+            exclude_btn = QPushButton(f"문제 {blocked_count}개 제외하고 시작")
+            exclude_btn.setProperty("secondary", True)
+            exclude_btn.setToolTip("차단 오류가 있는 항목은 결과에 「건너뜀」으로 남기고 나머지만 변환합니다")
+            exclude_btn.clicked.connect(self._accept_excluding_blocked)
+            btn_layout.addWidget(exclude_btn)
+            self.exclude_button: QPushButton | None = exclude_btn
+        else:
+            self.exclude_button = None
+
         start_btn = QPushButton("변환 시작")
         start_btn.clicked.connect(self.accept)
         if blocking_errors:
@@ -137,8 +152,13 @@ class PreflightDialog(QDialog):
                 "입력 파일 또는 출력 폴더의 확정 오류를 먼저 해결해야 합니다"
             )
         btn_layout.addWidget(start_btn)
+        self.start_button = start_btn
 
         layout.addLayout(btn_layout)
+
+    def _accept_excluding_blocked(self) -> None:
+        self.excluded_tasks = list(self._blocked_tasks)
+        self.accept()
 
     def _build_detail_text(self, plan: PlannedConversion) -> str:
         """대상 상세. 대량 배치에서는 상위 N개만 표시해 UI freeze 를 줄인다.
@@ -206,18 +226,20 @@ class PreflightDialog(QDialog):
         return count
 
     def _blocking_errors(self, plan: PlannedConversion) -> list[str]:
-        """차단 오류.
+        """차단 오류. 작업별 사유는 self._blocked_tasks 에 기록한다.
 
         - 입력 존재 여부: 실행 대상 전 건 (is_file, 저비용)
         - 읽기 가능 여부: 최대 PREFLIGHT_READ_CHECK_MAX_TASKS 건만 open 심층 검사
-        - 출력 쓰기: 출력 폴더 단위 중복 제거 후 검사
+        - 출력 쓰기: 출력 폴더 단위로 한 번만 검사하고 그 폴더의 모든 작업에 적용
         """
         errors: list[str] = []
-        checked_output_dirs: set[str] = set()
+        writable_by_dir: dict[str, bool] = {}
         deep_read_checked = 0
         deep_read_skipped = 0
+        blocked: list[tuple[ConversionTask, str]] = []
 
         for task in plan.tasks:
+            reasons: list[str] = []
             try:
                 is_file = task.input_file.is_file()
             except OSError:
@@ -225,10 +247,12 @@ class PreflightDialog(QDialog):
 
             if not is_file:
                 errors.append(f"입력 파일 없음: {task.input_file}")
+                reasons.append("입력 파일 없음")
             elif deep_read_checked < PREFLIGHT_READ_CHECK_MAX_TASKS:
                 deep_read_checked += 1
                 if not self._is_readable(task.input_file):
                     errors.append(f"입력 파일 읽기 불가: {task.input_file}")
+                    reasons.append("입력 파일 읽기 불가")
             else:
                 deep_read_skipped += 1
 
@@ -239,14 +263,37 @@ class PreflightDialog(QDialog):
                     f"경로가 너무 깁니다 ({WINDOWS_PATH_BLOCK_LENGTH}자 이상): "
                     f"{task.input_file.name}"
                 )
+                reasons.append(f"경로가 너무 깁니다 ({WINDOWS_PATH_BLOCK_LENGTH}자 이상)")
 
             output_dir = task.output_file.parent
             output_key = str(output_dir).lower()
-            if output_key in checked_output_dirs:
-                continue
-            checked_output_dirs.add(output_key)
-            if output_dir.exists() and not check_write_permission(output_dir):
-                errors.append(f"출력 폴더 쓰기 불가: {output_dir}")
+            if output_key not in writable_by_dir:
+                writable = not output_dir.exists() or check_write_permission(output_dir)
+                writable_by_dir[output_key] = writable
+                if not writable:
+                    errors.append(f"출력 폴더 쓰기 불가: {output_dir}")
+            if not writable_by_dir[output_key]:
+                reasons.append("출력 폴더 쓰기 불가")
+
+            if reasons:
+                blocked.append((task, ", ".join(reasons)))
 
         self._deep_read_skipped = deep_read_skipped
+        self._blocked_tasks = blocked
         return errors
+
+
+def exclude_preflight_blocked_tasks(
+    plan: PlannedConversion, excluded: list[tuple[ConversionTask, str]]
+) -> int:
+    """사전 점검에서 제외하기로 한 작업을 실행 대상에서 빼고 「건너뜀」으로 옮긴다."""
+    if not excluded:
+        return 0
+    excluded_ids = {id(task) for task, _reason in excluded}
+    plan.tasks = [task for task in plan.tasks if id(task) not in excluded_ids]
+    for task, reason in excluded:
+        task.status = "건너뜀"
+        task.error = f"사전 점검 차단으로 제외: {reason}"
+        plan.skipped_tasks.append(task)
+    plan.warnings.append(f"사전 점검에서 차단된 {len(excluded)}개 항목을 제외하고 변환합니다.")
+    return len(excluded)

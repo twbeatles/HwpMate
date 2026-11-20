@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,11 @@ from .print_reset import _apply_safe_print_items, _set_param
 from .printers import resolve_pdf_printer_candidates
 
 logger = get_logger(__name__)
+
+# 프린터 드라이버가 Execute 반환 뒤에 PDF 를 마저 쓰는 환경 대비:
+# 성공이 보고됐는데 파일이 아직 없으면 잠시 기다리고, 생긴 파일은 크기가 멈출 때까지 확인한다.
+PRINT_OUTPUT_WAIT_SECONDS = 3.0
+PRINT_OUTPUT_POLL_SECONDS = 0.2
 
 
 def is_valid_pdf_file(path: Path, *, min_bytes: int = MIN_PDF_BYTES) -> bool:
@@ -121,9 +127,29 @@ def try_export_pdf_via_print_to_pdf_ex(
                 return False
         return is_valid_pdf_file(output)
 
-    candidates = (
-        list(printer_names) if printer_names else resolve_pdf_printer_candidates()
-    )
+    def _wait_for_output(reported_ok: bool) -> bool:
+        """유효 PDF 가 생기고 크기가 안정될 때까지 짧게 기다린다.
+
+        reported_ok=False(실패 반환)이면 기다리지 않고 현재 상태만 본다.
+        """
+        deadline = time.monotonic() + (PRINT_OUTPUT_WAIT_SECONDS if reported_ok else 0.0)
+        last_size: int | None = None
+        while True:
+            if _output_is_success():
+                try:
+                    size = output.stat().st_size
+                except OSError:
+                    size = None
+                if size is not None and size == last_size:
+                    return True
+                last_size = size
+            if time.monotonic() >= deadline:
+                return last_size is not None and _output_is_success()
+            if _cancelled():
+                return False
+            time.sleep(PRINT_OUTPUT_POLL_SECONDS)
+
+    candidates = list(printer_names) if printer_names else resolve_pdf_printer_candidates()
     if max_printer_attempts > 0:
         candidates = candidates[:max_printer_attempts]
     if not candidates:
@@ -152,7 +178,7 @@ def try_export_pdf_via_print_to_pdf_ex(
                         _set_param(pset, "filename", output_str)
                         _set_param(pset, "PrinterName", printer_name)
                         result = haction.Execute("PrintToPDFEx", hset)
-                        if _output_is_success():
+                        if _wait_for_output(bool(result)):
                             logger.debug(
                                 f"PrintToPDFEx 성공: printer={printer_name!r}, "
                                 f"result={result!r}, path={output_str}"
@@ -209,11 +235,9 @@ def try_export_pdf_via_print_to_pdf_ex(
                 except Exception:
                     pass
                 try:
-                    prn.RunToPDF()
-                    if _output_is_success():
-                        logger.debug(
-                            f"XHwpPrint.RunToPDF 성공: printer={printer_name!r}"
-                        )
+                    run_result = prn.RunToPDF()
+                    if _wait_for_output(run_result is not False and run_result != 0):
+                        logger.debug(f"XHwpPrint.RunToPDF 성공: printer={printer_name!r}")
                         return True, EXPORT_METHOD_RUN_TO_PDF
                     remove_incomplete_output(
                         output,

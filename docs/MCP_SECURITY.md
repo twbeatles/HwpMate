@@ -36,7 +36,8 @@
 - 실행 중 취소는 지원하지 않는다(`CANCELLATION_UNSUPPORTED_WHILE_RUNNING`).
   대기 중 작업만 취소할 수 있다.
 - CLI 1회(입력 파일 1개)가 `job_timeout_seconds`를 넘기면 CLI 프로세스 트리를 종료하고,
-  CLI가 `--owned-pids-file`에 기록한 **소유 한글 PID만** 이미지명 재확인 후 종료한다
+  CLI가 `--owned-pids-file`에 기록한 **소유 한글 PID만** 이미지명과 부모 프로세스(DcomLaunch `svchost.exe`)를
+  재확인한 뒤 종료한다. 사용자가 직접 연 한글은 PID가 겹쳐도 종료하지 않는다
   (전역 `Hwp.exe` 종료 금지). 한글이 응답하지 않는 상태일 가능성이 높아 남은 입력은
   실행하지 않고 `취소됨`(미실행)으로 기록한다. CLI가 비정상 종료해 남긴 소유 PID도 같은
   방식으로 정리하며, 정리 내역은 job 경고에 남는다.

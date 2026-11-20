@@ -739,9 +739,68 @@ def test_update_apply_is_refused_while_converting(
     assert controller._has_staged_file_for(manifest) is True
 
 
-def test_update_startup_tasks_run_once_across_show_events(
-    monkeypatch: pytest.MonkeyPatch, qapp: Any
+def _prepare_frozen_update(monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path):
+    import hwpmate.ui.main_window_controllers.update as update_module
+    from hwpmate.services.update_manifest import ReleaseManifest
+    from datetime import datetime, timezone
+
+    window, _ = create_window(monkeypatch, qapp)
+    controller = window.update_controller
+    staged = tmp_path / "update-9.9.9-x.exe"
+    staged.write_bytes(b"x")
+    manifest = ReleaseManifest(
+        version="9.9.9",
+        artifact_url="https://example.com/a.exe",
+        artifact_sha256="0" * 64,
+        artifact_size=1,
+        expires_at=datetime.now(timezone.utc),
+        signature="sig",
+    )
+    controller._staged_file = staged
+    controller._staged_manifest = manifest
+    controller._current_manifest = manifest
+    launched: list[object] = []
+    monkeypatch.setattr(update_module, "launch_update_helper", lambda **kwargs: launched.append(kwargs))
+    monkeypatch.setattr(update_module, "update_result_path", lambda root: tmp_path / "result.json")
+    monkeypatch.setattr(update_module.sys, "frozen", True, raising=False)
+    toasts: list[str] = []
+    monkeypatch.setattr(window.toast, "show_message", lambda message, *a, **k: toasts.append(message))
+    return window, controller, launched, toasts
+
+
+def test_update_apply_is_refused_while_folder_scan_runs(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
 ) -> None:
+    window, controller, launched, toasts = _prepare_frozen_update(monkeypatch, qapp, tmp_path)
+
+    class RunningScan:
+        def isRunning(self) -> bool:
+            return True
+
+    monkeypatch.setattr(window.state, "scan_worker", RunningScan())
+
+    controller._apply_and_restart()
+
+    assert launched == []
+    assert any("파일 검색이 진행 중" in toast for toast in toasts)
+
+
+def test_update_apply_does_not_quit_when_close_is_refused(
+    monkeypatch: pytest.MonkeyPatch, qapp: Any, tmp_path: Path
+) -> None:
+    window, controller, launched, toasts = _prepare_frozen_update(monkeypatch, qapp, tmp_path)
+    quits: list[int] = []
+    monkeypatch.setattr(qapp, "quit", lambda: quits.append(1))
+    monkeypatch.setattr(window, "close", lambda: False)
+
+    controller._apply_and_restart()
+
+    assert len(launched) == 1
+    assert quits == []
+    assert any("업데이트를 적용하지 못했습니다" in toast for toast in toasts)
+
+
+def test_update_startup_tasks_run_once_across_show_events(monkeypatch: pytest.MonkeyPatch, qapp: Any) -> None:
     import hwpmate.ui.main_window_controllers.update as update_module
 
     window, _ = create_window(monkeypatch, qapp)

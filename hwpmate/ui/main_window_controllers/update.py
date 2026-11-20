@@ -265,6 +265,10 @@ class UpdateController(QObject):
             return "변환 작업이 진행 중입니다"
         if state is not None and getattr(state, "is_planning", False):
             return "변환 준비가 진행 중입니다"
+        scan_worker = getattr(state, "scan_worker", None) if state is not None else None
+        if scan_worker is not None and getattr(scan_worker, "isRunning", lambda: False)():
+            # 종료 중 스캔이 제때 멈추지 않으면 closeEvent 가 무시되어 설정 저장 없이 끝날 수 있다.
+            return "폴더 파일 검색이 진행 중입니다"
         return None
 
     def _cancel_download(self) -> None:
@@ -349,7 +353,17 @@ class UpdateController(QObject):
         from PySide6.QtWidgets import QApplication
 
         # 헬퍼는 이 프로세스 종료를 실제로 기다린다. 창 종료 흐름(설정 저장·스캔 정리)을 거친 뒤 끝낸다.
-        self.window.close()
+        closed = self.window.close()
+        if closed is False:
+            # closeEvent 가 종료를 보류했다(스캔 정리 대기 등). 여기서 quit 하면 설정 저장·워커 정리
+            # 없이 끝나므로 종료하지 않는다. 헬퍼는 부모 종료 대기 시간이 지나면 교체 없이 끝난다.
+            logger.warning("창 종료가 보류되어 업데이트 적용을 취소했습니다.")
+            self.window.toast.show_message(
+                "창을 닫을 수 없어 업데이트를 적용하지 못했습니다. 잠시 후 「🔄 업데이트」에서 다시 적용해 주세요.",
+                icon="⚠️",
+                duration=5000,
+            )
+            return
         app = QApplication.instance()
         if app:
             app.quit()

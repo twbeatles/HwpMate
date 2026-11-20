@@ -4,20 +4,19 @@ from pathlib import Path
 
 from hwpmate.services.artifact_policy import (
     existing_artifact_conflicts,
+    is_html_asset_dir_name,
     iter_candidate_artifact_paths,
-    matches_artifact_stem,
 )
 
 
-def test_matches_artifact_stem_requires_delimiter_boundary() -> None:
-    assert matches_artifact_stem("doc_001.png", "doc")
-    assert matches_artifact_stem("doc.files", "doc")
-    assert not matches_artifact_stem("document_001.png", "doc")
+def test_is_html_asset_dir_name_accepts_only_exact_asset_folder_names() -> None:
+    assert is_html_asset_dir_name("doc.files", "doc")
+    assert is_html_asset_dir_name("DOC_files", "doc")
+    assert not is_html_asset_dir_name("doc_2024", "doc")
+    assert not is_html_asset_dir_name("document_files", "doc")
 
 
-def test_existing_artifact_conflicts_counts_auxiliary_files_and_directories(
-    tmp_path: Path,
-) -> None:
+def test_existing_artifact_conflicts_counts_page_files_but_not_directories_for_images(tmp_path: Path) -> None:
     output = tmp_path / "doc.png"
     aux_file = tmp_path / "doc_001.png"
     aux_dir = tmp_path / "doc.files"
@@ -29,14 +28,55 @@ def test_existing_artifact_conflicts_counts_auxiliary_files_and_directories(
     conflicts = existing_artifact_conflicts(output, "PNG")
 
     assert aux_file in conflicts
-    assert aux_dir in conflicts
+    assert aux_dir not in conflicts
     assert unrelated not in conflicts
+
+
+def test_existing_artifact_conflicts_counts_html_asset_dir(tmp_path: Path) -> None:
+    aux_dir = tmp_path / "doc_files"
+    aux_dir.mkdir()
+
+    assert existing_artifact_conflicts(tmp_path / "doc.html", "HTML") == [aux_dir]
+
+
+def test_sibling_folder_does_not_rename_image_output(tmp_path: Path) -> None:
+    """감사 ISSUE-003 재현: report_2024/ 폴더 때문에 report (1).png 로 바뀌면 안 된다."""
+    (tmp_path / "report.hwp").write_bytes(b"src")
+    sibling = tmp_path / "report_2024"
+    sibling.mkdir()
+    (sibling / "notes.hwp").write_bytes(b"src")
+    (sibling / "other.txt").write_bytes(b"x")
+    output = tmp_path / "report.png"
+
+    assert existing_artifact_conflicts(output, "PNG") == []
+    candidates = iter_candidate_artifact_paths(output, "PNG")
+    assert all(path.parent == tmp_path for path in candidates)
+
+
+def test_sibling_html_file_does_not_rename_html_output(tmp_path: Path) -> None:
+    """감사 ISSUE-003 재현: doc_final.html 이 있어도 doc.html 은 그대로여야 한다."""
+    (tmp_path / "doc.hwp").write_bytes(b"src")
+    (tmp_path / "doc_final.html").write_bytes(b"x")
+
+    assert existing_artifact_conflicts(tmp_path / "doc.html", "HTML") == []
+
+
+def test_nested_html_asset_scan_excludes_source_documents(tmp_path: Path) -> None:
+    aux_dir = tmp_path / "doc_files"
+    aux_dir.mkdir()
+    (aux_dir / "keep.png").write_bytes(b"x")
+    (aux_dir / "inner.hwp").write_bytes(b"src")
+
+    names = {path.name for path in iter_candidate_artifact_paths(tmp_path / "doc.html", "HTML")}
+
+    assert "keep.png" in names
+    assert "inner.hwp" not in names
 
 
 def test_iter_candidate_artifact_paths_limits_nested_scan(tmp_path: Path) -> None:
     output = tmp_path / "doc.html"
     aux_dir = tmp_path / "doc.files"
-    second_aux_dir = tmp_path / "doc-assets"
+    second_aux_dir = tmp_path / "doc_files"
     aux_dir.mkdir()
     second_aux_dir.mkdir()
     for index in range(5):
@@ -50,19 +90,7 @@ def test_iter_candidate_artifact_paths_limits_nested_scan(tmp_path: Path) -> Non
     assert output in candidates
 
 
-def test_matches_artifact_stem_accepts_hwp_image_page_numbers_only_when_allowed() -> (
-    None
-):
-    # 한글 2022 실측: 이미지 SaveAs 는 sample001.png, sample002.png 로 저장
-    assert matches_artifact_stem("sample001.png", "sample", allow_page_number=True)
-    assert not matches_artifact_stem("sample001.png", "sample")
-    assert not matches_artifact_stem("sample1.png", "sample", allow_page_number=True)
-    assert not matches_artifact_stem("samples.png", "sample", allow_page_number=True)
-
-
-def test_existing_artifact_conflicts_ignores_source_documents_and_backup_dir(
-    tmp_path: Path,
-) -> None:
+def test_existing_artifact_conflicts_ignores_source_documents_and_backup_dir(tmp_path: Path) -> None:
     (tmp_path / "report.hwp").write_bytes(b"src")
     (tmp_path / "report_final.hwpx").write_bytes(b"src")
     (tmp_path / "backup").mkdir()

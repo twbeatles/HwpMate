@@ -40,7 +40,9 @@ from .process_snapshot import (
     _snapshot_failure_count,
     _snapshot_hwp_pids,
     _snapshot_last_error,
+    _snapshot_process_table,
     get_snapshot_health,
+    select_com_launched_pids,
 )
 from .progid import get_registered_hwp_progids
 
@@ -62,12 +64,14 @@ __all__ = [
     "_snapshot_file",
     "_snapshot_hwp_pids",
     "_snapshot_last_error",
+    "_snapshot_process_table",
     "apply_default_print_settings",
     "get_registered_hwp_progids",
     "get_snapshot_health",
     "is_com_failure_result",
     "pythoncom",
     "require_pywin32",
+    "select_com_launched_pids",
     "subprocess",
     "try_export_pdf_via_print_to_pdf_ex",
     "win32_client",
