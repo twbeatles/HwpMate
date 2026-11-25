@@ -11,6 +11,12 @@
 - 배포 산출물: `dist/HWP변환기_v9.2.5.exe` (릴리즈: `HwpMate-v9.2.5.exe`)
 - 보안 모듈 번들: `hwpmate/resources/security/FilePathCheckerModuleExample.dll`
 
+## 2026-11-25 HWP/HWPX 산출물 매직 시그니처 검증 보강
+
+- **배경:** 한컴오피스 업데이트 이후 기본 저장 형식이 HWPX로 전환되는 환경에서, `HWPX -> HWP` 변환 시 `.hwp` 확장자에 실제 내용이 HWPX(ZIP)로 저장되는 회귀를 조기 탐지하기 위해 산출물 시그니처 검증을 추가했습니다.
+- **수정:** `hwpmate/services/hwp_converter/artifact_snapshot.py`에 `validate_document_signature()`를 추가하고, `HWPConverter._convert_file_impl()`에서 `HWP`(OLE2 `D0 CF 11 E0 A1 B1 1A E1` / HWP3 `HWP Document File`)와 `HWPX`(ZIP `PK\x03\x04`) 시그니처를 검사하도록 보강했습니다. 불일치 시 새로 생성된 산출물을 정리하고 실패를 반환합니다.
+- **문서·테스트:** `HWP_COM_SMOKE_TEST_CHECKLIST.md`에 한컴 업데이트 이후 `HWP ↔ HWPX` 저장 회귀 검증 항목을 추가하고, `README.md` 지원 형식 안내를 보완했습니다. `tests/test_hwp_converter.py`에 시그니처 검증 단위 테스트 3건을 추가했습니다 (`pytest` 32 passed).
+
 ## 2026-11-07 기능 감사(PROJECT_AUDIT.md) 조치 — 한글 프로세스 수명·산출물 판정 (v9.2.5)
 
 - **ISSUE-001 소유 PID 오인:** 초기화 전후 PID 차집합만으로 소유를 정해, 그 사이 사용자가 연 한글까지 창 숨김·강제 종료·MCP timeout 정리 대상이 되던 문제 수정. 후보마다 부모 프로세스를 확인해 DcomLaunch(`svchost.exe`)가 띄운 한글과 그 자식만 소유로 확정(`select_com_launched_pids`). 시작 실패 고아 정리·MCP `_live_hwp_pids`는 부모 불명도 제외.

@@ -73,6 +73,17 @@
 - [ ] (가능 시) 비규격/B4 용지 문서 → SaveAs 우선 시 용지 크기 유지 여부 기록.
 - [ ] HWP -> DOCX 1건이 성공한다.
 - [ ] HWPX -> HWP 1건이 성공한다.
+- [ ] HWP -> HWPX 1건이 성공한다.
+
+## 한컴 업데이트 이후 HWP ↔ HWPX 저장 회귀 검증
+
+한컴오피스 업데이트로 기본 저장 형식이 HWPX로 바뀌거나 저장 확인 창이 추가된 환경에서는 아래 항목을 추가로 확인합니다.
+
+- [ ] `HWPX -> HWP` 스모크 실행:
+  `python tools/hwp_com_smoke.py --input <샘플.hwpx> --format HWP --output-dir <출력폴더> --allow-non-admin` → `성공`
+- [ ] 생성된 `.hwp` 파일이 실제 OLE2(`.hwp`, 헤더 `D0 CF 11 E0`)로 저장되었는지 확인 (`PK` ZIP/HWPX 내용으로 저장되면 시그니처 검증에서 실패 처리되어야 함).
+- [ ] `HWPX -> HWP` 변환 중 새 확인/안내 대화상자에서 멈추지 않는지 확인. 멈추는 경우 창 제목을 기록해 `hwpmate/windows_integration/hwp_dialog_responder.py`의 `COMPAT_DIALOG_TITLES` 보완 대상으로 반영.
+- [ ] `HWP -> HWPX` 변환 결과 `.hwpx`가 실제 ZIP(`PK\x03\x04`) 시그니처로 저장되는지 확인.
 - [ ] 이미지 형식(PNG/JPG/BMP/GIF) 중 1개 이상을 변환하고, 현재 한글 버전에서 생성되는 출력 형태를 기록한다.
 - [ ] HTML 또는 이미지 변환에서 기본 파일 외 보조 산출물이 생기는 경우 결과 JSON의 `created_files`에 기록된다.
 - [ ] 동일 형식 변환(HWP -> HWP 또는 HWPX -> HWPX)은 변환 없이 `건너뜀`으로 표시된다.

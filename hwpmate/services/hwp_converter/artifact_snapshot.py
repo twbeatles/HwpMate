@@ -7,6 +7,43 @@ from pathlib import Path
 
 from ..artifact_policy import iter_candidate_artifact_paths
 
+OLE2_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+HWP3_MAGIC = b"HWP Document File"
+ZIP_MAGIC = b"PK\x03\x04"
+
+
+def validate_document_signature(path: Path, format_type: str) -> str | None:
+    """HWP/HWPX 산출물이 실제 대상 포맷 시그니처와 일치하는지 검사한다.
+
+    한컴 업데이트 등으로 .hwp 저장 시 실제 내용이 HWPX(ZIP)로 기록되는 회귀를
+    조기에 감지하기 위한 검증이며, 통과 시 None, 불일치 시 오류 메시지를 반환한다.
+    """
+    fmt = format_type.upper()
+    if fmt not in {"HWP", "HWPX"}:
+        return None
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(32)
+    except OSError as exc:
+        return f"출력 파일 시그니처를 읽을 수 없습니다: {path.name} ({exc})"
+
+    if fmt == "HWP":
+        if header.startswith(ZIP_MAGIC):
+            return (
+                f"유효한 HWP 문서가 아닙니다 (실제 형식이 HWPX/ZIP으로 저장됨): {path.name}"
+            )
+        if not (header.startswith(OLE2_MAGIC) or header.startswith(HWP3_MAGIC)):
+            return f"유효한 HWP 문서가 아닙니다 (매직 시그니처 검사 실패): {path.name}"
+        return None
+
+    if header.startswith(OLE2_MAGIC):
+        return (
+            f"유효한 HWPX 문서가 아닙니다 (실제 형식이 HWP/OLE2로 저장됨): {path.name}"
+        )
+    if not header.startswith(ZIP_MAGIC):
+        return f"유효한 HWPX 문서가 아닙니다 (매직 시그니처 검사 실패): {path.name}"
+    return None
+
 
 @dataclass(frozen=True)
 class _FileSnapshot:

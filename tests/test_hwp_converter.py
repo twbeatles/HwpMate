@@ -663,3 +663,54 @@ def test_convert_file_skips_compat_responder_without_owned_pids_or_when_disabled
     disabled.convert_file(source, tmp_path / "b.docx", "DOCX")
 
     assert created == []
+
+
+def test_convert_file_hwp_accepts_ole2_signature(tmp_path: Path) -> None:
+    source = tmp_path / "sample.hwpx"
+    source.write_bytes(b"PK\x03\x04dummy")
+    output = tmp_path / "sample.hwp"
+    ole2_bytes = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 64
+    fake = FakeHwp(output_content=ole2_bytes)
+    converter = build_converter(fake)
+
+    success, error = converter.convert_file(source, output, "HWP")
+
+    assert success is True, error
+    assert error is None
+    assert fake.save_calls[0][1] == "HWP"
+    assert output.is_file()
+
+
+def test_convert_file_hwp_rejects_hwpx_zip_masquerading_as_hwp(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "sample.hwpx"
+    source.write_bytes(b"PK\x03\x04dummy")
+    output = tmp_path / "sample.hwp"
+    fake = FakeHwp(output_content=b"PK\x03\x04fake_hwpx")
+    converter = build_converter(fake)
+
+    success, error = converter.convert_file(source, output, "HWP")
+
+    assert success is False
+    assert error is not None and "HWPX/ZIP" in error
+    assert not output.exists()
+
+
+def test_convert_file_hwpx_accepts_zip_and_rejects_ole2(tmp_path: Path) -> None:
+    source = tmp_path / "sample.hwp"
+    source.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
+
+    ok_out = tmp_path / "ok.hwpx"
+    ok_conv = build_converter(FakeHwp(output_content=b"PK\x03\x04hwpx"))
+    success, error = ok_conv.convert_file(source, ok_out, "HWPX")
+    assert success is True, error
+
+    bad_out = tmp_path / "bad.hwpx"
+    bad_conv = build_converter(
+        FakeHwp(output_content=b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
+    )
+    success2, error2 = bad_conv.convert_file(source, bad_out, "HWPX")
+    assert success2 is False
+    assert error2 is not None and "HWP/OLE2" in error2
+    assert not bad_out.exists()

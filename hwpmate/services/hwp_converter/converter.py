@@ -32,6 +32,7 @@ from .artifact_snapshot import (
     _changed_artifacts,
     _snapshot_artifacts,
     remove_new_attempt_artifacts,
+    validate_document_signature,
 )
 from .com_types import HwpAutomation, is_com_failure_result, pythoncom, require_pywin32
 from .process_snapshot import (
@@ -684,6 +685,18 @@ class HWPConverter:
             representative = (
                 output_file if output_file in changed_files else changed_files[0]
             )
+            if format_key in {"HWP", "HWPX"}:
+                sig_error = validate_document_signature(representative, format_key)
+                if sig_error is not None:
+                    logger.warning(f"문서 시그니처 검증 실패: {sig_error}")
+                    try:
+                        hwp.Clear(option=1)
+                    except Exception:
+                        pass
+                    if _cancelled():
+                        return False, "사용자 취소"
+                    _cleanup_failed_artifacts()
+                    return False, sig_error
             representative_snapshot = after_artifacts[representative]
             self.last_created_files = changed_files
             self.last_output_size = representative_snapshot.size
